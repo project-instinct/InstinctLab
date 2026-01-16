@@ -318,11 +318,11 @@ class G1PlaneShadowingEnvCfg(shadowing_cfg.ShadowingEnvCfg):
         if motion_buffer.motion_bin_length_s is not None:
             if motion_buffer.env_starting_stub_sampling_strategy == "concat_motion_bins":
                 self.curriculum.beyond_adaptive_sampling = CurriculumTermCfg(  # type: ignore
-                    func=shadowing_mdp.BeyondConcatMotionAdaptiveWeighting,
+                    func=instinct_mdp.BeyondConcatMotionAdaptiveWeighting,
                 )
             elif motion_buffer.env_starting_stub_sampling_strategy == "independent":
                 self.curriculum.beyond_adaptive_sampling = CurriculumTermCfg(  # type: ignore
-                    func=shadowing_mdp.BeyondMimicAdaptiveWeighting,
+                    func=instinct_mdp.BeyondMimicAdaptiveWeighting,
                 )
             else:
                 raise ValueError(
