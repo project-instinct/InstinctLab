@@ -59,7 +59,7 @@ class TerrainImporter(TerrainImporterBase):
             mesh: The trimesh object to import.
         """
         mesh.merge_vertices()
-        mesh.remove_duplicate_faces()
+        mesh.update_faces(mesh.unique_faces())  # remove duplicate faces
         mesh.remove_unreferenced_vertices()
         # Generate virtual obstacles based on the imported mesh.
         # NOTE: generate virtual obstacle first because it might modify the mesh.
