@@ -328,6 +328,9 @@ class MotionReferenceManager(SensorBase):
 
     def reset(self, env_ids: Sequence[int] | torch.Tensor | None = None):
         """Reset the motion reference manager as a sensor, also reset the motion reference components."""
+        assert getattr(
+            self, "__motion_reference_manager_initialized", False
+        ), "Motion reference manager is not initialized successfully. Please check the error message above."
         super().reset(env_ids)
         if env_ids is None:
             env_ids = self.ALL_INDICES
@@ -511,6 +514,9 @@ class MotionReferenceManager(SensorBase):
         self._resample_buffer_collate_params()
         self._resample_update_period()
         print(self)  # print the tabular information of the motion reference managed buffer.
+        # Due to isaaclab's _initialize_impl exception will not lead to complete program shutdown, we need to set a flag
+        # to indicate the motion reference manager is initialized successfully.
+        self.__motion_reference_manager_initialized = True
 
     def _update_buffers_impl(self, env_ids: Sequence[int] | torch.Tensor):
         """Update the motion reference buffers for the given env_ids."""
