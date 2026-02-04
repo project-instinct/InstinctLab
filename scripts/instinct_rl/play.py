@@ -64,7 +64,7 @@ from instinct_rl.runners import OnPolicyRunner
 import isaaclab.utils.math as math_utils
 from isaaclab.envs import DirectMARLEnv, multi_agent_to_single_agent
 from isaaclab.utils.dict import print_dict
-from isaaclab.utils.io import load_pickle, load_yaml
+from isaaclab.utils.io import load_yaml
 from isaaclab_tasks.utils import get_checkpoint_path, parse_env_cfg
 
 # Import extensions to set up environment tasks
@@ -118,7 +118,7 @@ def main():
         resume_path = "model_scratch.pt"
 
     if args_cli.env_cfg:
-        env_cfg = load_pickle(os.path.join(log_dir, "params", "env.pkl"))
+        env_cfg = load_yaml(os.path.join(log_dir, "params", "env.yaml"))
     if args_cli.agent_cfg:
         agent_cfg_dict = load_yaml(os.path.join(log_dir, "params", "agent.yaml"))
     else:
