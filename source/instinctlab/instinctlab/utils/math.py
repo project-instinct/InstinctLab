@@ -51,11 +51,11 @@ def quat_to_tan_norm(q: torch.Tensor) -> torch.Tensor:
     # represents a rotation using the tangent and normal vectors
     ref_tan = torch.zeros_like(q[..., 0:3])
     ref_tan[..., 0] = 1
-    tan = math_utils.quat_rotate(q, ref_tan)
+    tan = math_utils.quat_apply(q, ref_tan)
 
     ref_norm = torch.zeros_like(q[..., 0:3])
     ref_norm[..., -1] = 1
-    norm = math_utils.quat_rotate(q, ref_norm)
+    norm = math_utils.quat_apply(q, ref_norm)
 
     tan_norm = torch.cat([tan, norm], dim=len(tan.shape) - 1)
     return tan_norm
