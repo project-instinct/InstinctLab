@@ -153,16 +153,8 @@ class GroupedRayCaster(MultiMeshRayCaster):
             self._mesh_orientations_w[:, mesh_idx : mesh_idx + count] = ori_w  # (w, x, y, z)
             mesh_idx += count
 
-    def _update_buffers_impl(self, env_ids: Sequence[int]):
-        """Update the ray caster buffers with the current mesh positions and orientations.
-        And also update the mesh points on given environment IDs (aka. collision group ids).
-
-        Args:
-            env_ids: The environment IDs for which to update the buffers.
-        """
-        self._update_ray_infos(env_ids)
-        self._update_mesh_transforms(env_ids)
-
+    def _get_mesh_transforms_and_inv_transforms(self):
+        """Get the mesh transforms and inverse transforms for the given environment IDs."""
         mesh_transforms = torch.concatenate(
             [self._mesh_positions_w, self._mesh_orientations_w],
             dim=-1,
@@ -179,9 +171,22 @@ class GroupedRayCaster(MultiMeshRayCaster):
         ).reshape(
             -1, 7
         )  # (num_envs * (global_meshes + local_meshes_per_env), 7) # (px, py, pz, qw, qx, qy, qz)
+        return mesh_transforms, mesh_inv_transforms
+
+    def _update_buffers_impl(self, env_ids: Sequence[int]):
+        """Update the ray caster buffers with the current mesh positions and orientations.
+        And also update the mesh points on given environment IDs (aka. collision group ids).
+
+        Args:
+            env_ids: The environment IDs for which to update the buffers.
+        """
+        self._update_ray_infos(env_ids)
+        self._update_mesh_transforms(env_ids)
+
+        mesh_transforms, mesh_inv_transforms = self._get_mesh_transforms_and_inv_transforms()
 
         mesh_wp = [i for i in GroupedRayCaster.meshes.values()][0]
-        self.ray_hits_w, ray_depth, ray_normal, _ = raycast_mesh_grouped(
+        self._data.ray_hits_w[env_ids], ray_depth, ray_normal, _ = raycast_mesh_grouped(
             mesh_wp_device=mesh_wp.device,
             mesh_prototype_ids=self._mesh_prototype_ids,
             mesh_transforms=mesh_transforms,

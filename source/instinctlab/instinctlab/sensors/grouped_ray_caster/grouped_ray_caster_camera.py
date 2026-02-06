@@ -142,22 +142,7 @@ class GroupedRayCasterCamera(RayCasterCamera, GroupedRayCaster):
         self._update_ray_infos(env_ids)
         self._update_mesh_transforms(env_ids)
 
-        mesh_transforms = torch.concatenate(
-            [self._mesh_positions_w, self._mesh_orientations_w],
-            dim=-1,
-        ).reshape(
-            -1, 7
-        )  # (num_envs * (global_meshes + local_meshes_per_env), 7) # (px, py, pz, qw, qx, qy, qz)
-        # compute inverse transforms
-        # inv(T) = (inv(q) * -p, inv(q))
-        inv_q = math_utils.quat_inv(self._mesh_orientations_w)
-        inv_p = math_utils.quat_apply(inv_q, -self._mesh_positions_w)
-        mesh_inv_transforms = torch.concatenate(
-            [inv_p, inv_q],
-            dim=-1,
-        ).reshape(
-            -1, 7
-        )  # (num_envs * (global_meshes + local_meshes_per_env), 7) # (px, py, pz, qw, qx, qy, qz)
+        mesh_transforms, mesh_inv_transforms = self._get_mesh_transforms_and_inv_transforms()
 
         mesh_wp = [i for i in GroupedRayCaster.meshes.values()][0]
         self.ray_hits_w, ray_depth, ray_normal, _ = raycast_mesh_grouped(
