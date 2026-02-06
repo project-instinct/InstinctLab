@@ -92,14 +92,14 @@ def points_penetrate_cylinder_kernel(
 
 @wp.kernel(enable_backward=False)
 def raycast_mesh_kernel_grouped_transformed(
-    mesh_prototype_ids: wp.array(dtype=wp.uint64),  # all meshes in the scene
+    mesh_wp_ids: wp.array(dtype=wp.uint64),  # all meshes in the scene
     mesh_transforms: wp.array(dtype=wp.transform),  # transforms of the meshes
     mesh_inv_transforms: wp.array(dtype=wp.transform),  # inverse transforms of the meshes
     ray_collision_groups: wp.array(dtype=wp.int32),
-    mesh_ids_for_group: wp.array(dtype=wp.int32),
-    mesh_ids_slice_for_group: wp.array(
+    mesh_idxs_for_group: wp.array(dtype=wp.int32),
+    meah_idxs_slice_for_group: wp.array(
         dtype=wp.int32
-    ),  # Given the ray collision group (i), mesh_ids_for_group[mesh_ids_slice_for_group[i]:mesh_ids_slice_for_group[i+1]] are the mesh ids within this group.
+    ),  # Given the ray collision group (i), mesh_idxs_for_group[meah_idxs_slice_for_group[i]:meah_idxs_slice_for_group[i+1]] are the mesh ids within this group.
     ray_starts: wp.array(dtype=wp.vec3),
     ray_directions: wp.array(dtype=wp.vec3),
     ray_hits: wp.array(dtype=wp.vec3),
@@ -127,9 +127,11 @@ def raycast_mesh_kernel_grouped_transformed(
     start = ray_starts[tid]
     direction = ray_directions[tid]
 
-    for idx in range(mesh_ids_slice_for_group[ray_collision_group], mesh_ids_slice_for_group[ray_collision_group + 1]):
-        mesh_idx = int(mesh_ids_for_group[idx])
-        mesh_prototype = mesh_prototype_ids[mesh_idx]
+    for idx in range(
+        meah_idxs_slice_for_group[ray_collision_group], meah_idxs_slice_for_group[ray_collision_group + 1]
+    ):
+        mesh_idx = int(mesh_idxs_for_group[idx])
+        mesh_wp_id = mesh_wp_ids[mesh_idx]
 
         # transform the ray start and direction to the mesh's local space
         mesh_transform = mesh_transforms[mesh_idx]
@@ -138,7 +140,7 @@ def raycast_mesh_kernel_grouped_transformed(
         direction_local = wp.transform_vector(mesh_inv_transform, direction)
 
         # ray cast against the mesh and store the hit position
-        query_returns = wp.mesh_query_ray(mesh_prototype, start_local, direction_local, max_dist)
+        query_returns = wp.mesh_query_ray(mesh_wp_id, start_local, direction_local, max_dist)
         # if the ray hit, store the hit data
         if query_returns.result and query_returns.t < ray_distance_buf and query_returns.t > min_dist:
             ray_hits[tid] = start + direction * query_returns.t

@@ -39,7 +39,7 @@ class GroupedRayCaster(MultiMeshRayCaster):
 
         # We create a flattened tensor of mesh IDs that corresponds 1:1 with the flattened mesh transforms.
         total_meshes_per_env = self._mesh_positions_w.shape[1]
-        mesh_prototype_ids_tensor = torch.zeros(
+        mesh_wp_ids_tensor = torch.zeros(
             (self._num_envs, total_meshes_per_env),
             dtype=torch.int64,
             device=self._device,
@@ -62,17 +62,17 @@ class GroupedRayCaster(MultiMeshRayCaster):
             count = self._num_meshes_per_env[target_cfg.prim_expr]
 
             if len(ids) == 1:
-                mesh_prototype_ids_tensor[:, mesh_idx] = ids_tensor[0]
+                mesh_wp_ids_tensor[:, mesh_idx] = ids_tensor[0]
             elif len(ids) == count:
-                mesh_prototype_ids_tensor[:, mesh_idx : mesh_idx + count] = ids_tensor.unsqueeze(0)
+                mesh_wp_ids_tensor[:, mesh_idx : mesh_idx + count] = ids_tensor.unsqueeze(0)
             elif len(ids) == self._num_envs * count:
-                mesh_prototype_ids_tensor[:, mesh_idx : mesh_idx + count] = ids_tensor.view(self._num_envs, count)
+                mesh_wp_ids_tensor[:, mesh_idx : mesh_idx + count] = ids_tensor.view(self._num_envs, count)
             else:
                 logger.warning(f"Mismatch in mesh counts for {target_cfg.prim_expr}")
 
             mesh_idx += count
 
-        self._mesh_prototype_ids = mesh_prototype_ids_tensor.flatten()
+        self._mesh_wp_ids = mesh_wp_ids_tensor.flatten()
 
     def _initialize_rays_impl(self):
         super()._initialize_rays_impl()
@@ -81,9 +81,9 @@ class GroupedRayCaster(MultiMeshRayCaster):
 
     def _create_ray_collision_groups(self):
         """Create buffer to store ray collision groups and mesh ids for group ids.
-        Given s = slice(self._mesh_ids_slice_for_group[group_id], self._mesh_ids_slice_for_group[group_id+1])
-        you get a list of mesh_ids = self._mesh_ids_for_group[s]
-        which is the indices to mesh_transforms and mesh_inv_transforms and mesh_prototype_ids
+        Given s = slice(self._meah_idxs_slice_for_group[group_id], self._meah_idxs_slice_for_group[group_id+1])
+        you get a list of mesh_ids = self._mesh_idxs_for_group[s]
+        which is the indices to mesh_transforms and mesh_inv_transforms and mesh_wp_ids
         NOTE: different from parent class, GroupedRayCaster treat all mesh transforms as flattened. using indices
         to identify a mesh shall be hit by the ray.
         """
@@ -92,7 +92,7 @@ class GroupedRayCaster(MultiMeshRayCaster):
             torch.arange(self._num_envs, dtype=torch.int32, device=self._device).unsqueeze(1).repeat(1, self.num_rays)
         )
 
-        _mesh_ids_for_group = torch.ones(
+        _mesh_idxs_for_group = torch.ones(
             (self._mesh_positions_w.shape[0], self._mesh_positions_w.shape[1]),
             dtype=torch.int32,
             device=self._device,
@@ -109,15 +109,15 @@ class GroupedRayCaster(MultiMeshRayCaster):
                 + torch.arange(count, device=self._device).unsqueeze(0)
                 + mesh_idx
             )
-            _mesh_ids_for_group[:, mesh_idx : mesh_idx + count] = indices.int()
+            _mesh_idxs_for_group[:, mesh_idx : mesh_idx + count] = indices.int()
             mesh_idx += count
-        self._mesh_ids_for_group = _mesh_ids_for_group.flatten(
+        self._mesh_idxs_for_group = _mesh_idxs_for_group.flatten(
             0, 1
         )  # (num_envs * (global_meshes + local_meshes_per_env))
 
-        _mesh_ids_slice_for_group = torch.arange(self._num_envs + 1, dtype=torch.int32, device=self._device)
-        _mesh_ids_slice_for_group *= self._mesh_positions_w.shape[1]
-        self._mesh_ids_slice_for_group = _mesh_ids_slice_for_group  # (num_envs + 1)
+        _meah_idxs_slice_for_group = torch.arange(self._num_envs + 1, dtype=torch.int32, device=self._device)
+        _meah_idxs_slice_for_group *= self._mesh_positions_w.shape[1]
+        self._meah_idxs_slice_for_group = _meah_idxs_slice_for_group  # (num_envs + 1)
 
     def _update_mesh_transforms(self, env_ids: torch.Tensor | None = None):
         """
@@ -188,12 +188,12 @@ class GroupedRayCaster(MultiMeshRayCaster):
         mesh_wp = [i for i in GroupedRayCaster.meshes.values()][0]
         self._data.ray_hits_w[env_ids], _, _, _, _ = raycast_mesh_grouped(
             mesh_wp_device=mesh_wp.device,
-            mesh_prototype_ids=self._mesh_prototype_ids,
+            mesh_wp_ids=self._mesh_wp_ids,
             mesh_transforms=mesh_transforms,
             mesh_inv_transforms=mesh_inv_transforms,
             ray_group_ids=self._ray_collision_groups[env_ids],
-            mesh_ids_for_group=self._mesh_ids_for_group,
-            mesh_ids_slice_for_group=self._mesh_ids_slice_for_group,
+            mesh_idxs_for_group=self._mesh_idxs_for_group,
+            meah_idxs_slice_for_group=self._meah_idxs_slice_for_group,
             ray_starts=self._ray_starts_w[env_ids],
             ray_directions=self._ray_directions_w[env_ids],
             max_dist=self.cfg.max_distance,

@@ -147,12 +147,12 @@ class GroupedRayCasterCamera(RayCasterCamera, GroupedRayCaster):
         mesh_wp = [i for i in GroupedRayCaster.meshes.values()][0]
         self.ray_hits_w, ray_depth, ray_normal, _, _ = raycast_mesh_grouped(
             mesh_wp_device=mesh_wp.device,
-            mesh_prototype_ids=self._mesh_prototype_ids,
+            mesh_wp_ids=self._mesh_wp_ids,
             mesh_transforms=mesh_transforms,
             mesh_inv_transforms=mesh_inv_transforms,
             ray_group_ids=self._ray_collision_groups[env_ids],
-            mesh_ids_for_group=self._mesh_ids_for_group,
-            mesh_ids_slice_for_group=self._mesh_ids_slice_for_group,
+            mesh_idxs_for_group=self._mesh_idxs_for_group,
+            meah_idxs_slice_for_group=self._meah_idxs_slice_for_group,
             ray_starts=self._ray_starts_w[env_ids],
             ray_directions=self._ray_directions_w[env_ids],
             max_dist=self.cfg.max_distance * 2,  # in case of distance_to_image_plane and ray distance ambiguity
