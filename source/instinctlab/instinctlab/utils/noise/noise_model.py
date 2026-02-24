@@ -23,6 +23,7 @@ if TYPE_CHECKING:
         ImageNoiseCfg,
         LatencyNoiseCfg,
         RandomGaussianNoiseCfg,
+        SensorDeadNoiseCfg,
     )
 
 
@@ -663,3 +664,51 @@ def stereo_too_close_noise(
     data[half_block_mask] = (half_block_spark.to(torch.float32) * cfg.half_block_value)[half_block_mask]
 
     return data
+
+
+class SensorDeadNoiseModel(ImageNoiseModel):
+    def __init__(self, cfg: SensorDeadNoiseCfg, num_envs, device):
+        """Simulating when the sensor is dead and restarting, this may lead to several frames of non-refreshed data."""
+        super().__init__(cfg, num_envs, device)
+        self._data_buffer = None
+        self._remain_dead_frames = torch.zeros(num_envs, device=device)
+        self._dead_frames_options = (
+            self.cfg.dead_frames
+            if isinstance(self.cfg.dead_frames, int)
+            else torch.tensor(self.cfg.dead_frames, device=device)
+        )
+
+    def __call__(self, data, cfg: SensorDeadNoiseCfg, env_ids: torch.Tensor | Sequence[int]):
+        if self._data_buffer is None:
+            self._data_buffer = torch.zeros_like(data[0]).unsqueeze(0).repeat(self.num_envs, *([1] * (data.ndim - 1)))
+
+        # determine if the sensor is dead this time.
+        could_be_dead_mask = self._remain_dead_frames[env_ids] <= 0
+        dead_this_time_mask = torch.logical_and(
+            torch.rand(env_ids.shape[0], device=self.device) < self.cfg.dead_probability,
+            could_be_dead_mask,
+        )
+        dead_frames = (
+            self.cfg.dead_frames
+            if isinstance(self.cfg.dead_frames, int)
+            else torch.randint(
+                len(self._dead_frames_options),
+                size=(len(env_ids),),
+                device=self.device,
+            )
+        )
+        self._remain_dead_frames[env_ids] = torch.where(
+            dead_this_time_mask, dead_frames, self._remain_dead_frames[env_ids] - 1
+        )
+        self._remain_dead_frames[env_ids].clamp_(min=0)
+
+        # refresh the data buffer if it is not dead.
+        data_to_refresh_mask = self._remain_dead_frames[env_ids] <= 0  # (len(env_ids),)
+        buffer_to_refresh_mask = self._remain_dead_frames <= 0  # (self.num_envs,)
+        self._data_buffer[buffer_to_refresh_mask] = data[data_to_refresh_mask]
+        return self._data_buffer[env_ids]
+
+    def reset(self, env_ids: Sequence[int] | None = None):
+        self._remain_dead_frames[env_ids] = 0
+        if self._data_buffer is not None:
+            self._data_buffer[env_ids] = 0

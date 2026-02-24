@@ -8,6 +8,7 @@ from isaaclab.utils.noise import NoiseCfg
 from .noise_model import (
     ImageNoiseModel,
     LatencyNoiseModel,
+    SensorDeadNoiseModel,
     blind_spot_noise,
     crop_and_resize,
     depth_artifact_noise,
@@ -231,3 +232,20 @@ class StereoTooCloseNoiseCfg(ImageNoiseCfg):
     half_block_spark_prob: float = 0.02
 
     func = stereo_too_close_noise
+
+
+@configclass
+class SensorDeadNoiseCfg(ImageNoiseCfg):
+    """Configuration for adding sensor dead behavior, which might be autonomous restarted.
+    Thus causing some frames of non-refreshed data.
+    """
+
+    dead_probability: float = 0.01
+    """The probability of the sensor dead."""
+
+    dead_frames: int | list[int] = 90  # 1.5 second at 60Hz
+    """The number of frames to be non-refreshed (before the sensor is restarted).
+    Can be a single number or a list of numbers to be uniformly selected from.
+    """
+
+    func = SensorDeadNoiseModel
