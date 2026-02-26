@@ -33,7 +33,7 @@ See [CONTRIBUTORS.md](CONTRIBUTORS.md) for a list of acknowledged contributors.
 
 ## Installation
 
-- Install Isaac Lab by following the [installation guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html) and **Switch to 5.1.0 version**. We recommend using the conda installation as it simplifies calling Python scripts from the terminal. At the time of release, the IsaacLab commit we are using is `9be0de5f6196374fa793dc33978434542e7a40d3` on May 5 2025.
+- Install Isaac Lab by following the [installation guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html) and **Switch to 5.1.0 version**. We recommend using the conda installation as it simplifies calling Python scripts from the terminal. At the time of release, the IsaacLab commit we are using is `37ddf626871758333d6ed89cf64ad702aef127d0` on Jan 30 2026.
 
 - Install Instinct-RL by following the [installation guide](https://github.com/project-instinct/instinct_rl/blob/main/README.md).
     TL; DR;
