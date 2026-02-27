@@ -815,6 +815,15 @@ class TerminationsCfg:
     )
     bad_orientation = DoneTerm(func=mdp.bad_orientation, params={"limit_angle": 1.0})
     root_height = DoneTerm(func=mdp.root_height_below_env_origin_minimum, params={"minimum_height": 0.5})
+    dataset_exhausted = DoneTerm(
+        func=instinct_mdp.dataset_exhausted,
+        time_out=True,
+        params={
+            "reference_cfg": SceneEntityCfg("motion_reference"),
+            "print_reason": False,
+            "reset_without_notice": True,
+        },
+    )
 
 
 @configclass
