@@ -30,7 +30,9 @@ if TYPE_CHECKING:
         PluckerEdgeCylinderCfg,
         RansacEdgeCylinderCfg,
         RayEdgeCylinderCfg,
+        FeatureEdgeCylinderCfg,
     )
+import pyvista as pv
 
 
 class EdgeCylinder(VirtualObstacleBase):
@@ -640,6 +642,126 @@ class RayEdgeCylinder(VirtualObstacleBase):
         )
         self._cylinder_visualizer.set_visibility(True)
         self._points_visualizer.set_visibility(True)
+
+    def get_points_penetration_offset(self, points):
+        return (
+            self.cylinders.get_points_penetration_offset(points)
+            if self.cylinders is not None
+            else torch.zeros_like(points, device=self.device)
+        )
+
+
+class FeatureEdgeCylinder(VirtualObstacleBase):
+    """class for feature-extracted edge detectors."""
+
+    def __init__(self, cfg: FeatureEdgeCylinderCfg):
+        self.cfg: FeatureEdgeCylinderCfg = cfg
+
+    def generate(self, mesh: trimesh.Trimesh, device="cpu") -> None:
+        """Detect sharp edges in the mesh and store the edge cylinder as virtual obstacle.
+
+        Args:
+            mesh: The trimesh object to analyze.
+
+        Returns:
+            A np array batch indicating the edges: (num_edges, 6)
+            - x, y, z coordinates of the edge start point
+            - x, y, z coordinates of the edge end point
+        """
+        self.device = device if isinstance(device, torch.device) else torch.device(device)
+        # extract vertices and faces from the trimesh object
+        points = mesh.vertices.astype(np.float32)
+        indices = mesh.faces.astype(np.int32)
+        pv_mesh = pv.PolyData(points, np.hstack((np.full((indices.shape[0], 1), 3), indices)))
+        edges = pv_mesh.extract_feature_edges(
+            feature_angle=self.cfg.feature_angle,
+            boundary_edges=True,
+            non_manifold_edges=True,
+            feature_edges=True,
+            manifold_edges=False,
+        )
+        edge_end_points = np.empty((0, 6), dtype=np.float32)
+        if edges.n_cells > 0:
+            lines = edges.lines
+            points = edges.points
+            edge_coords = []
+            i = 0
+            while i < len(lines):
+                num_pts = int(lines[i])
+                if num_pts == 2:
+                    pt_idx1 = int(lines[i + 1])
+                    pt_idx2 = int(lines[i + 2])
+                    start = points[pt_idx1]
+                    end = points[pt_idx2]
+                    edge_coords.append(np.concatenate([start, end]))
+                i += num_pts + 1
+
+            if edge_coords:
+                edge_end_points = np.array(edge_coords, dtype=np.float32)
+                print(f"Detected {edge_end_points.shape[0]} edges from feature extraction.")
+            else:
+                print("[WARNING] No edges extracted from features.")
+        else:
+            print("[WARNING] No sharp edges detected.")
+
+        self.edges_pyt = torch.tensor(edge_end_points, dtype=torch.float32, device=self.device)
+
+        # create a cylinder spatial grid for the edges and for penetration offset computation
+        if edge_end_points.size > 0:
+            self.cylinders = CylinderSpatialGrid(
+                cylinders=np.concatenate(
+                    [
+                        edge_end_points,
+                        np.ones_like(edge_end_points[:, :1]) * self.cfg.cylinder_radius,
+                    ],
+                    axis=1,
+                ),
+                num_grid_cells=self.cfg.num_grid_cells,
+                device=self.device,
+            )
+        else:
+            self.cylinders = None
+
+    def disable_visualizer(self):
+        if hasattr(self, "_cylinder_visualizer"):
+            self._cylinder_visualizer.set_visibility(False)
+
+    def visualize(self):
+        if self.edges_pyt.numel() == 0:
+            return
+
+        if not hasattr(self, "_cylinder_visualizer"):
+            self._cylinder_visualizer = VisualizationMarkers(self.cfg.visualizer)
+            self._cylinder_rotate_y_90 = math_utils.quat_from_angle_axis(
+                angle=torch.tensor([np.pi / 2], device=self.device),
+                axis=torch.tensor([[0.0, 1.0, 0.0]], device=self.device),
+            )  # shape (1, 4)
+
+        trans = (self.edges_pyt[:, :3] + self.edges_pyt[:, 3:6]) / 2
+        # compute the direction quaternion
+        direction = self.edges_pyt[:, 3:6] - self.edges_pyt[:, :3]
+        default_direction = torch.zeros_like(direction)
+        default_direction[:, 0] = 1.0
+        normalized_direction = direction / torch.norm(direction, dim=-1, keepdim=True)  # arrow-direction
+        axis = torch.cross(default_direction, normalized_direction, dim=-1)
+        dot_prod_ = torch.sum(default_direction * normalized_direction, dim=-1)
+        angle = torch.acos(torch.clamp(dot_prod_, -1.0, 1.0))
+        quat = math_utils.quat_from_angle_axis(
+            angle,
+            axis,
+        )
+        quat = math_utils.quat_mul(quat, self._cylinder_rotate_y_90.expand(quat.shape[0], -1))
+        # compute the scale to match the length and the edge thickness.
+        scales = torch.ones(len(self.edges_pyt), 3, device=self.device)
+        scales[:, 0] = self.cfg.cylinder_radius
+        scales[:, 1] = self.cfg.cylinder_radius
+        scales[:, 2] = torch.norm(direction, dim=-1)
+        self._cylinder_visualizer.visualize(
+            translations=trans,
+            orientations=quat,
+            scales=scales,
+        )
+        self._cylinder_visualizer.set_visibility(True)
 
     def get_points_penetration_offset(self, points):
         return (
