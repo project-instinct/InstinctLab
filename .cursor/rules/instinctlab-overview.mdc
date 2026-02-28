@@ -1,0 +1,125 @@
+---
+description: Overview of InstinctLab design principles, usage, and expansion guide.
+globs: source/instinctlab/**/*.py, scripts/**/*.py
+---
+# InstinctLab Overview
+
+## Design Principle
+InstinctLab is the environment side of Project Instinct, built on top of **Isaac Lab**. It is designed for:
+- **Isolation**: Follows Isaac Lab's "own project" workflow to preserve developer progress separate from the core repository, while still depending on it.
+- **Flexibility**: Can be run as an Omniverse extension.
+- **Unified Ecosystem**: Integrates with `instinct_rl` and `instinct_onboard`.
+- **Modular Environment**: Extends Isaac Lab's `ManagerBasedRLEnv` to support advanced features like multi-critic RL and comprehensive monitoring.
+
+## Critical Components
+
+### 1. InstinctRlEnv (`instinctlab.envs.InstinctRlEnv`)
+- **Description**: The core environment class that extends `ManagerBasedRLEnv`.
+- **Key Additions**:
+  - **MultiRewardManager**: Replaces the default reward manager to support multiple reward groups (useful for multi-critic RL).
+  - **MonitorManager**: A dedicated manager for logging simulation status and metrics to TensorBoard.
+
+### 2. MultiRewardManager (`instinctlab.managers.MultiRewardManager`)
+- **Usage**: Used when `cfg.rewards` is an instance of `MultiRewardCfg`.
+- **Function**: Computes rewards separately for defined groups.
+- **Configuration**:
+  ```python
+  @configclass
+  class RewardGroupsCfg(MultiRewardCfg):
+      rewards = RewardsCfg() # Standard group
+      # rewards_group_1 = RewardsCfg() # Additional group for 2nd critic
+  ```
+
+### 3. Motion Reference (`instinctlab.motion_reference`)
+- **Description**: Manages motion data (e.g., AMASS), shadowing commands, and tracking/imitation rewards.
+- **Components**:
+  - **MotionReferenceManager**: Handles loading and streaming motion data. It manages multiple `MotionBuffer`s.
+  - **MotionBuffer**: The interface for different motion sources (datasets, generative models).
+  - **Shadowing Commands**: Generates commands for the robot to follow.
+  - **Rewards**: `*_tracking_*` (time-based) and `*_imitation_*` (frame-based) rewards.
+
+### 4. Virtual Obstacles (`instinctlab.terrains.virtual_obstacle`)
+- **Description**: Generates abstract geometric representations (e.g., edge cylinders) from terrain meshes.
+- **Usage**: Registered with sensors (like `VolumePointsSensor`) to enable collision detection and penetration computation without explicit physics collision geometry.
+
+### 5. Noisy Grouped Sensor Camera (`instinctlab.sensors.NoisyGroupedRayCasterCamera`)
+- **Description**: Extends `GroupedRayCaster` to add configurable noise pipelines and history buffers.
+- **Purpose**: Sim-to-real transfer by simulating sensor artifacts (depth noise, stereo noise, latency).
+
+## Motion Buffer Design & Usage
+
+### Concept
+The `MotionBuffer` (`instinctlab.motion_reference.motion_buffer.MotionBuffer`) serves as the interface for motion data sources. It acts similarly to a PyTorch Dataset but designed for simulation:
+- **Environment Assignment**: Each buffer is assigned a subset of environments to manage.
+- **Data Filling**: It fills `MotionReferenceData` buffers with motion frames (joint positions, base pose, etc.) for specific timestamps.
+- **State Management**: Handles resetting and initializing motion states for its assigned environments.
+
+### Key Classes
+- **`MotionBuffer`**: Base class. Implement this to create new motion sources.
+- **`MotionReferenceData`**: Dataclass holding motion frames (tensors for `joint_pos`, `base_pos_w`, `link_pos_w`, etc.).
+- **`MotionReferenceState`**: Dataclass holding the initial state for resets.
+
+### Expanding Motion Reference (Creating Custom Buffers)
+To support new data formats or generative motion sources, inherit from `MotionBuffer` and implement:
+
+1.  **`reset(self, env_ids, ...)`**:
+    - Reset internal state for the specified environments.
+    - Update `symmetric_augmentation_mask_buffer` if needed.
+2.  **`fill_init_reference_state(self, env_ids, ...)`**:
+    - Fill `MotionReferenceState` with the starting pose of the motion.
+3.  **`fill_motion_data(self, env_ids, sample_timestamp, ...)`**:
+    - Sample motion data at `sample_timestamp` and fill the `MotionReferenceData` buffer.
+    - **Crucial**: Ensure all tensors (joint pos, base pose, link poses) are correctly computed and filled.
+4.  **Properties**:
+    - `num_trajectories`: Total available motions.
+    - `complete_motion_lengths`: Length of each motion in seconds.
+5.  **`get_current_motion_identifiers(self, env_ids)`**:
+    - Return unique string IDs for the current motion of each environment (e.g., filename).
+
+### Critical Considerations
+- **FPS Mismatch**: The motion source FPS (e.g., from MoCap) might differ from the simulation FPS. The `MotionBuffer` logic must handle interpolation or frame skipping correctly.
+- **Joint Order**: The joint order in the motion source file (e.g., AMASS, retargeted files) **MUST** match the joint order in the simulation environment (URDF). Mismatches will lead to completely broken motion tracking.
+    - **Fix**: Use `motion_buffer.isaac_joint_names` (available in `MotionBuffer` subclasses initialized with `articulation_view`) to retrieve the correct joint order from Isaac Sim. Ensure your motion loading/retargeting logic reorders data to match this list.
+
+## How to Use
+1.  **Installation**: Ensure Isaac Lab and `instinct_rl` are installed. Install `instinctlab` via pip.
+2.  **Training**: Use `scripts/instinct_rl/train.py` with the desired task argument.
+    ```bash
+    python scripts/instinct_rl/train.py --task=Instinct-Shadowing-WholeBody-Plane-G1-Play-v0 --headless
+    ```
+
+## How to Expand
+
+### Adding a New Task
+1.  **Create Individual Repository**:
+    - Use the **Isaac Lab Template Generator** to create a new external project. Refer to [Isaac Lab Documentation](https://isaac-sim.github.io/IsaacLab/main/source/overview/own-project/template.html#running-the-template-generator).
+    - This ensures your project is isolated and follows standard practices.
+2.  **Copy Training Scripts**:
+    - The generated repository will **NOT** contain `instinct_rl` training scripts by default.
+    - Copy the `scripts/instinct_rl` directory from this repository to your new repository's `scripts/` folder.
+    - Verify that `scripts/instinct_rl/train.py` and other scripts are present in your new repo.
+3.  **Task Implementation**:
+    - Create your task directory in `source/<your_project>/<your_project>/tasks/<task_name>`.
+    - Ensure `__init__.py` exists at every level.
+4.  **Registration**: Register the task in `__init__.py` using `gym.register`.
+    - **Entry Point**: MUST use `instinctlab.envs:InstinctRlEnv`.
+    - **Config**: Provide `env_cfg_entry_point` and `instinct_rl_cfg_entry_point`.
+    ```python
+    gym.register(
+        id="My-Task-v0",
+        entry_point="instinctlab.envs:InstinctRlEnv",
+        kwargs={
+            "env_cfg_entry_point": f"{__name__}.my_env_cfg:MyEnvCfg",
+            "instinct_rl_cfg_entry_point": f"{agents.__name__}.my_ppo_cfg:MyPPOCfg",
+        },
+    )
+    ```
+
+### Customizing Environment
+1.  **Env Config**: Create a config class inheriting from `InstinctLabRLEnvCfg` (or `ManagerBasedRLEnvCfg`).
+2.  **Rewards**: Define `RewardsCfg` using `RewTermCfg`. Use `MultiRewardCfg` for multi-critic setups.
+3.  **Sensors/Events**: Add custom sensors or event terms in their respective config classes.
+
+### Adding New Managers/Components
+- Inherit from the base classes in `isaaclab` or `instinctlab` (e.g., `ManagerTermBase`, `SensorBase`).
+- Register them in the environment configuration.

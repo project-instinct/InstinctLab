@@ -38,6 +38,8 @@ class MotionBuffer:
         self.cfg = cfg
         self.articulation_view = articulation_view
         """The articulation view to access the robot's state, ie. robot root pose."""
+        self.isaac_joint_names = self.articulation_view.shared_metatype.dof_names
+        """The joint names in the Isaac Sim physics simulation view."""
         self.link_of_interests = link_of_interests
         self.forward_kinematics_func = forward_kinematics_func
         """The pre-built function to compute the interested link poses.

@@ -694,7 +694,6 @@ class AmassMotion(MotionBuffer):
         )
 
     def _prepare_retargetting_func(self):
-        self.isaac_joint_names = self.articulation_view.shared_metatype.dof_names
         # print(f"[AMASS Motion] Retargetting to {self.isaac_joint_names}")
         if inspect.isclass(self.cfg.retargetting_func):
             self.retargetting_func = self.cfg.retargetting_func(
