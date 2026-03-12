@@ -58,4 +58,5 @@ def spawn_from_mesh(
         FileNotFoundError: If the mesh file does not exist at the given path.
     """
     mesh_converter = converters.MeshConverter(cfg)
-    return _spawn_from_usd_file(prim_path, mesh_converter.usd_path, cfg, translation, orientation, **kwargs)
+    spawn_cfg = cfg if cfg.apply_collision_props_at_spawn else cfg.replace(collision_props=None)
+    return _spawn_from_usd_file(prim_path, mesh_converter.usd_path, spawn_cfg, translation, orientation, **kwargs)

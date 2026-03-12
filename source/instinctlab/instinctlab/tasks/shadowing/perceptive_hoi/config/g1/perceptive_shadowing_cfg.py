@@ -117,6 +117,7 @@ class G1PerceptiveHoiShadowingEnvCfg(perceptual_cfg.PerceptiveHoiShadowingEnvCfg
                         asset_path=mesh_file_path,
                         mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
                         collision_props=sim_utils.CollisionPropertiesCfg(),
+                        rigid_props=sim_utils.RigidBodyPropertiesCfg(),
                     ),
                 ),
             )
@@ -124,7 +125,7 @@ class G1PerceptiveHoiShadowingEnvCfg(perceptual_cfg.PerceptiveHoiShadowingEnvCfg
         self.scene.camera.mesh_prim_paths.extend(get_link_prim_targets(G1_29DOF_LINKS))
         for object_name in list(MESH_FILE_PATHS.keys()):
             self.scene.camera.mesh_prim_paths.append(
-                MultiMeshRayCasterCfg.RaycastTargetCfg(prim_expr=f"/World/envs/env_.*/{object_name}/.*")
+                MultiMeshRayCasterCfg.RaycastTargetCfg(prim_expr=f"/World/envs/env_.*/{object_name}")
             )
 
         self.scene.robot.actuators = beyondmimic_g1_29dof_actuators
@@ -176,6 +177,9 @@ class G1PerceptiveHoiShadowingEnvCfg_PLAY(G1PerceptiveHoiShadowingEnvCfg):
         self.scene.motion_reference.motion_buffers[MOTION_NAME].motion_start_from_middle_range = [0.0, 0.0]
         self.scene.motion_reference.motion_buffers[MOTION_NAME].motion_bin_length_s = None
         self.scene.motion_reference.motion_buffers[MOTION_NAME].env_starting_stub_sampling_strategy = "independent"
+        # BeyondConcatMotionAdaptiveWeighting requires _motion_bin_weights, which is only created when motion_bin_length_s is set
+        self.curriculum.beyond_adaptive_sampling = None
+        self.events.bin_fail_counter_smoothing = None
         # self.scene.motion_reference.motion_buffers[MOTION_NAME].path = (
         #     "/localhdd/Datasets/NoKov-Marslab-Motions-instinctnpz/20251116_50cm_kneeClimbStep1/20251106_diveroll4_roadRamp_noWall"
         # )
