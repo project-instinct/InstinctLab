@@ -14,10 +14,15 @@ from instinctlab.assets.unitree_g1 import (
     beyondmimic_g1_29dof_delayed_actuators,
 )
 from instinctlab.motion_reference import MotionReferenceManagerCfg
-from instinctlab.motion_reference.motion_files.amass_motion_cfg import AmassMotionCfg as AmassMotionCfgBase
+from instinctlab.motion_reference.motion_files.amass_motion_cfg import (
+    AmassMotionCfg as AmassMotionCfgBase,
+)
 from instinctlab.motion_reference.utils import motion_interpolate_bilinear
 from instinctlab.sensors import get_link_prim_targets
-from instinctlab.tasks.parkour.config.parkour_env_cfg import ROUGH_TERRAINS_CFG, ParkourEnvCfg
+from instinctlab.tasks.parkour.config.parkour_env_cfg import (
+    ROUGH_TERRAINS_CFG,
+    ParkourEnvCfg,
+)
 
 __file_dir__ = os.path.dirname(os.path.realpath(__file__))
 G1_CFG = copy.deepcopy(G1_29DOF_TORSOBASE_POPSICLE_CFG)
@@ -31,9 +36,15 @@ G1_with_shoe_CFG.spawn.asset_path = os.path.abspath(
 
 @configclass
 class AmassMotionCfg(AmassMotionCfgBase):
-    path = os.path.expanduser("~/Datasets")
+    # path = os.path.expanduser("~/Datasets")
+    path = os.path.expanduser("~/Projects/HKUST/Instinct/Datasets/lafan1_g1_instinct")
     retargetting_func = None
-    filtered_motion_selection_filepath = os.path.expanduser("~/Datasets/parkour_motion_without_run.yaml")
+    # filtered_motion_selection_filepath = os.path.expanduser(
+    #     "~/Datasets/parkour_motion_without_run.yaml"
+    # )
+    filtered_motion_selection_filepath = os.path.expanduser(
+        "~/Projects/HKUST/Instinct/Datasets/lafan1_g1_instinct/parkour_motion_without_run.yaml"
+    )
     motion_start_from_middle_range = [0.0, 0.9]
     motion_start_height_offset = 0.0
     ensure_link_below_zero_ground = False
