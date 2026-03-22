@@ -13,7 +13,7 @@ export NCCL_SOCKET_IFNAME=eno2
 export NCCL_DEBUG=INFO
 
 # 激活环境
-source /mnt/slurmfs-4090node1/homes/xieys/miniforge3/bin/activate gsvo
+source /mnt/slurmfs-4090node1/homes/xsheng420/miniforge3/bin/activate instinct
 
 # 简化版：省略MASTER_PORT/ADDR，由torchrun+srun自动推导
 srun torchrun \
