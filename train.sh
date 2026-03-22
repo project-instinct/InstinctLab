@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=train_ddp
+#SBATCH --job-name=sheng_train
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=4
 #SBATCH --cpus-per-task=16
