@@ -36,15 +36,32 @@ G1_with_shoe_CFG.spawn.asset_path = os.path.abspath(
 
 @configclass
 class AmassMotionCfg(AmassMotionCfgBase):
+    # 1. 获取当前配置文件（g1_parkour_target_amp_cfg.py）的绝对路径
+    # __file__ 永远指向当前文件，和执行目录无关！
+    CURRENT_FILE_PATH = os.path.abspath(__file__)
+    # 2. 获取当前文件所在目录
+    CURRENT_DIR = os.path.dirname(CURRENT_FILE_PATH)
+    # 3. 向上回溯到项目根目录（Instinct/）
+    # 从 g1_parkour_target_amp_cfg.py 到 Instinct/ 需要回溯 7 级目录
+    PROJECT_ROOT = os.path.abspath(
+        os.path.join(CURRENT_DIR, "../../../../../../../../")
+    )
+
+    MOTION_DATA_DIR = os.path.join(PROJECT_ROOT, "Datasets/lafan1_g1_instinct")
+
+    # 4. 拼接数据集文件路径（核心：基于项目根目录，而非执行目录）
+    MOTION_FILE_PATH = os.path.join(
+        PROJECT_ROOT, "Datasets/lafan1_g1_instinct/parkour_motion_without_run.yaml"
+    )
+
     # path = os.path.expanduser("~/Datasets")
-    path = os.path.expanduser("~/Projects/HKUST/Instinct/Datasets/lafan1_g1_instinct")
+    path = MOTION_DATA_DIR
+
     retargetting_func = None
     # filtered_motion_selection_filepath = os.path.expanduser(
     #     "~/Datasets/parkour_motion_without_run.yaml"
     # )
-    filtered_motion_selection_filepath = os.path.expanduser(
-        "~/Projects/HKUST/Instinct/Datasets/lafan1_g1_instinct/parkour_motion_without_run.yaml"
-    )
+    filtered_motion_selection_filepath = MOTION_FILE_PATH
     motion_start_from_middle_range = [0.0, 0.9]
     motion_start_height_offset = 0.0
     ensure_link_below_zero_ground = False
