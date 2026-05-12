@@ -1,5 +1,4 @@
 import os
-import yaml
 
 import isaaclab.envs.mdp as mdp
 from isaaclab.envs import ViewerCfg
@@ -30,30 +29,22 @@ from instinctlab.motion_reference.utils import motion_interpolate_bilinear
 
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
 
-# Motion configuration
-MOTION_NAME = "LafanKungfu1"
-_hacked_selected_file_ = "fightAndSports1_subject1_retargetted.npz"
-MOTION_NAME = "LafanSprint1"
-_hacked_selected_file_ = "sprint1_subject2_retargetted.npz"
-
-with open(f"/tmp/{MOTION_NAME}.yaml", "w") as f:
-    yaml.dump(
-        {
-            "selected_files": [
-                _hacked_selected_file_,
-            ],
-        },
-        f,
-    )
+# Motion list + weights: data/dataset_folder/beyondmimic.yaml (paths in yaml are relative to `path` below)
+_PROJECT_INSTINCT_ROOT = os.path.normpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), *[".."] * 9)
+)
+_DATASET_FOLDER = os.path.join(_PROJECT_INSTINCT_ROOT, "data", "dataset_folder")
+_BEYOND_MIMIC_SELECTION_YAML = os.path.join(_DATASET_FOLDER, "beyondmimic.yaml")
+MOTION_NAME = os.path.splitext(os.path.basename(_BEYOND_MIMIC_SELECTION_YAML))[0]
 
 
 @configclass
 class AmassMotionCfg(AmassMotionCfgBase):
     """AMASS motion configuration for BeyondMimic."""
 
-    path = os.path.expanduser("~/Datasets/UbisoftLAFAN1_GMR_g1_29dof_torsoBase_retargetted_instinctnpz")
+    path = _DATASET_FOLDER
     retargetting_func = None
-    filtered_motion_selection_filepath = f"/tmp/{MOTION_NAME}.yaml"
+    filtered_motion_selection_filepath = _BEYOND_MIMIC_SELECTION_YAML
     motion_start_from_middle_range = [0.0, 0.8]
     motion_start_height_offset = 0.0
     ensure_link_below_zero_ground = False
@@ -61,7 +52,6 @@ class AmassMotionCfg(AmassMotionCfgBase):
     motion_interpolate_func = motion_interpolate_bilinear
     velocity_estimation_method = "frontbackward"
     motion_bin_length_s = 1.0
-    _hacked_selected_file = _hacked_selected_file_
 
 
 motion_reference_cfg = MotionReferenceManagerCfg(
