@@ -20,6 +20,14 @@ from instinctlab.sensors import get_link_prim_targets
 from instinctlab.tasks.parkour.config.parkour_env_cfg import ROUGH_TERRAINS_CFG, ParkourEnvCfg
 
 __file_dir__ = os.path.dirname(os.path.realpath(__file__))
+
+# Motion list + weights: data/dataset_folder/parkour.yaml (paths in yaml are relative to `path` below)
+_PROJECT_INSTINCT_ROOT = os.path.normpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), *[".."] * 8)
+)
+_DATASET_FOLDER = os.path.join(_PROJECT_INSTINCT_ROOT, "data", "dataset_folder")
+_PARKOUR_SELECTION_YAML = os.path.join(_DATASET_FOLDER, "parkour.yaml")
+MOTION_NAME = os.path.splitext(os.path.basename(_PARKOUR_SELECTION_YAML))[0]
 G1_CFG = copy.deepcopy(G1_29DOF_TORSOBASE_POPSICLE_CFG)
 G1_CFG.spawn.merge_fixed_joints = True
 G1_CFG.init_state.pos = (0.0, 0.0, 0.9)
@@ -31,9 +39,9 @@ G1_with_shoe_CFG.spawn.asset_path = os.path.abspath(
 
 @configclass
 class AmassMotionCfg(AmassMotionCfgBase):
-    path = os.path.expanduser("~/Datasets")
+    path = _DATASET_FOLDER
     retargetting_func = None
-    filtered_motion_selection_filepath = os.path.expanduser("~/Datasets/parkour_motion_without_run.yaml")
+    filtered_motion_selection_filepath = _PARKOUR_SELECTION_YAML
     motion_start_from_middle_range = [0.0, 0.9]
     motion_start_height_offset = 0.0
     ensure_link_below_zero_ground = False
@@ -53,7 +61,7 @@ motion_reference_cfg = MotionReferenceManagerCfg(
     update_period=0.02,
     num_frames=10,
     motion_buffers={
-        "run_walk": AmassMotionCfg(),
+        MOTION_NAME: AmassMotionCfg(),
     },
     link_of_interests=[
         "pelvis",

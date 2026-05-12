@@ -6,7 +6,7 @@
 
 **Task ID:** `Instinct-Parkour-Target-Amp-G1-v0`
 
-1. Go to `config/g1/g1_parkour_target_amp_cfg.py` and set the `path` and `filtered_motion_selection_filepath` in `AmassMotionCfg` to the reference motion you want to use.
+1. Edit `<repository-root>/data/dataset_folder/parkour.yaml`: list reference motions under `selected_files` with paths **relative to** `data/dataset_folder` (same convention as BeyondMimic’s `beyondmimic.yaml`). To change the motion root or YAML filename instead, edit `AmassMotionCfg.path` and `filtered_motion_selection_filepath` in `config/g1/g1_parkour_target_amp_cfg.py`.
 
 2. Train the policy:
 ```bash

@@ -23,9 +23,12 @@ from instinctlab.motion_reference.motion_files.terrain_motion_cfg import Terrain
 from instinctlab.motion_reference.utils import motion_interpolate_bilinear
 from instinctlab.sensors import get_link_prim_targets
 
-G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
+_PROJECT_INSTINCT_ROOT = os.path.normpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), *[".."] * 9)
+)
+MOTION_FOLDER = os.path.join(_PROJECT_INSTINCT_ROOT, "data", "dataset_folder")
 
-MOTION_FOLDER = "{AbsolutePathOfYourDataDirectory}"
+G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
 
 
 @configclass
