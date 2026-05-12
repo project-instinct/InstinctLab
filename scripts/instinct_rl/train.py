@@ -10,6 +10,7 @@
 import argparse
 import multiprocessing as mp
 import os
+import shlex
 import sys
 
 from isaaclab.app import AppLauncher
@@ -178,6 +179,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         print(f"[INFO] Resuming experiment from directory: {resume_path}")
         resume_run_name = os.path.basename(os.path.dirname(resume_path))
         log_dir += f"_from{resume_run_name.split('_')[0]}_{resume_run_name.split('_')[1]}"
+
+    log_dir = os.path.abspath(log_dir)
+    os.makedirs(log_dir, exist_ok=True)
+    if not ("LOCAL_RANK" in os.environ and dist.is_initialized() and dist.get_rank() > 0):
+        print(
+            "[INFO] TensorBoard 已开启：标量写入上述 run 目录（与 checkpoint 同级）。"
+            f"另开终端执行: tensorboard --logdir {shlex.quote(log_dir)}"
+        )
 
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
