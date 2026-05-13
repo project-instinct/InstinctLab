@@ -59,7 +59,11 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
     }
     vae_latent_size = 16
     vae_input_subobs_components = [
-        "parallel_latent_0_depth_image",  # based on the encoder_configs in Conv2dHeadEncoderCfg
+        "joint_pos_ref",
+        "joint_vel_ref",
+        "position_ref",
+        "rotation_ref",
+        # "parallel_latent_0_depth_image",  # based on the encoder_configs in Conv2dHeadEncoderCfg
         # "projected_gravity",
         # "base_ang_vel",
         # "joint_pos",

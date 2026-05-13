@@ -99,6 +99,22 @@ motion_reference_cfg = MotionReferenceManagerCfg(
 class ObservationsCfg:
     @configclass
     class PolicyObsCfg(ObsGroupCfg):
+        joint_pos_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_pos_ref_command"})
+        joint_vel_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_vel_ref_command"})
+        position_ref = ObsTermCfg(
+            func=mdp.generated_commands,
+            params={"command_name": "position_b_ref_command"},
+            noise=UniformNoiseCfg(n_min=-0.25, n_max=0.25),
+        )
+        rotation_ref = ObsTermCfg(
+            func=mdp.generated_commands,
+            params={"command_name": "rotation_ref_command"},
+            noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
+        )
+
+        # above are vae encoder observations
+
+        # below are vae prior observations, decoder exclude perception
         depth_image = ObsTermCfg(
             func=instinct_mdp.visualizable_image,
             # params={"sensor_cfg": SceneEntityCfg("camera"), "data_type": "distance_to_image_plane"},
