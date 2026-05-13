@@ -204,7 +204,9 @@ class AmassMotion(MotionBuffer):
             self._motion_buffer_start_time_s[assigned_ids] * self._all_motion_sequences.framerate[motion_ids]
         ).to(torch.long)
         max_frame_idx = self._all_motion_sequences.buffer_length[motion_ids] - 1
-        frame_selection = torch.clamp(frame_selection, min=0, max=max_frame_idx.to(frame_selection.dtype))
+        max_f = max_frame_idx.to(frame_selection.dtype)
+        frame_selection = torch.minimum(frame_selection, max_f)
+        frame_selection = torch.maximum(frame_selection, torch.zeros_like(frame_selection))
 
         base_pos_w = self._all_motion_sequences.base_pos_w[
             self._assigned_env_motion_selection[assigned_ids], frame_selection
