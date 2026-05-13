@@ -282,17 +282,20 @@ class InstinctRlOnPolicyRunnerCfg:
     """
 
     ##
-    # Logging parameters
+    # Logging parameters (wandb; legacy tensorboard never wired in WBCHSI)
     ##
 
-    # logger: Literal["tensorboard", "neptune", "wandb"] = "tensorboard"
-    # """The logger to use. Default is tensorboard."""
+    wandb_project: str = "instinct_rl"
+    """Project name passed to wandb."""
 
-    # neptune_project: str = "instinctlab"
-    # """The neptune project name. Default is "instinctlab"."""
+    wandb_entity: str | None = None
+    """wandb entity (team); optional."""
 
-    # wandb_project: str = "instinctlab"
-    # """The wandb project name. Default is "instinctlab"."""
+    wandb_run_name: str | None = None
+    """Override wandb run name; default uses the log directory basename."""
+
+    wandb_disabled: bool = False
+    """If True, skip wandb.init and metric logging (training still writes checkpoints to log_dir)."""
 
     ##
     # Loading parameters

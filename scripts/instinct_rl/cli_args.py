@@ -27,13 +27,22 @@ def add_instinct_rl_args(parser: argparse.ArgumentParser):
     arg_group.add_argument("--load_run", type=str, default=None, help="Name of the run folder to resume from.")
     arg_group.add_argument("--checkpoint", type=str, default=None, help="Checkpoint file to resume from.")
     arg_group.add_argument("--teacher_logdir", type=str, default=None, help="Override TPPO/VAE teacher checkpoint directory.")
-    # # -- logger arguments
-    # arg_group.add_argument(
-    #     "--logger", type=str, default=None, choices={"wandb", "tensorboard", "neptune"}, help="Logger module to use."
-    # )
-    # arg_group.add_argument(
-    #     "--log_project_name", type=str, default=None, help="Name of the logging project when using wandb or neptune."
-    # )
+    arg_group.add_argument(
+        "--wandb-project",
+        type=str,
+        default=None,
+        help="wandb project name (overrides agent_cfg.wandb_project).",
+    )
+    arg_group.add_argument("--wandb-entity", type=str, default=None, help="wandb entity (team); optional.")
+    arg_group.add_argument(
+        "--wandb-run-name", type=str, default=None, help="wandb run display name override; optional."
+    )
+    arg_group.add_argument(
+        "--no-wandb",
+        action="store_true",
+        default=False,
+        help="Disable wandb (metrics-only off; checkpoints still saved under log_dir).",
+    )
 
 
 def parse_instinct_rl_cfg(task_name: str, args_cli: argparse.Namespace) -> InstinctRlOnPolicyRunnerCfg:
@@ -77,11 +86,13 @@ def update_instinct_rl_cfg(agent_cfg: InstinctRlOnPolicyRunnerCfg, args_cli: arg
         agent_cfg.run_name = args_cli.run_name
     if args_cli.teacher_logdir and hasattr(agent_cfg.algorithm, "teacher_logdir"):
         agent_cfg.algorithm.teacher_logdir = os.path.expanduser(args_cli.teacher_logdir)
-    # if args_cli.logger is not None:
-    #     agent_cfg.logger = args_cli.logger
-    # # set the project name for wandb and neptune
-    # if agent_cfg.logger in {"wandb", "neptune"} and args_cli.log_project_name:
-    #     agent_cfg.wandb_project = args_cli.log_project_name
-    #     agent_cfg.neptune_project = args_cli.log_project_name
+    if args_cli.wandb_project is not None:
+        agent_cfg.wandb_project = args_cli.wandb_project
+    if args_cli.wandb_entity is not None:
+        agent_cfg.wandb_entity = args_cli.wandb_entity
+    if args_cli.wandb_run_name is not None:
+        agent_cfg.wandb_run_name = args_cli.wandb_run_name
+    if args_cli.no_wandb:
+        agent_cfg.wandb_disabled = True
 
     return agent_cfg

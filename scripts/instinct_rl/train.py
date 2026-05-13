@@ -183,10 +183,17 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     log_dir = os.path.abspath(log_dir)
     os.makedirs(log_dir, exist_ok=True)
     if not ("LOCAL_RANK" in os.environ and dist.is_initialized() and dist.get_rank() > 0):
-        print(
-            "[INFO] TensorBoard 已开启：标量写入上述 run 目录（与 checkpoint 同级）。"
-            f"另开终端执行: tensorboard --logdir {shlex.quote(log_dir)}"
-        )
+        if agent_cfg.wandb_disabled:
+            print(
+                "[INFO] wandb 已禁用（--no-wandb 或 wandb_disabled）。仅控制台输出指标；checkpoint 仍在: "
+                f"{shlex.quote(log_dir)}"
+            )
+        else:
+            print(
+                "[INFO] 训练指标由 Weights & Biases（wandb）记录，项目名: "
+                f"{agent_cfg.wandb_project}；本地 checkpoint 目录: {shlex.quote(log_dir)}。"
+                " 运行开始后 rank 0 会打印 wandb run 链接。"
+            )
 
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
