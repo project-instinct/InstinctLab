@@ -57,9 +57,17 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
         "hidden_sizes": [512, 256, 128],
         "nonlinearity": "ELU",
     }
+    vae_prior_kwargs = {
+        "hidden_sizes": [512, 256, 128],
+        "nonlinearity": "ELU",
+    }
     vae_latent_size = 16
     vae_input_subobs_components = [
-        "parallel_latent_0_depth_image",  # based on the encoder_configs in Conv2dHeadEncoderCfg
+        "joint_pos_ref",
+        "joint_vel_ref",
+        "position_ref",
+        "rotation_ref",
+        # "parallel_latent_0_depth_image",  # based on the encoder_configs in Conv2dHeadEncoderCfg
         # "projected_gravity",
         # "base_ang_vel",
         # "joint_pos",
@@ -68,6 +76,14 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
     ]
     vae_aux_subobs_components = [
         # "parallel_latent_0_depth_image",
+        "projected_gravity",
+        "base_ang_vel",
+        "joint_pos",
+        "joint_vel",
+        "last_action",
+    ]
+    vae_prior_subobs_components = [
+        "parallel_latent_0_depth_image",
         "projected_gravity",
         "base_ang_vel",
         "joint_pos",

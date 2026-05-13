@@ -111,6 +111,9 @@ class InstinctRlVaeActorCriticCfg(InstinctRlActorCriticCfg):
     vae_decoder_kwargs: dict = MISSING
     """ A dict building the MLP-based VAE decoder."""
 
+    vae_prior_kwargs: dict | None = None
+    """ Dict for MlpModel prior network (e.g. hidden_sizes, nonlinearity); None disables learned prior."""
+
     vae_latent_size: int = 16
     """ The latent size of the VAE."""
 
