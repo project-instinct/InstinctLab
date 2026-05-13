@@ -8,6 +8,24 @@ parser.add_argument("--num_envs", type=int, default=4, help="Number of environme
 parser.add_argument("--debug", action="store_true", default=False, help="Enable debug mode.")
 parser.add_argument("--live_plot", action="store_true", default=False, help="Plot some critical lines alive")
 parser.add_argument("--video", type=str, default=None, help="Path to save the video.")
+parser.add_argument(
+    "--motion_path",
+    type=str,
+    default=None,
+    help=(
+        "Directory that contains *.retargeted.npz (already retargeted G1 motion). "
+        "When set, SMPL IK is disabled (retargetting_func=None)."
+    ),
+)
+parser.add_argument(
+    "--motion_yaml",
+    type=str,
+    default=None,
+    help=(
+        "Optional YAML with `selected_files:` entries relative to --motion_path "
+        "(same format as AmassMotionCfg.filtered_motion_selection_filepath)."
+    ),
+)
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
@@ -73,7 +91,7 @@ class AmassMotionCfg(AmassMotionCfgBase):
     path = os.path.expanduser("~/Datasets/AMASS/")
     retargetting_func = HumanoidSmplRotationalIK
     retargetting_func_kwargs = dict(
-        robot_chain=G1_29DOF_CFG.spawn.asset_path,
+        robot_chain=G1_29DOF_TORSOBASE_CFG.spawn.asset_path,
         smpl_root_in_robot_link_name="pelvis",
         translation_scaling=0.75,
         translation_height_offset=0.0,
@@ -81,6 +99,27 @@ class AmassMotionCfg(AmassMotionCfgBase):
     filtered_motion_selection_filepath = os.path.expanduser("~/Datasets/AMASS_selections/amass_test_motion_files.yaml")
     motion_start_from_middle_range = [0.0, 0.0]
     buffer_device = "cpu"
+
+
+def _amass_motion_cfg_for_run():
+    """Default AMASS+IK; use --motion_path for pre-retargeted *.npz (Instinct/LAFAN pipeline)."""
+    cfg = AmassMotionCfg()
+    if args_cli.motion_path:
+        cfg = cfg.replace(
+            path=os.path.abspath(os.path.expanduser(args_cli.motion_path)),
+            retargetting_func=None,
+            retargetting_func_kwargs={},
+            filtered_motion_selection_filepath=(
+                os.path.abspath(os.path.expanduser(args_cli.motion_yaml))
+                if args_cli.motion_yaml
+                else None
+            ),
+            ensure_link_below_zero_ground=False,
+        )
+    return cfg
+
+
+_AMASS_FOR_SCENE = _amass_motion_cfg_for_run()
 
 
 @configclass
@@ -98,7 +137,7 @@ class SceneCfg(InteractiveSceneCfg):
     motion_reference = motion_reference_cfg.replace(
         frame_interval_s=0.02,
         motion_buffers={
-            "amass": AmassMotionCfg(),
+            "amass": _AMASS_FOR_SCENE,
         },
     )
 

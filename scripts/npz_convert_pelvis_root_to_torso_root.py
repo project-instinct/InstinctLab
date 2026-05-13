@@ -47,6 +47,22 @@ def _normalize_joint_names(names: Sequence) -> list[str]:
     return [str(n) for n in names]
 
 
+def _joint_names_for_savez(names: list[str]) -> np.ndarray:
+    """Unicode array safe for np.savez / Isaac (avoid object dtype + pickle / numpy._core)."""
+    if not names:
+        return np.array([], dtype="U1")
+    max_len = max(len(s) for s in names)
+    return np.array(names, dtype=f"U{max_len}")
+
+
+def _scene_object_names_for_savez(extra) -> np.ndarray:
+    """Same rationale as joint_names: never persist object arrays that pickle numpy internals."""
+    arr = np.asarray(extra, dtype=object)
+    strings = [str(arr.flat[i]) for i in range(arr.size)]
+    max_len = max((len(s) for s in strings), default=1)
+    return np.array(strings, dtype=f"U{max_len}").reshape(arr.shape)
+
+
 def _transform_target_res(
     tgt_mat_n: np.ndarray, pred_mat_n: np.ndarray, rot_weight: float
 ) -> np.ndarray:
@@ -213,16 +229,25 @@ def convert_npz_arrays(
 
     out = {
         "framerate": np.float32(np.asarray(data["framerate"]).reshape(())) if "framerate" in data else np.float32(30.0),
-        "joint_names": data["joint_names"],
-        "joint_pos": joint_pos_torso,
-        "base_pos_w": torso_base_pos,
-        "base_quat_w": torso_base_quat,
+        "joint_names": _joint_names_for_savez(joint_names_npz),
+        "joint_pos": np.asarray(joint_pos_torso, dtype=np.float32).copy(),
+        "base_pos_w": np.asarray(torso_base_pos, dtype=np.float32).copy(),
+        "base_quat_w": np.asarray(torso_base_quat, dtype=np.float32).copy(),
     }
 
     extras = {"object_pos_w", "object_quat_w", "object_validity", "scene_object_names"}
     for key in extras:
-        if key in data:
-            out[key] = data[key]
+        if key not in data:
+            continue
+        extra = data[key]
+        if key == "scene_object_names":
+            out[key] = (
+                np.asarray(extra).copy()
+                if isinstance(extra, np.ndarray) and extra.dtype.kind in ("U", "S")
+                else _scene_object_names_for_savez(extra)
+            )
+            continue
+        out[key] = np.asarray(extra).copy()
 
     return out
 
