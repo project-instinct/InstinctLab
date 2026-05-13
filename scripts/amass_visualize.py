@@ -57,7 +57,7 @@ from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
 from isaaclab.sim import SimulationContext
 from isaaclab.utils import Timer, configclass
 
-from instinctlab.assets.unitree_g1 import G1_29DOF_TORSOBASE_CFG
+from instinctlab.assets.unitree_g1 import G1_29DOF_TORSOBASE_POPSICLE_SPHEREHAND_CFG
 from instinctlab.motion_reference import MotionReferenceManager
 from instinctlab.motion_reference.motion_files.amass_motion_cfg import AmassMotionCfg as AmassMotionCfgBase
 from instinctlab.tasks.shadowing.whole_body.config.g1.plane_shadowing_cfg import motion_reference_cfg
@@ -91,7 +91,7 @@ class AmassMotionCfg(AmassMotionCfgBase):
     path = os.path.expanduser("~/Datasets/AMASS/")
     retargetting_func = HumanoidSmplRotationalIK
     retargetting_func_kwargs = dict(
-        robot_chain=G1_29DOF_TORSOBASE_CFG.spawn.asset_path,
+        robot_chain=G1_29DOF_TORSOBASE_POPSICLE_SPHEREHAND_CFG.spawn.asset_path,
         smpl_root_in_robot_link_name="pelvis",
         translation_scaling=0.75,
         translation_height_offset=0.0,
@@ -131,10 +131,11 @@ class SceneCfg(InteractiveSceneCfg):
     )
 
     # robots
-    robot = G1_29DOF_TORSOBASE_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+    robot = G1_29DOF_TORSOBASE_POPSICLE_SPHEREHAND_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
     # motion reference
     motion_reference = motion_reference_cfg.replace(
+        robot_model_path=G1_29DOF_TORSOBASE_POPSICLE_SPHEREHAND_CFG.spawn.asset_path,
         frame_interval_s=0.02,
         motion_buffers={
             "amass": _AMASS_FOR_SCENE,
