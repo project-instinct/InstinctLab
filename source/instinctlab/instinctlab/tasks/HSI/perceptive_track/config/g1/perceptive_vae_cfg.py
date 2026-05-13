@@ -228,7 +228,7 @@ class G1PerceptiveVaeEnvCfg(perceptual_cfg.PerceptiveShadowingEnvCfg):
 class G1PerceptiveVaeEnvCfg_PLAY(G1PerceptiveVaeEnvCfg):
     scene: perceptual_cfg.PerceptiveShadowingSceneCfg = perceptual_cfg.PerceptiveShadowingSceneCfg(
         num_envs=1,
-        env_spacing=2.5,
+        env_spacing=10,
         robot=G1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot"),
         robot_reference=G1_CFG.replace(prim_path="{ENV_REGEX_NS}/RobotReference"),
         motion_reference=motion_reference_cfg.replace(debug_vis=True),

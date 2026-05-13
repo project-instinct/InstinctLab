@@ -54,7 +54,7 @@ PROPRIO_HISTORY_LENGTH = 8
 class PerceptiveShadowingSceneCfg(InteractiveSceneCfg):
     """Configuration for the BeyondMimic scene with necessary scene entities as motion reference."""
 
-    env_spacing = 4.0
+    env_spacing = 10
 
     # robots
     robot: ArticulationCfg = MISSING
@@ -72,7 +72,7 @@ class PerceptiveShadowingSceneCfg(InteractiveSceneCfg):
         # terrain_generator=None,
         terrain_type="hacked_generator",
         terrain_generator=FiledTerrainGeneratorCfg(
-            size=(9, 12),
+            size=(20, 20),
             border_width=0.0,
             border_height=0.0,
             num_rows=7,
