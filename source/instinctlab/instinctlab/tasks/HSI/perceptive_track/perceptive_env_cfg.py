@@ -574,20 +574,20 @@ class CurriculumCfg:
 @configclass
 class TerminationsCfg:
     time_out = DoneTermCfg(func=mdp.time_out, time_out=True)
-    illegal_reset_contact = DoneTermCfg(
-        func=instinct_mdp.illegal_reset_contact,
-        time_out=True,
-        params={
-            "sensor_cfg": SceneEntityCfg(
-                "contact_forces",
-                body_names=[
-                    r"^(?!left_ankle_roll_link$)(?!right_ankle_roll_link$)(?!left_wrist_yaw_link$)(?!right_wrist_yaw_link$).+$"
-                ],
-            ),
-            "threshold": 500,
-            "episode_length_threshold": 2,
-        },
-    )
+    # illegal_reset_contact = DoneTermCfg(
+    #     func=instinct_mdp.illegal_reset_contact,
+    #     time_out=True,
+    #     params={
+    #         "sensor_cfg": SceneEntityCfg(
+    #             "contact_forces",
+    #             body_names=[
+    #                 r"^(?!left_ankle_roll_link$)(?!right_ankle_roll_link$)(?!left_wrist_yaw_link$)(?!right_wrist_yaw_link$).+$"
+    #             ],
+    #         ),
+    #         "threshold": 500,
+    #         "episode_length_threshold": 2,
+    #     },
+    # )
     base_pos_too_far = DoneTermCfg(
         func=instinct_mdp.pos_far_from_ref,
         time_out=False,
