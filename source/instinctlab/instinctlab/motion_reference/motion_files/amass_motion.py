@@ -199,10 +199,12 @@ class AmassMotion(MotionBuffer):
         assert self.env_ids_is_assigned(env_ids).all(), "The env_ids should be assigned to this motion buffer."
         assigned_ids = self.env_ids_to_assigned_ids(env_ids).to(self.buffer_device)
 
+        motion_ids = self._assigned_env_motion_selection[assigned_ids]
         frame_selection = torch.floor(
-            self._motion_buffer_start_time_s[assigned_ids]
-            * self._all_motion_sequences.framerate[self._assigned_env_motion_selection[assigned_ids]]
+            self._motion_buffer_start_time_s[assigned_ids] * self._all_motion_sequences.framerate[motion_ids]
         ).to(torch.long)
+        max_frame_idx = self._all_motion_sequences.buffer_length[motion_ids] - 1
+        frame_selection = torch.clamp(frame_selection, min=0, max=max_frame_idx.to(frame_selection.dtype))
 
         base_pos_w = self._all_motion_sequences.base_pos_w[
             self._assigned_env_motion_selection[assigned_ids], frame_selection

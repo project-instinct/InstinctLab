@@ -287,6 +287,8 @@ class OmomoMotion(AmassMotion):
         frame_selection = torch.floor(
             self._motion_buffer_start_time_s[assigned_ids] * self._all_motion_sequences.framerate[motion_ids]
         ).to(torch.long)
+        max_frame_idx = self._all_motion_sequences.buffer_length[motion_ids] - 1
+        frame_selection = torch.clamp(frame_selection, min=0, max=max_frame_idx.to(frame_selection.dtype))
 
         target_obj_idxs = self._resolve_object_indices(state_buffer.scene_object_names, motion_ids)
 
