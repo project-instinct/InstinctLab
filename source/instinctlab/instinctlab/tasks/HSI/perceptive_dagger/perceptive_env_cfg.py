@@ -391,19 +391,19 @@ class RewardsCfg:
         weight=-10.0,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
     )
-    undesired_contacts = RewTermCfg(
-        func=mdp.undesired_contacts,
-        weight=-0.1,
-        params={
-            "sensor_cfg": SceneEntityCfg(
-                "contact_forces",
-                body_names=[
-                    r"^(?!left_ankle_roll_link$)(?!right_ankle_roll_link$)(?!left_wrist_yaw_link$)(?!right_wrist_yaw_link$).+$"
-                ],
-            ),
-            "threshold": 1.0,
-        },
-    )
+    # undesired_contacts = RewTermCfg(
+    #     func=mdp.undesired_contacts,
+    #     weight=-0.1,
+    #     params={
+    #         "sensor_cfg": SceneEntityCfg(
+    #             "contact_forces",
+    #             body_names=[
+    #                 r"^(?!left_ankle_roll_link$)(?!right_ankle_roll_link$)(?!left_wrist_yaw_link$)(?!right_wrist_yaw_link$).+$"
+    #             ],
+    #         ),
+    #         "threshold": 1.0,
+    #     },
+    # )
     applied_torque_limits_by_ratio = RewTermCfg(
         func=instinct_mdp.applied_torque_limits_by_ratio,
         weight=-0.05,
