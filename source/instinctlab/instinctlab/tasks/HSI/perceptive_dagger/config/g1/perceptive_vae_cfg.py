@@ -52,6 +52,8 @@ class TerrainMotionCfg(TerrainMotionCfgBase):
     motion_bin_length_s = 1.0
     buffer_device = "output_device"
     motion_interpolate_func = motion_interpolate_bilinear
+    motion_target_framerate = 30.0
+    assumed_file_framerate = 30.0
     velocity_estimation_method = "frontbackward"
     env_starting_stub_sampling_strategy = "concat_motion_bins"
 
@@ -281,8 +283,8 @@ class G1PerceptiveVaeEnvCfg_PLAY(G1PerceptiveVaeEnvCfg):
         # )
 
         # Use non-terrain-matching motion and plane to hack the scene.
-        self.scene.terrain.terrain_generator.num_rows = 6
-        self.scene.terrain.terrain_generator.num_cols = 6
+        self.scene.terrain.terrain_generator.num_rows = 13
+        self.scene.terrain.terrain_generator.num_cols = 13
         # self.scene.motion_reference.motion_buffers.pop(MOTION_NAME)
         # self.scene.motion_reference.motion_buffers["AMASSMotion"] = AMASSMotionCfg()
         # self.scene.motion_reference.motion_buffers["AMASSMotion"].motion_start_from_middle_range = [0.0, 0.0]

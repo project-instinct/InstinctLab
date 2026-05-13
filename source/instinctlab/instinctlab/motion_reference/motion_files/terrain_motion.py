@@ -116,7 +116,12 @@ class TerrainMotion(AmassMotion):
         self._sample_assigned_env_origins(assigned_ids)
 
     def _safe_motion_resampling(self, assigned_ids: Sequence[int] | torch.Tensor) -> None:
-        """To prevent sampling the motions with no origins, we need to resample some of the assigned motions."""
+        """Resample motions that have no terrain origins onto motions that do.
+
+        Replacing `_assigned_env_motion_selection` without updating `_motion_buffer_start_time_s` would leave start
+        times from the previous clip; `fill_init_reference_state` then indexes the new clip and can assert out of
+        range. After any replacement, we resample start times (or zero them when no sampler applies).
+        """
         if self._all_motion_num_selectable_origins.isnan().any():
             # terrain is not fully initialized, skip safe resampling
             return
@@ -132,6 +137,14 @@ class TerrainMotion(AmassMotion):
                 replacement=True,
             ).to(self.buffer_device)
             self._assigned_env_motion_selection[re_sample_ids] = all_motion_ids_with_origins[resampled_motion_ids]
+
+            can_resample_start_times = self.cfg.motion_start_from_middle_range[1] > 0.0 or (
+                self.cfg.motion_bin_length_s is not None and hasattr(self, "_motion_bin_weights")
+            )
+            if can_resample_start_times:
+                self._sample_env_motion_start_time(re_sample_ids)
+            else:
+                self._motion_buffer_start_time_s[re_sample_ids] = 0.0
 
     def _sample_assigned_env_origins(self, assigned_ids: Sequence[int] | torch.Tensor) -> None:
         """Sample the origins for the assigned envs."""

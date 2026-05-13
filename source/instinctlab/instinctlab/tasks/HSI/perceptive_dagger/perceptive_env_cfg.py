@@ -75,8 +75,8 @@ class PerceptiveShadowingSceneCfg(InteractiveSceneCfg):
             size=(20, 20),
             border_width=0.0,
             border_height=0.0,
-            num_rows=7,
-            num_cols=7,
+            num_rows=13,
+            num_cols=13,
             sub_terrains={
                 "motion_matched": MotionMatchedTerrainCfg(
                     proportion=1.0,
