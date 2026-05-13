@@ -9,6 +9,7 @@ import yaml
 from typing import TYPE_CHECKING
 
 from isaaclab.terrains.height_field.utils import convert_height_field_to_mesh
+from isaaclab.terrains.trimesh.utils import make_plane
 
 from ..height_field.hf_terrains import generate_perlin_noise
 from .utils import crop_terrain_mesh_aabb, generate_wall
@@ -75,7 +76,11 @@ def motion_matched_terrain(
     move_terrain_transform[2, 3] = -border_height
     terrain_mesh.apply_transform(move_terrain_transform)
     origin = np.array([cfg.size[0] / 2, cfg.size[1] / 2, -border_height])
-    return terrain_mesh, origin
+
+    meshes: list[trimesh.Trimesh] = [terrain_mesh]
+    if cfg.add_base_plane:
+        meshes.append(make_plane(cfg.size, 0.0, center_zero=False))
+    return meshes, origin
 
 
 @generate_wall

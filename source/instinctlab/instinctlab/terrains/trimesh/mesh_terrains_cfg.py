@@ -58,6 +58,9 @@ class MotionMatchedTerrainCfg(SubTerrainBaseCfg):
 
     """
 
+    add_base_plane: bool = True
+    """If True, append a full sub-terrain plane (same convention as ``MeshPlaneTerrainCfg``) under the imported mesh."""
+
 
 @configclass
 class PerlinMeshFloatingBoxTerrainCfg(SubTerrainBaseCfg, WallTerrainCfgMixin):
