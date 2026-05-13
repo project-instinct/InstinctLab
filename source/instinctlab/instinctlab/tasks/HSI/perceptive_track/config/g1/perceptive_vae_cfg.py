@@ -34,13 +34,10 @@ from instinctlab.motion_reference.motion_files.amass_motion_cfg import AmassMoti
 from instinctlab.motion_reference.motion_files.terrain_motion_cfg import TerrainMotionCfg as TerrainMotionCfgBase
 from instinctlab.motion_reference.utils import motion_interpolate_bilinear
 
+from .perceptive_shadowing_cfg import MOTION_FOLDER
+
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
 PROPRIO_HISTORY_LENGTH = 8
-
-MOTION_FOLDER = (
-    "~/Datasets/NoKov-Marslab-Motions-instinctnpz/20251116_50cm_kneeClimbStep1"
-    # "~/Datasets/NoKov-Marslab-Motions-instinctnpz/20251116_50cm_kneeClimbStep1/20251106_diveroll4_roadRamp_noWall"
-)
 
 
 @configclass
