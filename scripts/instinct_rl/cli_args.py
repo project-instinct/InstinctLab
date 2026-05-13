@@ -26,6 +26,7 @@ def add_instinct_rl_args(parser: argparse.ArgumentParser):
     arg_group.add_argument("--resume", default=None, action="store_true", help="Whether to resume from a checkpoint.")
     arg_group.add_argument("--load_run", type=str, default=None, help="Name of the run folder to resume from.")
     arg_group.add_argument("--checkpoint", type=str, default=None, help="Checkpoint file to resume from.")
+    arg_group.add_argument("--teacher_logdir", type=str, default=None, help="Override TPPO/VAE teacher checkpoint directory.")
     # # -- logger arguments
     # arg_group.add_argument(
     #     "--logger", type=str, default=None, choices={"wandb", "tensorboard", "neptune"}, help="Logger module to use."
@@ -74,6 +75,8 @@ def update_instinct_rl_cfg(agent_cfg: InstinctRlOnPolicyRunnerCfg, args_cli: arg
         agent_cfg.load_checkpoint = args_cli.checkpoint
     if args_cli.run_name is not None:
         agent_cfg.run_name = args_cli.run_name
+    if args_cli.teacher_logdir and hasattr(agent_cfg.algorithm, "teacher_logdir"):
+        agent_cfg.algorithm.teacher_logdir = os.path.expanduser(args_cli.teacher_logdir)
     # if args_cli.logger is not None:
     #     agent_cfg.logger = args_cli.logger
     # # set the project name for wandb and neptune
