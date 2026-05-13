@@ -2,6 +2,7 @@
 Customized Unitree G1 asset for Isaac Sim
 """
 
+import copy
 import os
 
 import isaaclab.sim as sim_utils
@@ -571,6 +572,11 @@ G1_29DOF_TORSOBASE_POPSICLE_CFG = ArticulationCfg(
     ),
     soft_joint_pos_limit_factor=0.9,
     actuators=beyondmimic_g1_29dof_actuators,
+)
+
+G1_29DOF_TORSOBASE_POPSICLE_SPHEREHAND_CFG = copy.deepcopy(G1_29DOF_TORSOBASE_POPSICLE_CFG)
+G1_29DOF_TORSOBASE_POPSICLE_SPHEREHAND_CFG.spawn.asset_path = os.path.join(
+    __file_dir__, "resources/unitree_g1/urdf/g1_29dof_torsobase_popsicle_spherehand.urdf"
 )
 
 G1_29DOF_LINKS = [  # Order not guaranteed.

@@ -20,7 +20,7 @@ import instinctlab.envs.mdp as instinct_mdp
 import instinctlab.tasks.HSI.mdp as shadowing_mdp
 import instinctlab.tasks.HSI.perceptive_track.perceptive_env_cfg as perceptual_cfg
 from instinctlab.assets.unitree_g1 import (
-    G1_29DOF_TORSOBASE_POPSICLE_CFG,
+    G1_29DOF_TORSOBASE_POPSICLE_SPHEREHAND_CFG,
     G1_29Dof_TorsoBase_symmetric_augmentation_joint_mapping,
     G1_29Dof_TorsoBase_symmetric_augmentation_joint_reverse_buf,
     beyondmimic_action_scale,
@@ -36,7 +36,7 @@ from instinctlab.motion_reference.utils import motion_interpolate_bilinear
 
 from .perceptive_shadowing_cfg import MOTION_FOLDER
 
-G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
+G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_SPHEREHAND_CFG
 PROPRIO_HISTORY_LENGTH = 8
 
 

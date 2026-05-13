@@ -11,7 +11,7 @@ import instinctlab.tasks.HSI.mdp as shadowing_mdp
 import instinctlab.tasks.HSI.perceptive_track.perceptive_env_cfg as perceptual_cfg
 from instinctlab.assets.unitree_g1 import (
     G1_29DOF_LINKS,
-    G1_29DOF_TORSOBASE_POPSICLE_CFG,
+    G1_29DOF_TORSOBASE_POPSICLE_SPHEREHAND_CFG,
     beyondmimic_action_scale,
     beyondmimic_g1_29dof_actuators,
     beyondmimic_g1_29dof_delayed_actuators,
@@ -28,7 +28,7 @@ _PROJECT_INSTINCT_ROOT = os.path.normpath(
 )
 MOTION_FOLDER = os.path.join(_PROJECT_INSTINCT_ROOT, "data", "dataset_folder")
 
-G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
+G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_SPHEREHAND_CFG
 
 
 @configclass
