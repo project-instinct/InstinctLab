@@ -239,11 +239,11 @@ class ObservationsCfg:
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
             clip=[-20.0, 20.0],
         )
-        depth_image = ObsTermCfg(
-            func=instinct_mdp.visualizable_image,
-            # params={"sensor_cfg": SceneEntityCfg("camera"), "data_type": "distance_to_image_plane"},
-            params={"sensor_cfg": SceneEntityCfg("camera"), "data_type": "distance_to_image_plane_noised"},
-        )
+        # depth_image = ObsTermCfg(
+        #     func=instinct_mdp.visualizable_image,
+        #     # params={"sensor_cfg": SceneEntityCfg("camera"), "data_type": "distance_to_image_plane"},
+        #     params={"sensor_cfg": SceneEntityCfg("camera"), "data_type": "distance_to_image_plane_noised"},
+        # )
 
         # proprioception
         projected_gravity = ObsTermCfg(
