@@ -38,6 +38,25 @@ parser.add_argument(
     default=False,
     help="Whether to assign auxiliary rewards to each of the env's reward term.",
 )
+parser.add_argument(
+    "--viz_z_sphere",
+    action="store_true",
+    default=False,
+    help="Record latent z each step; on exit save log_dir/latent_viz/ (PCA PNG + CSV by motion color).",
+)
+parser.add_argument(
+    "--viz_z_project_mode",
+    type=str,
+    default="pca",
+    choices=("pca", "first3"),
+    help="3D sphere view: NumPy SVD PCA (with fixed basis npz under latent_viz/) or first3 dims.",
+)
+parser.add_argument(
+    "--viz_z_pca_basis",
+    type=str,
+    default=None,
+    help="Optional path to fixed PCA basis npz (mean, basis). Default: latent_viz/z_sphere_pca_basis.npz when mode=pca.",
+)
 # append Instinct-RL cli arguments
 cli_args.add_instinct_rl_args(parser)
 # append AppLauncher cli args
@@ -54,14 +73,11 @@ simulation_app = app_launcher.app
 """Rest everything follows."""
 
 import gymnasium as gym
-import numpy as np
 import os
-import time
 import torch
 
 from instinct_rl.runners import OnPolicyRunner
 
-import isaaclab.utils.math as math_utils
 from isaaclab.envs import DirectMARLEnv, multi_agent_to_single_agent
 from isaaclab.utils.dict import print_dict
 from isaaclab.utils.io import load_yaml
@@ -69,9 +85,10 @@ from isaaclab_tasks.utils import get_checkpoint_path, parse_env_cfg
 
 # Import extensions to set up environment tasks
 import instinctlab.tasks  # noqa: F401
-from instinctlab.managers.reward_manager import MultiRewardManager
 from instinctlab.utils.wrappers import InstinctRlVecEnvWrapper
 from instinctlab.utils.wrappers.instinct_rl import InstinctRlOnPolicyRunnerCfg
+
+import latent_viz  # isort: skip
 
 # wait for attach if in debug mode
 if args_cli.debug:
@@ -168,6 +185,39 @@ def main():
     else:
         policy = ppo_runner.get_inference_policy(device=env.unwrapped.device)
 
+    viz_hook = None
+    viz_storage = None
+    viz_rows: list = []
+    viz_motions: list[str] = []
+    viz_steps: list[int] = []
+    viz_envs: list[int] = []
+    viz_out_dir = os.path.join(log_dir, "latent_viz")
+
+    def save_viz_rows(reason: str):
+        if not (args_cli.viz_z_sphere and viz_hook is not None):
+            return
+        if not viz_rows:
+            print(f"[latent_viz] No samples captured on {reason}; nothing saved.")
+            return
+        latent_viz.save_latent_visualization(
+            viz_rows,
+            viz_motions,
+            viz_steps,
+            viz_envs,
+            viz_out_dir,
+            project_mode=args_cli.viz_z_project_mode,
+            pca_basis_path=args_cli.viz_z_pca_basis,
+        )
+        print(f"[latent_viz] Saved {len(viz_rows)} samples on {reason} to {viz_out_dir}")
+
+    if args_cli.viz_z_sphere:
+        viz_hook, viz_storage = latent_viz.try_install_vae_decoder_z_hook(ppo_runner.alg.actor_critic)
+        if viz_hook is None:
+            print("\033[93m[latent_viz] No VAE decoder hook; viz disabled.\033[0m")
+        else:
+            print(f"[latent_viz] Hook installed. Saving to: {viz_out_dir}")
+            latent_viz.warn_if_not_project_to_sphere(ppo_runner.alg.actor_critic)
+
     # export policy to onnx/jit
     if agent_cfg.load_run is not None:
         export_model_dir = os.path.join(log_dir, "exported")
@@ -182,30 +232,51 @@ def main():
     obs, _ = env.get_observations()
     timestep = 0
     # simulate environment
-    while simulation_app.is_running():
-        # run everything in inference mode
-        with torch.inference_mode():
-            # agent stepping
-            actions = policy(obs)
-            if timestep < args_cli.zero_act_until:
-                actions[:] = 0.0
-            # env stepping
-            obs, rewards, dones, infos = env.step(actions)
-        timestep += 1
+    try:
+        while simulation_app.is_running():
+            # run everything in inference mode
+            with torch.inference_mode():
+                # agent stepping
+                actions = policy(obs)
+                if viz_hook is not None and viz_storage is not None:
+                    z_batch = viz_storage[0]
+                    if z_batch is not None:
+                        n_e = z_batch.shape[0]
+                        mids = latent_viz.get_motion_identifiers_for_envs(env.unwrapped, n_e)
+                        for ei in range(n_e):
+                            viz_rows.append(z_batch[ei : ei + 1].clone())
+                            viz_motions.append(mids[ei] if ei < len(mids) else "unknown_motion")
+                            viz_steps.append(timestep)
+                            viz_envs.append(ei)
+                    viz_storage[0] = None
+                if timestep < args_cli.zero_act_until:
+                    actions[:] = 0.0
+                # env stepping
+                obs, rewards, dones, infos = env.step(actions)
+                if args_cli.viz_z_sphere and viz_hook is not None and torch.any(dones.to(bool)):
+                    save_viz_rows("episode reset")
+            timestep += 1
 
-        # override reward terms if auxiliary reward is enabled
-        if args_cli.aux_reward:
-            # NOTE: This is only applicable when reward_term has `.reward` to be overridden
-            aux_rewards = ppo_runner.alg.compute_auxiliary_reward(infos["observations"])
-            for aux_reward_name, aux_reward in aux_rewards.items():
-                aux_term_cfg = env.unwrapped.reward_manager.get_term_cfg(aux_reward_name)  # type: ignore
-                aux_term_cfg.func.reward[:] = aux_reward * getattr(ppo_runner.alg, aux_reward_name + "_coef", 1.0)
+            # override reward terms if auxiliary reward is enabled
+            if args_cli.aux_reward:
+                # NOTE: This is only applicable when reward_term has `.reward` to be overridden
+                aux_rewards = ppo_runner.alg.compute_auxiliary_reward(infos["observations"])
+                for aux_reward_name, aux_reward in aux_rewards.items():
+                    aux_term_cfg = env.unwrapped.reward_manager.get_term_cfg(aux_reward_name)  # type: ignore
+                    aux_term_cfg.func.reward[:] = aux_reward * getattr(ppo_runner.alg, aux_reward_name + "_coef", 1.0)
 
-        # exit the loop if video_length is meet
-        if args_cli.video:
-            # Exit the play loop after recording one video
-            if timestep == args_cli.video_length:
-                break
+            # exit the loop if video_length is meet
+            if args_cli.video:
+                # Exit the play loop after recording one video
+                if timestep == args_cli.video_length:
+                    break
+    finally:
+        if viz_hook is not None:
+            latent_viz.remove_hook(viz_hook)
+        if args_cli.viz_z_sphere and viz_hook is not None and viz_rows:
+            save_viz_rows("play exit")
+        elif args_cli.viz_z_sphere and viz_hook is not None:
+            print("[latent_viz] No samples captured; nothing saved.")
 
     # close the simulator
     env.close()

@@ -140,6 +140,7 @@ class AlgorithmCfg(InstinctRlPpoAlgorithmCfg):
                 "joint_vel_ref": (10, 29),
                 "position_ref": (10, 3),
                 "rotation_ref": (10, 6),
+                "height_scan": (187,),
                 "depth_image": (1, 18, 32),
                 "projected_gravity": (24,),
                 "base_ang_vel": (24,),

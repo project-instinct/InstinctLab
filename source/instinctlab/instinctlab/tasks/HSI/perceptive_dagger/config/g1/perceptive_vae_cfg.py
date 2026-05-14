@@ -171,6 +171,11 @@ class ObservationsCfg:
             noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
         )
 
+        height_scan = ObsTermCfg(
+            func=mdp.height_scan,
+            params={"sensor_cfg": SceneEntityCfg("height_scanner")},
+            clip=[-20.0, 20.0],
+        )
         depth_image = ObsTermCfg(
             func=instinct_mdp.visualizable_image,
             # params={"sensor_cfg": SceneEntityCfg("camera"), "data_type": "distance_to_image_plane"},
@@ -181,25 +186,25 @@ class ObservationsCfg:
         projected_gravity = ObsTermCfg(
             func=mdp.projected_gravity,
             noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
-            history_length=8,
+            history_length=PROPRIO_HISTORY_LENGTH,
         )
         # base_lin_vel = ObsTermCfg(func=mdp.base_lin_vel)
         base_ang_vel = ObsTermCfg(
             func=mdp.base_ang_vel,
             noise=UniformNoiseCfg(n_min=-0.2, n_max=0.2),
-            history_length=8,
+            history_length=PROPRIO_HISTORY_LENGTH,
         )
         joint_pos = ObsTermCfg(
             func=mdp.joint_pos_rel,
             noise=UniformNoiseCfg(n_min=-0.01, n_max=0.01),
-            history_length=8,
+            history_length=PROPRIO_HISTORY_LENGTH,
         )
         joint_vel = ObsTermCfg(
             func=mdp.joint_vel_rel,
             noise=UniformNoiseCfg(n_min=-0.5, n_max=0.5),
-            history_length=8,
+            history_length=PROPRIO_HISTORY_LENGTH,
         )
-        last_action = ObsTermCfg(func=mdp.last_action, history_length=8)
+        last_action = ObsTermCfg(func=mdp.last_action, history_length=PROPRIO_HISTORY_LENGTH)
 
         def __post_init__(self):
             self.enable_corruption = False
@@ -216,14 +221,11 @@ class G1PerceptiveVaeEnvCfg(perceptual_cfg.PerceptiveShadowingEnvCfg):
         num_envs=4096,
         robot=G1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot"),
         motion_reference=motion_reference_cfg,
-        height_scanner=None,
     )
     observations: ObservationsCfg = ObservationsCfg()
 
     def __post_init__(self):
         super().__post_init__()
-
-        self.scene.height_scanner = None
 
         self.scene.camera.data_histories["distance_to_image_plane_noised"] = 10
         self.observations.policy.depth_image.params["history_skip_frames"] = 3
