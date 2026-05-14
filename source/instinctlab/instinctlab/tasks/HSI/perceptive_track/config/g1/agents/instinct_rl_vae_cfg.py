@@ -183,7 +183,7 @@ class G1PerceptiveVaePPORunnerCfg(InstinctRlOnPolicyRunnerCfg):
 
     num_steps_per_env = 24
     max_iterations = 50000
-    save_interval = 20
+    save_interval = 1000
     log_interval = 10
     experiment_name = "g1_perceptive_vae"
 

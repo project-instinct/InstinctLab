@@ -63,6 +63,7 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
     """Decoder sees z + zp (prior mean) concatenated with aux proprio obs; train encoder only when prior/decoder are frozen."""
     vae_decode_add_prior_mean = True
     vae_decode_prior_mean_scale = 1.0
+    vae_project_to_sphere = True
     vae_input_subobs_components = [
         "joint_pos_ref",
         "joint_vel_ref",
@@ -130,7 +131,7 @@ class G1PerceptiveVaePPORunnerCfg(InstinctRlOnPolicyRunnerCfg):
 
     num_steps_per_env = 24
     max_iterations = 50000
-    save_interval = 20
+    save_interval = 1000
     log_interval = 10
     experiment_name = "g1_hsidownstream_perceptive_vae"
 

@@ -123,6 +123,9 @@ class InstinctRlVaeActorCriticCfg(InstinctRlActorCriticCfg):
     vae_decode_prior_mean_scale: float = 1.0
     """Scaling applied to prior_mean before adding to z for the decoder path."""
 
+    vae_project_to_sphere: bool = False
+    """If True, L2-normalize the latent z (after z+zp if enabled) before concat to decoder."""
+
     critic_hidden_dims: list[int] = [512, 256, 128]
     """The hidden dimensions of the critic network (typically not used for VAE distillation)."""
 
