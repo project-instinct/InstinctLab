@@ -241,8 +241,8 @@ class ObservationsCfg:
         )
         depth_image = ObsTermCfg(
             func=instinct_mdp.visualizable_image,
-            params={"sensor_cfg": SceneEntityCfg("camera"), "data_type": "distance_to_image_plane"},
-            # params={"sensor_cfg": SceneEntityCfg("camera"), "data_type": "distance_to_image_plane_noised"},
+            # params={"sensor_cfg": SceneEntityCfg("camera"), "data_type": "distance_to_image_plane"},
+            params={"sensor_cfg": SceneEntityCfg("camera"), "data_type": "distance_to_image_plane_noised"},
         )
 
         # proprioception
