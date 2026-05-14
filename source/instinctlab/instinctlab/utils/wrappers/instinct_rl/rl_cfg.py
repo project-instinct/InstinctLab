@@ -114,7 +114,7 @@ class InstinctRlVaeActorCriticCfg(InstinctRlActorCriticCfg):
     vae_prior_kwargs: dict | None = None
     """ Dict for MlpModel prior network (e.g. hidden_sizes, nonlinearity); None disables learned prior."""
 
-    vae_latent_size: int = 16
+    vae_latent_size: int = 32
     """ The latent size of the VAE."""
 
     vae_decode_add_prior_mean: bool = True

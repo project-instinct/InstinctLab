@@ -59,7 +59,7 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
         "hidden_sizes": [512, 256, 128],
         "nonlinearity": "ELU",
     }
-    vae_latent_size = 16
+    vae_latent_size = 32
     """Decoder sees z + zp (prior mean) concatenated with aux proprio obs; train encoder only when prior/decoder are frozen."""
     vae_decode_add_prior_mean = True
     vae_decode_prior_mean_scale = 1.0
