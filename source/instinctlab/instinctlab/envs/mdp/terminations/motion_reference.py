@@ -62,6 +62,51 @@ def pos_far_from_ref(
     return return_
 
 
+def bad_global_body_pos(
+    env: ManagerBasedRLEnv,
+    command_name: str = "motion_reference",
+    threshold: float = 0.5,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    body_names: list[str] | None = None,
+    disable_flag: bool = False,
+) -> torch.Tensor:
+    """Terminate if any tracked body is too far from reference in world frame.
+
+    InstinctLab counterpart of ScaleTrack's ``bad_global_body_pos``:
+    compute :math:`||p_ref^w - p_robot^w||` per body and terminate if any exceeds threshold.
+
+    Args:
+        env: The environment object.
+        command_name: Scene entity name of the motion reference manager.
+        threshold: Per-body Euclidean distance threshold in meters.
+        asset_cfg: Robot articulation.
+        body_names: Optional subset of body names to check. If None, use the motion reference's body_names.
+        disable_flag: If True, always return False (no termination).
+    """
+    if disable_flag:
+        return torch.zeros(env.num_envs, device=env.device, dtype=torch.bool)
+
+    motion_ref: MotionReferenceManager = env.scene[command_name]
+    robot: Articulation = env.scene[asset_cfg.name]
+
+    names = body_names if body_names is not None else motion_ref.body_names
+    name_to_ref_idx = {name: i for i, name in enumerate(motion_ref.body_names)}
+    try:
+        ref_indices = [name_to_ref_idx[name] for name in names]
+    except KeyError as exc:
+        missing = exc.args[0] if exc.args else exc
+        raise ValueError(
+            f"Requested body name {missing!r} not found in motion reference body_names."
+        ) from exc
+    body_ids, _ = robot.find_bodies(names, preserve_order=True)
+
+    ref_pos_w = motion_ref.reference_frame.link_pos_w[:, 0, ref_indices]
+    robot_pos_w = robot.data.body_link_pos_w[:, body_ids]
+
+    error = torch.norm(ref_pos_w - robot_pos_w, dim=-1)
+    return torch.any(error > threshold, dim=-1)
+
+
 class joint_pos_far_from_ref(ManagerTermBase):
     def __init__(self, cfg, env):
         super().__init__(cfg, env)

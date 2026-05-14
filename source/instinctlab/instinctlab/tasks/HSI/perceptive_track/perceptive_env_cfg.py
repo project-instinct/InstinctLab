@@ -239,11 +239,11 @@ class ObservationsCfg:
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
             clip=[-20.0, 20.0],
         )
-        # depth_image = ObsTermCfg(
-        #     func=instinct_mdp.visualizable_image,
-        #     # params={"sensor_cfg": SceneEntityCfg("camera"), "data_type": "distance_to_image_plane"},
-        #     params={"sensor_cfg": SceneEntityCfg("camera"), "data_type": "distance_to_image_plane_noised"},
-        # )
+        depth_image = ObsTermCfg(
+            func=instinct_mdp.visualizable_image,
+            # params={"sensor_cfg": SceneEntityCfg("camera"), "data_type": "distance_to_image_plane"},
+            params={"sensor_cfg": SceneEntityCfg("camera"), "data_type": "distance_to_image_plane_noised"},
+        )
 
         # proprioception
         projected_gravity = ObsTermCfg(
@@ -588,52 +588,62 @@ class TerminationsCfg:
     #         "episode_length_threshold": 2,
     #     },
     # )
-    base_pos_too_far = DoneTermCfg(
-        func=instinct_mdp.pos_far_from_ref,
+    body_pos = DoneTermCfg(
+        func=instinct_mdp.bad_global_body_pos,
         time_out=False,
         params={
             "asset_cfg": SceneEntityCfg("robot"),
-            "reference_cfg": SceneEntityCfg("motion_reference"),
-            "distance_threshold": 0.25,
-            "check_at_keyframe_threshold": -1,
-            "print_reason": False,
-            "height_only": True,
+            "command_name": "motion_reference",
+            "threshold": 0.5,
+            "disable_flag": False,
         },
     )
-    base_pg_too_far = DoneTermCfg(
-        func=instinct_mdp.projected_gravity_far_from_ref,
-        time_out=False,
-        params={
-            "asset_cfg": SceneEntityCfg("robot"),
-            "reference_cfg": SceneEntityCfg("motion_reference"),
-            "projected_gravity_threshold": 0.8,
-            "check_at_keyframe_threshold": -1,
-            "z_only": False,
-            "print_reason": False,
-        },
-    )
-    link_pos_too_far = DoneTermCfg(
-        func=instinct_mdp.link_pos_far_from_ref,
-        time_out=False,
-        params={
-            "asset_cfg": SceneEntityCfg("robot"),
-            "reference_cfg": SceneEntityCfg(
-                "motion_reference",
-                body_names=[
-                    "left_ankle_roll_link",
-                    "right_ankle_roll_link",
-                    "left_wrist_yaw_link",
-                    "right_wrist_yaw_link",
-                ],
-                preserve_order=True,
-            ),
-            "distance_threshold": 0.25,
-            "in_base_frame": False,
-            "check_at_keyframe_threshold": -1,
-            "height_only": True,
-            "print_reason": False,
-        },
-    )
+    # base_pos_too_far = DoneTermCfg(
+    #     func=instinct_mdp.pos_far_from_ref,
+    #     time_out=False,
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot"),
+    #         "reference_cfg": SceneEntityCfg("motion_reference"),
+    #         "distance_threshold": 0.25,
+    #         "check_at_keyframe_threshold": -1,
+    #         "print_reason": False,
+    #         "height_only": True,
+    #     },
+    # )
+    # base_pg_too_far = DoneTermCfg(
+    #     func=instinct_mdp.projected_gravity_far_from_ref,
+    #     time_out=False,
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot"),
+    #         "reference_cfg": SceneEntityCfg("motion_reference"),
+    #         "projected_gravity_threshold": 0.8,
+    #         "check_at_keyframe_threshold": -1,
+    #         "z_only": False,
+    #         "print_reason": False,
+    #     },
+    # )
+    # link_pos_too_far = DoneTermCfg(
+    #     func=instinct_mdp.link_pos_far_from_ref,
+    #     time_out=False,
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot"),
+    #         "reference_cfg": SceneEntityCfg(
+    #             "motion_reference",
+    #             body_names=[
+    #                 "left_ankle_roll_link",
+    #                 "right_ankle_roll_link",
+    #                 "left_wrist_yaw_link",
+    #                 "right_wrist_yaw_link",
+    #             ],
+    #             preserve_order=True,
+    #         ),
+    #         "distance_threshold": 0.25,
+    #         "in_base_frame": False,
+    #         "check_at_keyframe_threshold": -1,
+    #         "height_only": True,
+    #         "print_reason": False,
+    #     },
+    # )
 
     dataset_exhausted = DoneTermCfg(
         func=instinct_mdp.dataset_exhausted,
