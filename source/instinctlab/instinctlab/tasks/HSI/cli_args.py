@@ -48,9 +48,9 @@ def parse_instinct_rl_cfg(task_name: str, args_cli: argparse.Namespace) -> Insti
     from isaaclab_tasks.utils.parse_cfg import load_cfg_from_registry
 
     # load the default configuration
-    instinctrl_cfg: InstinctRlOnPolicyRunnerCfg = load_cfg_from_registry(task_name, "instinct_rl_cfg_entry_point")
-    instinctrl_cfg = update_instinct_rl_cfg(instinctrl_cfg, args_cli)
-    return instinctrl_cfg
+    agent_cfg: InstinctRlOnPolicyRunnerCfg = load_cfg_from_registry(task_name, "instinct_rl_cfg_entry_point")
+    agent_cfg = update_instinct_rl_cfg(agent_cfg, args_cli)
+    return agent_cfg
 
 
 def update_instinct_rl_cfg(agent_cfg: InstinctRlOnPolicyRunnerCfg, args_cli: argparse.Namespace):

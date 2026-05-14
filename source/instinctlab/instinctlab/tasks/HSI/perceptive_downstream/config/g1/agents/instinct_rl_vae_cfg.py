@@ -2,9 +2,7 @@ import os
 
 from isaaclab.utils import configclass
 
-from instinctlab.envs.mdp.observations.exteroception import visualizable_image
 from instinctlab.utils.wrappers.instinct_rl import (
-    InstinctRlActorCriticCfg,
     InstinctRlConv2dHeadCfg,
     InstinctRlEncoderActorCriticCfg,
     InstinctRlEncoderVaeActorCriticCfg,
@@ -62,6 +60,9 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
         "nonlinearity": "ELU",
     }
     vae_latent_size = 16
+    """Decoder sees z + zp (prior mean) concatenated with aux proprio obs; train encoder only when prior/decoder are frozen."""
+    vae_decode_add_prior_mean = True
+    vae_decode_prior_mean_scale = 1.0
     vae_input_subobs_components = [
         "joint_pos_ref",
         "joint_vel_ref",
@@ -94,85 +95,31 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
 
 @configclass
 class AlgorithmCfg(InstinctRlPpoAlgorithmCfg):
-    class_name = "VaeDistill"
-    kl_loss_func = "kl_divergence"
-    kl_loss_coef = 1.0
-    using_ppo = False
+    """Pure PPO; load frozen decoder/prior from dagger via ``frozen_vae_bundle`` (CLI ``--frozen-vae-bundle``)."""
+
+    class_name = "VaeFrozenPriorPPO"
+    value_loss_coef = 1.0
+    use_clipped_value_loss = True
+    clip_param = 0.2
+    entropy_coef = 0.005
     num_learning_epochs = 5
     num_mini_batches = 4
     learning_rate = 1e-3
-    # PPO parameters should not affect anything.
     schedule = "adaptive"
     gamma = 0.99
     lam = 0.95
     desired_kl = 0.01
     max_grad_norm = 1.0
 
-    teacher_act_prob = 0.2
-    # update_times_scale = 20 * int(1e3)
-
-    teacher_policy_class_name = InstinctRlEncoderActorCriticCfg().class_name
-    teacher_policy: dict = {
-        "init_noise_std": 1.0,
-        "actor_hidden_dims": [512, 256, 128],
-        "critic_hidden_dims": [512, 256, 128],
-        "activation": "elu",
-        "encoder_configs": {
-            "depth_image": {
-                "class_name": "Conv2dHeadModel",
-                "component_names": ["depth_image"],
-                "output_size": 32,
-                "takeout_input_components": True,
-                "channels": [32, 32],
-                "kernel_sizes": [3, 3],
-                "strides": [1, 1],
-                "hidden_sizes": [32],
-                "paddings": [1, 1],
-                "nonlinearity": "ReLU",
-                "use_maxpool": False,
-            }
-        },
-        "critic_encoder_configs": None,
-        "obs_format": {
-            "policy": {
-                "joint_pos_ref": (10, 29),
-                "joint_vel_ref": (10, 29),
-                "position_ref": (10, 3),
-                "rotation_ref": (10, 6),
-                "depth_image": (1, 18, 32),
-                "projected_gravity": (24,),
-                "base_ang_vel": (24,),
-                "joint_pos": (232,),
-                "joint_vel": (232,),
-                "last_action": (232,),
-            },
-            "critic": {
-                "joint_pos_ref": (10, 29),
-                "joint_vel_ref": (10, 29),
-                "position_ref": (10, 3),
-                "link_pos": (14, 3),
-                "link_rot": (14, 6),
-                "height_scan": (187,),
-                "base_lin_vel": (24,),
-                "base_ang_vel": (24,),
-                "joint_pos": (232,),
-                "joint_vel": (232,),
-                "last_action": (232,),
-            },
-        },
-        "num_actions": 29,
-        "num_rewards": 1,
-    }
-    teacher_logdir = os.path.expanduser(
-        "~/Data/instinctlab_logs/instinct_rl/g1_perceptive_shadowing/20260111_103654_g1Perceptive_4MotionsKneelClimbStep1_concatMotionBins__GPU0_from20260108_032900"
-    )
+    frozen_vae_bundle = None
+    freeze_prior = True
+    freeze_decoder = True
 
 
 @configclass
 class NormalizersCfg:
     policy: InstinctRlNormalizerCfg = InstinctRlNormalizerCfg()
-    # critic: InstinctRlNormalizerCfg = InstinctRlNormalizerCfg()
-    # NOTE: No critic normalizer, must be loaded from the teacher policy.
+    critic: InstinctRlNormalizerCfg = InstinctRlNormalizerCfg()
 
 
 @configclass
@@ -185,7 +132,7 @@ class G1PerceptiveVaePPORunnerCfg(InstinctRlOnPolicyRunnerCfg):
     max_iterations = 50000
     save_interval = 20
     log_interval = 10
-    experiment_name = "g1_perceptive_vae"
+    experiment_name = "g1_hsidownstream_perceptive_vae"
 
     load_run = None
 

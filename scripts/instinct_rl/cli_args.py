@@ -28,6 +28,12 @@ def add_instinct_rl_args(parser: argparse.ArgumentParser):
     arg_group.add_argument("--checkpoint", type=str, default=None, help="Checkpoint file to resume from.")
     arg_group.add_argument("--teacher_logdir", type=str, default=None, help="Override TPPO/VAE teacher checkpoint directory.")
     arg_group.add_argument(
+        "--frozen-vae-bundle",
+        type=str,
+        default=None,
+        help="Path to vae_phase_bundle_*.pt or model_*.pt for VaeFrozenPriorPPO (decoder/prior shards).",
+    )
+    arg_group.add_argument(
         "--wandb-project",
         type=str,
         default=None,
@@ -58,9 +64,9 @@ def parse_instinct_rl_cfg(task_name: str, args_cli: argparse.Namespace) -> Insti
     from isaaclab_tasks.utils.parse_cfg import load_cfg_from_registry
 
     # load the default configuration
-    instinctrl_cfg: InstinctRlOnPolicyRunnerCfg = load_cfg_from_registry(task_name, "instinct_rl_cfg_entry_point")
-    instinctrl_cfg = update_instinct_rl_cfg(instinctrl_cfg, args_cli)
-    return instinctrl_cfg
+    agent_cfg: InstinctRlOnPolicyRunnerCfg = load_cfg_from_registry(task_name, "instinct_rl_cfg_entry_point")
+    agent_cfg = update_instinct_rl_cfg(agent_cfg, args_cli)
+    return agent_cfg
 
 
 def update_instinct_rl_cfg(agent_cfg: InstinctRlOnPolicyRunnerCfg, args_cli: argparse.Namespace):
@@ -86,6 +92,8 @@ def update_instinct_rl_cfg(agent_cfg: InstinctRlOnPolicyRunnerCfg, args_cli: arg
         agent_cfg.run_name = args_cli.run_name
     if args_cli.teacher_logdir and hasattr(agent_cfg.algorithm, "teacher_logdir"):
         agent_cfg.algorithm.teacher_logdir = os.path.expanduser(args_cli.teacher_logdir)
+    if getattr(args_cli, "frozen_vae_bundle", None) and hasattr(agent_cfg.algorithm, "frozen_vae_bundle"):
+        agent_cfg.algorithm.frozen_vae_bundle = os.path.expanduser(args_cli.frozen_vae_bundle)
     if args_cli.wandb_project is not None:
         agent_cfg.wandb_project = args_cli.wandb_project
     if args_cli.wandb_entity is not None:

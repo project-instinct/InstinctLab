@@ -117,6 +117,12 @@ class InstinctRlVaeActorCriticCfg(InstinctRlActorCriticCfg):
     vae_latent_size: int = 16
     """ The latent size of the VAE."""
 
+    vae_decode_add_prior_mean: bool = True
+    """If True, decoder input uses z + scale * prior_mean (prior mean only) instead of z alone."""
+
+    vae_decode_prior_mean_scale: float = 1.0
+    """Scaling applied to prior_mean before adding to z for the decoder path."""
+
     critic_hidden_dims: list[int] = [512, 256, 128]
     """The hidden dimensions of the critic network (typically not used for VAE distillation)."""
 
@@ -220,6 +226,15 @@ class InstinctRlPpoAlgorithmCfg:
     """The minimum standard deviation for the policy when computing distribution.
     Default: 1e-12 to prevent numerical instability.
     """
+
+    frozen_vae_bundle: str | None = None
+    """Path to ``vae_phase_bundle_*.pt`` (format_version 1) or a full ``model_*.pt`` with actor.decoder / prior_net."""
+
+    freeze_prior: bool = True
+    """If True and frozen_vae_bundle is set, load prior weights and freeze prior_net."""
+
+    freeze_decoder: bool = True
+    """If True and frozen_vae_bundle is set, load decoder weights and freeze decoder."""
 
 
 @configclass
