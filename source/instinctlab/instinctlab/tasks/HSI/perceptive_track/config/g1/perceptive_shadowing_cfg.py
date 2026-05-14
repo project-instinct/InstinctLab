@@ -90,7 +90,7 @@ motion_reference_cfg = MotionReferenceManagerCfg(
     symmetric_augmentation_joint_reverse_buf=None,
     frame_interval_s=0.1,
     update_period=0.02,
-    num_frames=10,
+    num_frames=5,
     data_start_from="current_time",
     # set the robot_reference directly at where they are in the scene
     # DO NOT FORGET to change this when in actual training
