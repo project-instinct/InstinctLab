@@ -150,6 +150,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             f"[INFO] Distributed training with rank: {local_rank}, world size: {world_size}, rank: {os.environ['RANK']}"
         )
 
+    # Align terrain bank RNG with the final env seed (including distributed rank offset).
+    if (
+        hasattr(env_cfg.scene, "terrain")
+        and env_cfg.scene.terrain.terrain_generator is not None
+        and env_cfg.seed is not None
+    ):
+        env_cfg.scene.terrain.terrain_generator.seed = int(env_cfg.seed)
+
     # specify directory for logging experiments
     if args_cli.logroot is None:
         log_root_path = os.path.join("logs", "instinct_rl", agent_cfg.experiment_name)

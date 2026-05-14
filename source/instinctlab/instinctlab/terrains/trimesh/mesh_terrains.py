@@ -17,6 +17,8 @@ from .utils import crop_terrain_mesh_aabb, generate_wall
 if TYPE_CHECKING:
     from . import mesh_terrains_cfg
 
+_MOTION_MATCHED_TERRAIN_DEBUG_PRINTS_LEFT = 3
+
 
 @generate_wall
 def motion_matched_terrain(
@@ -32,11 +34,17 @@ def motion_matched_terrain(
         tuple: A tuple containing a list of trimesh objects and an array of poses.
     """
     # Load the YAML file containing terrain and motion data
-    with open(cfg.metadata_yaml) as file:
+    with open(cfg.metadata_yaml, encoding="utf-8") as file:
         data = yaml.safe_load(file)
 
     # Extract terrains and motions from the YAML data
-    terrains = data["terrains"]  # order matters
+    terrains_all = data["terrains"]  # order matters
+    mesh_exts = (".stl", ".obj", ".ply", ".glb", ".gltf")
+    terrains = [
+        t for t in terrains_all if str(t.get("terrain_file", "")).lower().strip().endswith(mesh_exts)
+    ]
+    if len(terrains) == 0:
+        terrains = terrains_all
 
     terrain_idx = int(np.clip(difficulty * len(terrains), 0, len(terrains) - 1))
     selected_terrain = terrains[terrain_idx]
@@ -54,6 +62,48 @@ def motion_matched_terrain(
         y_max=cfg.size[1] / 2,
         y_min=-cfg.size[1] / 2,
     )
+
+    if getattr(cfg, "randomize_boxes", False):
+        x_range = cfg.box_scale_range_x
+        y_range = cfg.box_scale_range_y
+        z_range = cfg.box_scale_range_z
+
+        parts = terrain_mesh.split(only_watertight=False)
+        if len(parts) == 0:
+            parts = [terrain_mesh]
+
+        global _MOTION_MATCHED_TERRAIN_DEBUG_PRINTS_LEFT
+        if _MOTION_MATCHED_TERRAIN_DEBUG_PRINTS_LEFT > 0:
+            _MOTION_MATCHED_TERRAIN_DEBUG_PRINTS_LEFT -= 1
+            print(
+                "[motion_matched_terrain] randomize_boxes=1 "
+                f"terrain_file='{terrain_file}' difficulty={float(difficulty):.4f} "
+                f"parts={len(parts)} "
+                f"x_range={tuple(x_range)} y_range={tuple(y_range)} z_range={tuple(z_range)}"
+            )
+
+        for part in parts:
+            if np.random.uniform() > getattr(cfg, "box_randomize_prob", 1.0):
+                continue
+            center = part.vertices.mean(axis=0)
+            sx = np.random.uniform(*x_range)
+            sy = np.random.uniform(*y_range)
+            sz = np.random.uniform(*z_range)
+            vertices = part.vertices
+            vertices[:, 0] = (vertices[:, 0] - center[0]) * sx + center[0]
+            vertices[:, 1] = (vertices[:, 1] - center[1]) * sy + center[1]
+            z_min = float(vertices[:, 2].min())
+            vertices[:, 2] = (vertices[:, 2] - z_min) * sz + z_min
+            part.vertices = vertices
+
+        terrain_mesh = trimesh.util.concatenate(parts) if len(parts) > 1 else parts[0]
+        terrain_mesh = crop_terrain_mesh_aabb(
+            terrain_mesh,
+            x_max=cfg.size[0] / 2,
+            x_min=-cfg.size[0] / 2,
+            y_max=cfg.size[1] / 2,
+            y_min=-cfg.size[1] / 2,
+        )
 
     # Find border height offset w.r.t current center of this terrain mesh.
     # This is used to align the terrain mesh with the origin.

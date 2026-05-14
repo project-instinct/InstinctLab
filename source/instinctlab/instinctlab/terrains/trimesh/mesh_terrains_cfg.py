@@ -61,6 +61,17 @@ class MotionMatchedTerrainCfg(SubTerrainBaseCfg):
     add_base_plane: bool = True
     """If True, append a full sub-terrain plane (same convention as ``MeshPlaneTerrainCfg``) under the imported mesh."""
 
+    randomize_boxes: bool = False
+    """If True, apply per-component x/y/z scaling to the loaded STL mesh."""
+
+    box_scale_range_x: tuple[float, float] = (0.8, 1.2)
+    box_scale_range_y: tuple[float, float] = (0.8, 1.2)
+    box_scale_range_z: tuple[float, float] = (0.8, 10.0)
+    """Independent scale ranges for each component along x/y/z."""
+
+    box_randomize_prob: float = 1.0
+    """Probability to randomize a component. 1.0 means always randomize."""
+
 
 @configclass
 class PerlinMeshFloatingBoxTerrainCfg(SubTerrainBaseCfg, WallTerrainCfgMixin):

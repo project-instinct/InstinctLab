@@ -75,8 +75,8 @@ class PerceptiveShadowingSceneCfg(InteractiveSceneCfg):
             size=(20, 20),
             border_width=0.0,
             border_height=0.0,
-            num_rows=13,
-            num_cols=13,
+            num_rows=40,
+            num_cols=40,
             sub_terrains={
                 "motion_matched": MotionMatchedTerrainCfg(
                     proportion=1.0,
@@ -725,6 +725,9 @@ class MonitorCfg:
 
 @configclass
 class PerceptiveShadowingEnvCfg(InstinctLabRLEnvCfg):
+    # 是否启用基于 STL 连通块的 box 级随机缩放（与 motion-matched 地形 bank 配合）
+    enable_stl_box_randomization: bool = True
+
     scene: PerceptiveShadowingSceneCfg = PerceptiveShadowingSceneCfg()
     commands: CommandCfg = CommandCfg()
     actions: ActionsCfg = ActionsCfg()
@@ -746,3 +749,21 @@ class PerceptiveShadowingEnvCfg(InstinctLabRLEnvCfg):
         self.sim.physx.gpu_max_rigid_patch_count = 10 * 2**15
         self.sim.physx.gpu_max_rigid_contact_count = 2**27
         self.sim.physx.gpu_collision_stack_size = 2**27
+
+        try:
+            tg = self.scene.terrain.terrain_generator
+            if tg is not None and hasattr(tg, "sub_terrains"):
+                mm_cfg = tg.sub_terrains["motion_matched"]
+                mm_cfg.randomize_boxes = bool(self.enable_stl_box_randomization)
+                # 缩放区间仅使用 MotionMatchedTerrainCfg 默认的 box_scale_range_{x,y,z}
+        except Exception:
+            pass
+
+        if (
+            hasattr(self.scene, "terrain")
+            and hasattr(self.scene.terrain, "terrain_generator")
+            and self.scene.terrain.terrain_generator is not None
+            and hasattr(self, "seed")
+            and self.seed is not None
+        ):
+            self.scene.terrain.terrain_generator.seed = int(self.seed)

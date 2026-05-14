@@ -197,8 +197,8 @@ class G1PerceptiveShadowingEnvCfg_PLAY(G1PerceptiveShadowingEnvCfg):
             )
 
         # Use non-terrain-matching motion and plane to hack the scene.
-        self.scene.terrain.terrain_generator.num_rows = 13
-        self.scene.terrain.terrain_generator.num_cols = 13
+        self.scene.terrain.terrain_generator.num_rows = 40
+        self.scene.terrain.terrain_generator.num_cols = 40
         # self.scene.motion_reference.motion_buffers.pop(MOTION_NAME)
         # self.scene.motion_reference.motion_buffers["AMASSMotion"] = AMASSMotionCfg()
         # self.scene.motion_reference.motion_buffers["AMASSMotion"].motion_start_from_middle_range = [0.0, 0.0]
