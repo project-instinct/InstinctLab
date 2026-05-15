@@ -62,12 +62,16 @@ class MotionMatchedTerrainCfg(SubTerrainBaseCfg):
     """If True, append a full sub-terrain plane (same convention as ``MeshPlaneTerrainCfg``) under the imported mesh."""
 
     randomize_boxes: bool = False
-    """If True, apply per-component x/y/z scaling to the loaded STL mesh."""
+    """If True, apply per-component size randomization (absolute meter deltas on each axis)."""
 
-    box_scale_range_x: tuple[float, float] = (0.8, 1.2)
-    box_scale_range_y: tuple[float, float] = (0.8, 1.2)
-    box_scale_range_z: tuple[float, float] = (0.8, 1.2)
-    """Independent scale ranges for each component along x/y/z."""
+    box_size_delta_range_x: tuple[float, float] = (-0.2, 0.2)
+    box_size_delta_range_y: tuple[float, float] = (-0.2, 0.2)
+    box_size_delta_range_z: tuple[float, float] = (-0.2, 0.2)
+    """Absolute size perturbation range (meters) along x/y/z per mesh component.
+
+    For each axis, a value ``delta`` is sampled uniformly from the tuple ``(low, high)``
+    and applied as ``size_axis + delta`` before converting to a uniform scale factor.
+    """
 
     box_randomize_prob: float = 1.0
     """Probability to randomize a component. 1.0 means always randomize."""

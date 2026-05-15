@@ -64,9 +64,9 @@ def motion_matched_terrain(
     )
 
     if getattr(cfg, "randomize_boxes", False):
-        x_range = cfg.box_scale_range_x
-        y_range = cfg.box_scale_range_y
-        z_range = cfg.box_scale_range_z
+        x_delta_range = cfg.box_size_delta_range_x
+        y_delta_range = cfg.box_size_delta_range_y
+        z_delta_range = cfg.box_size_delta_range_z
 
         parts = terrain_mesh.split(only_watertight=False)
         if len(parts) == 0:
@@ -79,17 +79,30 @@ def motion_matched_terrain(
                 "[motion_matched_terrain] randomize_boxes=1 "
                 f"terrain_file='{terrain_file}' difficulty={float(difficulty):.4f} "
                 f"parts={len(parts)} "
-                f"x_range={tuple(x_range)} y_range={tuple(y_range)} z_range={tuple(z_range)}"
+                f"x_delta_range={tuple(x_delta_range)} y_delta_range={tuple(y_delta_range)} "
+                f"z_delta_range={tuple(z_delta_range)}"
             )
+
+        min_extent = 1e-6
+
+        def _delta_to_scale(delta_range: tuple[float, float], extent: float) -> float:
+            if extent <= min_extent:
+                return 1.0
+            delta = float(np.random.uniform(*delta_range))
+            new_extent = max(extent + delta, min_extent)
+            return new_extent / extent
 
         for part in parts:
             if np.random.uniform() > getattr(cfg, "box_randomize_prob", 1.0):
                 continue
-            center = part.vertices.mean(axis=0)
-            sx = np.random.uniform(*x_range)
-            sy = np.random.uniform(*y_range)
-            sz = np.random.uniform(*z_range)
-            vertices = part.vertices
+            vertices = np.asarray(part.vertices, dtype=np.float64)
+            size_x = float(vertices[:, 0].max() - vertices[:, 0].min())
+            size_y = float(vertices[:, 1].max() - vertices[:, 1].min())
+            size_z = float(vertices[:, 2].max() - vertices[:, 2].min())
+            sx = _delta_to_scale(x_delta_range, size_x)
+            sy = _delta_to_scale(y_delta_range, size_y)
+            sz = _delta_to_scale(z_delta_range, size_z)
+            center = vertices.mean(axis=0)
             vertices[:, 0] = (vertices[:, 0] - center[0]) * sx + center[0]
             vertices[:, 1] = (vertices[:, 1] - center[1]) * sy + center[1]
             z_min = float(vertices[:, 2].min())

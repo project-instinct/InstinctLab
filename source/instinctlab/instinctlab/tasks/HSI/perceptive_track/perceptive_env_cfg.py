@@ -755,7 +755,7 @@ class PerceptiveShadowingEnvCfg(InstinctLabRLEnvCfg):
             if tg is not None and hasattr(tg, "sub_terrains"):
                 mm_cfg = tg.sub_terrains["motion_matched"]
                 mm_cfg.randomize_boxes = bool(self.enable_stl_box_randomization)
-                # 缩放区间仅使用 MotionMatchedTerrainCfg 默认的 box_scale_range_{x,y,z}
+                # 尺寸扰动区间（米）使用 MotionMatchedTerrainCfg 默认的 box_size_delta_range_{x,y,z}
         except Exception:
             pass
 
