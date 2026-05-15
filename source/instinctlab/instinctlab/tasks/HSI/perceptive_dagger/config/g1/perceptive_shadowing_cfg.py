@@ -212,11 +212,6 @@ class G1PerceptiveShadowingEnvCfg_PLAY(G1PerceptiveShadowingEnvCfg):
         # change reset robot event with more pitch_down randomization (since the robot is facing -y axis)
         # self.events.reset_robot.params["randomize_pose_range"]["roll"] = (0.0, 0.6)
 
-        # remove some terimation terms
-        self.terminations.base_pos_too_far = None
-        self.terminations.base_pg_too_far = None
-        self.terminations.link_pos_too_far = None
-
         # put the reference in scene and move the robot elsewhere and visualize the reference
         # self.events.reset_robot.params["position_offset"] = [0.0, 1.0, 2.0]
         # self.scene.motion_reference.visualizing_robot_offset = (0.0, 0.0, 0.0)

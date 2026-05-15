@@ -300,10 +300,6 @@ class G1PerceptiveVaeEnvCfg_PLAY(G1PerceptiveVaeEnvCfg):
         # change reset robot event with more pitch_down randomization (since the robot is facing -y axis)
         # self.events.reset_robot.params["randomize_pose_range"]["roll"] = (0.0, 0.6)
 
-        # remove some terimation terms
-        self.terminations.base_pos_too_far = None
-        self.terminations.base_pg_too_far = None
-        self.terminations.link_pos_too_far = None
         self.terminations.dataset_exhausted.params["reset_without_notice"] = True
 
         # put the reference in scene and move the robot elsewhere
