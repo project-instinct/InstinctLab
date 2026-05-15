@@ -96,7 +96,7 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
 class AlgorithmCfg(InstinctRlPpoAlgorithmCfg):
     class_name = "VaeDistill"
     kl_loss_func = "kl_divergence"
-    kl_loss_coef = 1.0
+    kl_loss_coef = 0.01
     using_ppo = False
     num_learning_epochs = 5
     num_mini_batches = 4
