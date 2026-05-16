@@ -2,7 +2,9 @@ import isaaclab.envs.mdp as mdp
 from isaaclab.envs import ViewerCfg
 from isaaclab.managers import ObservationGroupCfg as ObsGroupCfg
 from isaaclab.managers import ObservationTermCfg as ObsTermCfg
+from isaaclab.managers import RewardTermCfg as RewTermCfg
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.managers import TerminationTermCfg as DoneTermCfg
 from isaaclab.terrains import FlatPatchSamplingCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import UniformNoiseCfg
@@ -173,6 +175,91 @@ class G1PerceptiveVaePlayMonitorCfg:
 
 
 @configclass
+class G1PerceptiveVaeRewardsCfg(perceptual_cfg.RewardsCfg):
+    """Parkour-aligned task rewards in addition to base downstream regularizers."""
+
+    track_lin_vel_xy_exp = RewTermCfg(
+        func=parkour_mdp.track_lin_vel_xy_exp,
+        weight=2.0,
+        params={"command_name": "base_velocity", "std": 0.5},
+    )
+    track_ang_vel_z_exp = RewTermCfg(
+        func=parkour_mdp.track_ang_vel_z_exp,
+        weight=2.0,
+        params={"command_name": "base_velocity", "std": 0.5},
+    )
+    heading_error = RewTermCfg(
+        func=parkour_mdp.heading_error,
+        weight=-1.0,
+        params={"command_name": "base_velocity"},
+    )
+    dont_wait = RewTermCfg(
+        func=parkour_mdp.dont_wait,
+        weight=-0.5,
+        params={"command_name": "base_velocity"},
+    )
+    stand_still = RewTermCfg(
+        func=parkour_mdp.stand_still,
+        weight=-0.3,
+        params={"command_name": "base_velocity", "offset": 4.0},
+    )
+    action_rate_l2 = RewTermCfg(func=mdp.action_rate_l2, weight=-0.1)
+    joint_limit = RewTermCfg(
+        func=mdp.joint_pos_limits,
+        weight=-10.0,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
+    )
+    # undesired_contacts = RewTermCfg(
+    #     func=mdp.undesired_contacts,
+    #     weight=-0.1,
+    #     params={
+    #         "sensor_cfg": SceneEntityCfg(
+    #             "contact_forces",
+    #             body_names=[
+    #                 r"^(?!left_ankle_roll_link$)(?!right_ankle_roll_link$)(?!left_wrist_yaw_link$)(?!right_wrist_yaw_link$).+$"
+    #             ],
+    #         ),
+    #         "threshold": 1.0,
+    #     },
+    # )
+    applied_torque_limits_by_ratio = RewTermCfg(
+        func=instinct_mdp.applied_torque_limits_by_ratio,
+        weight=-0.05,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=[
+                    ".*ankle.*",
+                    ".*wrist.*",
+                ],
+            )
+        },
+    )
+
+@configclass
+class G1PerceptiveVaeRewardGroupsCfg(perceptual_cfg.RewardGroupsCfg):
+    rewards: G1PerceptiveVaeRewardsCfg = G1PerceptiveVaeRewardsCfg()
+
+
+@configclass
+class G1PerceptiveVaeTerminationsCfg(perceptual_cfg.TerminationsCfg):
+    """Extra safety terminations aligned with parkour MDP."""
+    time_out = DoneTermCfg(func=mdp.time_out, time_out=True)
+
+    bad_orientation = DoneTermCfg(func=parkour_mdp.bad_orientation, params={"limit_angle": 1.0})
+    root_height = DoneTermCfg(
+        func=parkour_mdp.root_height_below_env_origin_minimum,
+        params={"minimum_height": 0.5},
+    )
+
+    out_of_border = DoneTermCfg(
+        func=instinct_mdp.terrain_out_of_bounds,
+        time_out=True,
+        params={"asset_cfg": SceneEntityCfg("robot"), "print_reason": False, "distance_buffer": 0.1},
+    )
+
+
+@configclass
 class G1PerceptiveVaeEnvCfg(perceptual_cfg.PerceptiveShadowingEnvCfg):
     scene: perceptual_cfg.PerceptiveShadowingSceneCfg = perceptual_cfg.PerceptiveShadowingSceneCfg(
         num_envs=4096,
@@ -180,6 +267,8 @@ class G1PerceptiveVaeEnvCfg(perceptual_cfg.PerceptiveShadowingEnvCfg):
     )
     commands: CommandsCfg = CommandsCfg()
     observations: ObservationsCfg = ObservationsCfg()
+    rewards: G1PerceptiveVaeRewardGroupsCfg = G1PerceptiveVaeRewardGroupsCfg()
+    terminations: G1PerceptiveVaeTerminationsCfg = G1PerceptiveVaeTerminationsCfg()
 
     def __post_init__(self):
         super().__post_init__()
