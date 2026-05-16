@@ -116,8 +116,9 @@ class AlgorithmCfg(InstinctRlPpoAlgorithmCfg):
     teacher_policy_class_name = InstinctRlEncoderActorCriticCfg().class_name
     teacher_policy: dict = {
         "init_noise_std": 1.0,
-        "actor_hidden_dims": [512, 256, 128],
-        "critic_hidden_dims": [512, 256, 128],
+        # Must match the teacher PPO run's policy MLP (see that run's params/agent.yaml).
+        "actor_hidden_dims": [1024, 1024, 512, 512],
+        "critic_hidden_dims": [2048, 1024, 512, 512],
         "activation": "elu",
         "encoder_configs": {
             "depth_image": {
