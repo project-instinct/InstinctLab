@@ -36,8 +36,8 @@ class Conv2dHeadEncoderCfg:
 @configclass
 class PolicyCfg(InstinctRlEncoderActorCriticCfg):
     init_noise_std = 1.0
-    actor_hidden_dims = [512, 256, 128]
-    critic_hidden_dims = [512, 256, 128]
+    actor_hidden_dims = [1024, 1024, 512, 512]
+    critic_hidden_dims = [2048, 1024, 512, 512]
     activation = "elu"
 
     encoder_configs = Conv2dHeadEncoderCfg()

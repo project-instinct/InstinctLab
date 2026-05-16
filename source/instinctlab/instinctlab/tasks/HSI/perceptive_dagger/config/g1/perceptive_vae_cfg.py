@@ -37,7 +37,8 @@ from instinctlab.motion_reference.utils import motion_interpolate_bilinear
 from .perceptive_shadowing_cfg import MOTION_FOLDER
 
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_SPHEREHAND_CFG
-PROPRIO_HISTORY_LENGTH = 8
+PROPRIO_HISTORY_LENGTH = 4
+TEACHER_PROPRIO_HISTORY_LENGTH = 8
 
 
 @configclass
@@ -186,25 +187,25 @@ class ObservationsCfg:
         projected_gravity = ObsTermCfg(
             func=mdp.projected_gravity,
             noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
-            history_length=PROPRIO_HISTORY_LENGTH,
+            history_length=TEACHER_PROPRIO_HISTORY_LENGTH,
         )
         # base_lin_vel = ObsTermCfg(func=mdp.base_lin_vel)
         base_ang_vel = ObsTermCfg(
             func=mdp.base_ang_vel,
             noise=UniformNoiseCfg(n_min=-0.2, n_max=0.2),
-            history_length=PROPRIO_HISTORY_LENGTH,
+            history_length=TEACHER_PROPRIO_HISTORY_LENGTH,
         )
         joint_pos = ObsTermCfg(
             func=mdp.joint_pos_rel,
             noise=UniformNoiseCfg(n_min=-0.01, n_max=0.01),
-            history_length=PROPRIO_HISTORY_LENGTH,
+            history_length=TEACHER_PROPRIO_HISTORY_LENGTH,
         )
         joint_vel = ObsTermCfg(
             func=mdp.joint_vel_rel,
             noise=UniformNoiseCfg(n_min=-0.5, n_max=0.5),
-            history_length=PROPRIO_HISTORY_LENGTH,
+            history_length=TEACHER_PROPRIO_HISTORY_LENGTH,
         )
-        last_action = ObsTermCfg(func=mdp.last_action, history_length=PROPRIO_HISTORY_LENGTH)
+        last_action = ObsTermCfg(func=mdp.last_action, history_length=TEACHER_PROPRIO_HISTORY_LENGTH)
 
         def __post_init__(self):
             self.enable_corruption = False

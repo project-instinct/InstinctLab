@@ -47,7 +47,8 @@ from instinctlab.utils.noise import (
 )
 
 # PROPRIO_HISTORY_LENGTH = 0
-PROPRIO_HISTORY_LENGTH = 8
+PROPRIO_HISTORY_LENGTH = 4
+TEACHER_PROPRIO_HISTORY_LENGTH = 8
 
 
 @configclass
