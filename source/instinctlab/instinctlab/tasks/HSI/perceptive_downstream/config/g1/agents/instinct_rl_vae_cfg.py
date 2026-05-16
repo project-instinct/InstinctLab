@@ -45,7 +45,11 @@ class PolicyCfg(InstinctRlEncoderActorCriticCfg):
 
 @configclass
 class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
-    """Must match dagger ``perceptive_dagger/config/g1/agents/instinct_rl_vae_cfg.VaePolicyCfg`` for ``--frozen-vae-bundle``."""
+    """VAE policy; frozen bundle loads decoder/prior only (see ``VaeFrozenPriorPPO``).
+
+    Downstream adds ``velocity_commands`` to ``vae_input_subobs_components`` for the trainable encoder;
+    dagger teacher configs omit it — decoder/aux/prior tensor layouts stay compatible with ``--frozen-vae-bundle``.
+    """
 
     encoder_configs = Conv2dHeadEncoderCfg()
 
@@ -71,6 +75,7 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
         # "rotation_ref",
         "parallel_latent_0_depth_image",
         "projected_gravity",
+        "velocity_commands",
         "base_ang_vel",
         "joint_pos",
         "joint_vel",

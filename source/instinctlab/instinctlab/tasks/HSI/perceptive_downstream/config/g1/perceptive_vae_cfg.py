@@ -3,10 +3,12 @@ from isaaclab.envs import ViewerCfg
 from isaaclab.managers import ObservationGroupCfg as ObsGroupCfg
 from isaaclab.managers import ObservationTermCfg as ObsTermCfg
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.terrains import FlatPatchSamplingCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import UniformNoiseCfg
 
 import instinctlab.envs.mdp as instinct_mdp
+import instinctlab.tasks.parkour.mdp as parkour_mdp
 import instinctlab.tasks.HSI.perceptive_downstream.perceptive_env_cfg as perceptual_cfg
 from instinctlab.assets.unitree_g1 import (
     G1_29DOF_LINKS,
@@ -21,6 +23,34 @@ G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_SPHEREHAND_CFG
 # Must match frozen VAE bundle (dagger run name uses propHistory4_depthHist10Skip3).
 PROPRIO_HISTORY_LENGTH = 4
 TEACHER_PROPRIO_HISTORY_LENGTH = 8
+
+
+@configclass
+class CommandsCfg:
+    """Velocity / pose-style commands (same family as parkour ``base_velocity``)."""
+
+    base_velocity = parkour_mdp.PoseVelocityCommandCfg(
+        asset_name="robot",
+        resampling_time_range=(8.0, 12.0),
+        debug_vis=False,
+        velocity_control_stiffness=2.0,
+        heading_control_stiffness=2.0,
+        rel_standing_envs=0.05,
+        ranges=parkour_mdp.PoseVelocityCommandCfg.Ranges(
+            lin_vel_x=(0.0, 0.0), lin_vel_y=(0.0, 0.0), ang_vel_z=(-1.0, 1.0)
+        ),
+        random_velocity_terrain=None,
+        velocity_ranges={
+            "perlin_rough": {"lin_vel_x": (0.45, 1.0), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
+            "pyramid_stairs": {"lin_vel_x": (0.45, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
+            "boxes": {"lin_vel_x": (0.45, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
+            "mesh_boxes": {"lin_vel_x": (0.45, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
+        },
+        only_positive_lin_vel_x=True,
+        lin_vel_threshold=0.0,
+        ang_vel_threshold=0.0,
+        target_dis_threshold=0.4,
+    )
 
 
 @configclass
@@ -40,6 +70,13 @@ class ObservationsCfg:
             func=mdp.projected_gravity,
             noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
             history_length=PROPRIO_HISTORY_LENGTH,
+        )
+        velocity_commands = ObsTermCfg(
+            func=mdp.generated_commands,
+            history_length=8,
+            flatten_history_dim=True,
+            params={"command_name": "base_velocity"},
+            noise=None,
         )
         base_ang_vel = ObsTermCfg(
             func=mdp.base_ang_vel,
@@ -74,6 +111,13 @@ class ObservationsCfg:
             func=mdp.projected_gravity,
             noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
             history_length=TEACHER_PROPRIO_HISTORY_LENGTH,
+        )
+        velocity_commands = ObsTermCfg(
+            func=mdp.generated_commands,
+            history_length=8,
+            flatten_history_dim=True,
+            params={"command_name": "base_velocity"},
+            noise=None,
         )
         base_ang_vel = ObsTermCfg(
             func=mdp.base_ang_vel,
@@ -134,10 +178,30 @@ class G1PerceptiveVaeEnvCfg(perceptual_cfg.PerceptiveShadowingEnvCfg):
         num_envs=4096,
         robot=G1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot"),
     )
+    commands: CommandsCfg = CommandsCfg()
     observations: ObservationsCfg = ObservationsCfg()
 
     def __post_init__(self):
         super().__post_init__()
+
+        # PoseVelocityCommand requires flat patch sampling key ``target`` on terrain sub-terrains.
+        _target_patch = FlatPatchSamplingCfg(
+            num_patches=50,
+            patch_radius=[0.05, 0.10, 0.15, 0.20],
+            max_height_diff=0.05,
+        )
+        tg = self.scene.terrain.terrain_generator
+        if tg is not None:
+            new_sub = {}
+            for name, sub_terrain in tg.sub_terrains.items():
+                existing = getattr(sub_terrain, "flat_patch_sampling", None) or {}
+                if "target" not in existing:
+                    merged = dict(existing)
+                    merged["target"] = _target_patch
+                    new_sub[name] = sub_terrain.replace(flat_patch_sampling=merged)
+                else:
+                    new_sub[name] = sub_terrain
+            self.scene.terrain.terrain_generator = tg.replace(sub_terrains=new_sub)
 
         self.scene.camera.mesh_prim_paths.extend(get_link_prim_targets(G1_29DOF_LINKS))
         self.scene.camera.data_histories["distance_to_image_plane_noised"] = 10
