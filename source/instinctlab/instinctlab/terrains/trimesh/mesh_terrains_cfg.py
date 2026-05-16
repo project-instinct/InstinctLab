@@ -66,7 +66,7 @@ class MotionMatchedTerrainCfg(SubTerrainBaseCfg):
 
     box_size_delta_range_x: tuple[float, float] = (-0.2, 0.2)
     box_size_delta_range_y: tuple[float, float] = (-0.2, 0.2)
-    box_size_delta_range_z: tuple[float, float] = (-0.2, 0.2)
+    box_size_delta_range_z: tuple[float, float] = (-0.1, 0.1)
     """Absolute size perturbation range (meters) along x/y/z per mesh component.
 
     For each axis, a value ``delta`` is sampled uniformly from the tuple ``(low, high)``

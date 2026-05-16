@@ -121,17 +121,18 @@ def motion_matched_terrain(
     # Find border height offset w.r.t current center of this terrain mesh.
     # This is used to align the terrain mesh with the origin.
     # NOTE: Assuming the border is flat, we take the mean height of the vertices
-    border_height = np.mean(
-        terrain_mesh.vertices[
-            np.logical_or(
-                np.abs(terrain_mesh.vertices[:, 0]) > (cfg.size[0] / 2 - 0.05),
-                np.abs(terrain_mesh.vertices[:, 1]) > (cfg.size[1] / 2 - 0.05),
-            )
-        ][:, 2]
-    )
-    if np.isnan(border_height):
-        print(f"Warning: Terrain {terrain_file} does not have a valid border height. Using 0 as the border height.")
-        border_height = 0.0
+    # border_height = np.mean(
+    #     terrain_mesh.vertices[
+    #         np.logical_or(
+    #             np.abs(terrain_mesh.vertices[:, 0]) > (cfg.size[0] / 2 - 0.05),
+    #             np.abs(terrain_mesh.vertices[:, 1]) > (cfg.size[1] / 2 - 0.05),
+    #         )
+    #     ][:, 2]
+    # )
+    # if np.isnan(border_height):
+    #     print(f"Warning: Terrain {terrain_file} does not have a valid border height. Using 0 as the border height.")
+    #     border_height = 0.0
+    border_height = 0.0
 
     # To follow the terrain_generator convention, we move the terrain mesh to (size[0]/2, size[1]/2, -border_height).
     move_terrain_transform = np.eye(4)
