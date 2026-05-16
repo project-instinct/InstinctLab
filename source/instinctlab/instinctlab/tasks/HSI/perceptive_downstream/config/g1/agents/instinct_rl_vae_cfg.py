@@ -62,7 +62,7 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
         "nonlinearity": "ELU",
     }
     vae_latent_size = 32
-    vae_decode_add_prior_mean = False
+    vae_decode_add_prior_mean = True
     vae_project_to_sphere = False
     vae_input_subobs_components = [
         "joint_pos_ref",
