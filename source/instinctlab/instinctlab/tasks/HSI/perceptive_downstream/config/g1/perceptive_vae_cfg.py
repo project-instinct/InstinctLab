@@ -30,32 +30,13 @@ from instinctlab.assets.unitree_g1 import (
 from instinctlab.monitors import ActuatorMonitorTerm, MonitorTermCfg, ShadowingBasePosMonitorTerm
 from instinctlab.motion_reference import MotionReferenceManagerCfg
 from instinctlab.motion_reference.motion_files.aistpp_motion_cfg import AistppMotionCfg as AistppMotionCfgBase
-from instinctlab.motion_reference.motion_files.amass_motion_cfg import AmassMotionCfg as AmassMotionCfgBase
-from instinctlab.motion_reference.motion_files.terrain_motion_cfg import TerrainMotionCfg as TerrainMotionCfgBase
-from instinctlab.motion_reference.utils import motion_interpolate_bilinear
 
-from .perceptive_shadowing_cfg import MOTION_FOLDER
+from .perceptive_shadowing_cfg import AMASSMotionCfg
 
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_SPHEREHAND_CFG
-PROPRIO_HISTORY_LENGTH = 8
-
-
-@configclass
-class TerrainMotionCfg(TerrainMotionCfgBase):
-    path = os.path.expanduser(MOTION_FOLDER)
-    metadata_yaml = os.path.expanduser(f"{MOTION_FOLDER}/metadata.yaml")
-    max_origins_per_motion = 49
-
-    ensure_link_below_zero_ground = False
-    motion_start_from_middle_range = [0.0, 0.0]
-    motion_start_height_offset = 0.0
-    motion_bin_length_s = 1.0
-    buffer_device = "output_device"
-    motion_interpolate_func = motion_interpolate_bilinear
-    motion_target_framerate = 30.0
-    assumed_file_framerate = 30.0
-    velocity_estimation_method = "frontbackward"
-    env_starting_stub_sampling_strategy = "concat_motion_bins"
+# Must match frozen VAE bundle (dagger run name uses propHistory4_depthHist10Skip3).
+PROPRIO_HISTORY_LENGTH = 4
+TEACHER_PROPRIO_HISTORY_LENGTH = 8
 
 
 motion_reference_cfg = MotionReferenceManagerCfg(
@@ -91,7 +72,7 @@ motion_reference_cfg = MotionReferenceManagerCfg(
     visualizing_robot_from="reference_frame",
     visualizing_marker_types=["relative_links", "links"],
     motion_buffers={
-        "TerrainMotion": TerrainMotionCfg(),
+        "AMASSMotion": AMASSMotionCfg(),
     },
     mp_split_method="None",
 )
@@ -101,25 +82,39 @@ motion_reference_cfg = MotionReferenceManagerCfg(
 class ObservationsCfg:
     @configclass
     class PolicyObsCfg(ObsGroupCfg):
-        joint_pos_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_pos_ref_command"})
-        joint_vel_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_vel_ref_command"})
-        position_ref = ObsTermCfg(
-            func=mdp.generated_commands,
-            params={"command_name": "position_b_ref_command"},
-            noise=UniformNoiseCfg(n_min=-0.25, n_max=0.25),
-        )
-        rotation_ref = ObsTermCfg(
-            func=mdp.generated_commands,
-            params={"command_name": "rotation_ref_command"},
-            noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
-        )
+        # joint_pos_ref = ObsTermCfg(
+        #     func=instinct_mdp.generated_commands_slice,
+        #     params={
+        #         "command_name": "joint_pos_ref_command",
+        #         "ref_length": perceptual_cfg.POLICY_REF_LENGTH,
+        #     },
+        # )
+        # joint_vel_ref = ObsTermCfg(
+        #     func=instinct_mdp.generated_commands_slice,
+        #     params={
+        #         "command_name": "joint_vel_ref_command",
+        #         "ref_length": perceptual_cfg.POLICY_REF_LENGTH,
+        #     },
+        # )
+        # position_ref = ObsTermCfg(
+        #     func=instinct_mdp.generated_commands_slice,
+        #     params={
+        #         "command_name": "position_b_ref_command",
+        #         "ref_length": perceptual_cfg.POLICY_REF_LENGTH,
+        #     },
+        #     noise=UniformNoiseCfg(n_min=-0.25, n_max=0.25),
+        # )
+        # rotation_ref = ObsTermCfg(
+        #     func=instinct_mdp.generated_commands_slice,
+        #     params={
+        #         "command_name": "rotation_ref_command",
+        #         "ref_length": perceptual_cfg.POLICY_REF_LENGTH,
+        #     },
+        #     noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
+        # )
 
-        # above are vae encoder observations
-
-        # below are vae prior observations, decoder exclude perception
         depth_image = ObsTermCfg(
             func=instinct_mdp.visualizable_image,
-            # params={"sensor_cfg": SceneEntityCfg("camera"), "data_type": "distance_to_image_plane"},
             params={
                 "sensor_cfg": SceneEntityCfg("camera"),
                 "data_type": "distance_to_image_plane_noised_history",
@@ -127,13 +122,11 @@ class ObservationsCfg:
             },
         )
 
-        # proprioception
         projected_gravity = ObsTermCfg(
             func=mdp.projected_gravity,
             noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
             history_length=PROPRIO_HISTORY_LENGTH,
         )
-        # base_lin_vel = ObsTermCfg(func=mdp.base_lin_vel)
         base_ang_vel = ObsTermCfg(
             func=mdp.base_ang_vel,
             noise=UniformNoiseCfg(n_min=-0.2, n_max=0.2),
@@ -157,55 +150,73 @@ class ObservationsCfg:
 
     @configclass
     class CriticObsCfg(ObsGroupCfg):
-        # Should be the same as the teacher observations.
-        joint_pos_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_pos_ref_command"})
-        joint_vel_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_vel_ref_command"})
-        position_ref = ObsTermCfg(
-            func=mdp.generated_commands,
-            params={"command_name": "position_b_ref_command"},
-            noise=UniformNoiseCfg(n_min=-0.25, n_max=0.25),
-        )
-        rotation_ref = ObsTermCfg(
-            func=mdp.generated_commands,
-            params={"command_name": "rotation_ref_command"},
-            noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
-        )
+        # joint_pos_ref = ObsTermCfg(
+        #     func=instinct_mdp.generated_commands_slice,
+        #     params={
+        #         "command_name": "joint_pos_ref_command",
+        #         "ref_length": perceptual_cfg.CRITIC_REF_LENGTH,
+        #     },
+        # )
+        # joint_vel_ref = ObsTermCfg(
+        #     func=instinct_mdp.generated_commands_slice,
+        #     params={
+        #         "command_name": "joint_vel_ref_command",
+        #         "ref_length": perceptual_cfg.CRITIC_REF_LENGTH,
+        #     },
+        # )
+        # position_ref = ObsTermCfg(
+        #     func=instinct_mdp.generated_commands_slice,
+        #     params={
+        #         "command_name": "position_b_ref_command",
+        #         "ref_length": perceptual_cfg.CRITIC_REF_LENGTH,
+        #     },
+        #     noise=UniformNoiseCfg(n_min=-0.25, n_max=0.25),
+        # )
+        # rotation_ref = ObsTermCfg(
+        #     func=instinct_mdp.generated_commands_slice,
+        #     params={
+        #         "command_name": "rotation_ref_command",
+        #         "ref_length": perceptual_cfg.CRITIC_REF_LENGTH,
+        #     },
+        #     noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
+        # )
 
-        depth_image = ObsTermCfg(
-            func=instinct_mdp.visualizable_image,
-            # params={"sensor_cfg": SceneEntityCfg("camera"), "data_type": "distance_to_image_plane"},
-            params={"sensor_cfg": SceneEntityCfg("camera"), "data_type": "distance_to_image_plane_noised"},
+        height_scan = ObsTermCfg(
+            func=mdp.height_scan,
+            params={"sensor_cfg": SceneEntityCfg("height_scanner")},
+            clip=[-20.0, 20.0],
         )
+        # depth_image = ObsTermCfg(
+        #     func=instinct_mdp.visualizable_image,
+        #     params={"sensor_cfg": SceneEntityCfg("camera"), "data_type": "distance_to_image_plane_noised"},
+        # )
 
-        # proprioception
         projected_gravity = ObsTermCfg(
             func=mdp.projected_gravity,
             noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
-            history_length=8,
+            history_length=TEACHER_PROPRIO_HISTORY_LENGTH,
         )
-        # base_lin_vel = ObsTermCfg(func=mdp.base_lin_vel)
         base_ang_vel = ObsTermCfg(
             func=mdp.base_ang_vel,
             noise=UniformNoiseCfg(n_min=-0.2, n_max=0.2),
-            history_length=8,
+            history_length=TEACHER_PROPRIO_HISTORY_LENGTH,
         )
         joint_pos = ObsTermCfg(
             func=mdp.joint_pos_rel,
             noise=UniformNoiseCfg(n_min=-0.01, n_max=0.01),
-            history_length=8,
+            history_length=TEACHER_PROPRIO_HISTORY_LENGTH,
         )
         joint_vel = ObsTermCfg(
             func=mdp.joint_vel_rel,
             noise=UniformNoiseCfg(n_min=-0.5, n_max=0.5),
-            history_length=8,
+            history_length=TEACHER_PROPRIO_HISTORY_LENGTH,
         )
-        last_action = ObsTermCfg(func=mdp.last_action, history_length=8)
+        last_action = ObsTermCfg(func=mdp.last_action, history_length=TEACHER_PROPRIO_HISTORY_LENGTH)
 
         def __post_init__(self):
             self.enable_corruption = False
             self.concatenate_terms = False
 
-    # observation groups
     policy: PolicyObsCfg = PolicyObsCfg()
     critic: CriticObsCfg = CriticObsCfg()
 
@@ -216,23 +227,16 @@ class G1PerceptiveVaeEnvCfg(perceptual_cfg.PerceptiveShadowingEnvCfg):
         num_envs=4096,
         robot=G1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot"),
         motion_reference=motion_reference_cfg,
-        height_scanner=None,
     )
     observations: ObservationsCfg = ObservationsCfg()
 
     def __post_init__(self):
         super().__post_init__()
 
-        self.scene.height_scanner = None
-
         self.scene.camera.data_histories["distance_to_image_plane_noised"] = 10
         self.observations.policy.depth_image.params["history_skip_frames"] = 3
         self.scene.robot.actuators = beyondmimic_g1_29dof_actuators
         self.actions.joint_pos.scale = beyondmimic_action_scale
-
-        motion_buffer = list(self.scene.motion_reference.motion_buffers.values())[0]
-        self.scene.terrain.terrain_generator.sub_terrains["motion_matched"].path = motion_buffer.path
-        self.scene.terrain.terrain_generator.sub_terrains["motion_matched"].metadata_yaml = motion_buffer.metadata_yaml
 
         self.run_name = "g1PerceptiveVae" + "".join(
             [

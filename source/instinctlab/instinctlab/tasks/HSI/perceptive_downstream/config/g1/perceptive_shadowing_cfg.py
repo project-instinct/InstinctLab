@@ -19,7 +19,6 @@ from instinctlab.assets.unitree_g1 import (
 from instinctlab.monitors import ActuatorMonitorTerm, MonitorTermCfg, ShadowingBasePosMonitorTerm
 from instinctlab.motion_reference import MotionReferenceManagerCfg
 from instinctlab.motion_reference.motion_files.amass_motion_cfg import AmassMotionCfg as AmassMotionCfgBase
-from instinctlab.motion_reference.motion_files.terrain_motion_cfg import TerrainMotionCfg as TerrainMotionCfgBase
 from instinctlab.motion_reference.utils import motion_interpolate_bilinear
 from instinctlab.sensors import get_link_prim_targets
 
@@ -29,24 +28,6 @@ _PROJECT_INSTINCT_ROOT = os.path.normpath(
 MOTION_FOLDER = os.path.join(_PROJECT_INSTINCT_ROOT, "data", "dataset_folder")
 
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_SPHEREHAND_CFG
-
-
-@configclass
-class TerrainMotionCfg(TerrainMotionCfgBase):
-    path = os.path.expanduser(MOTION_FOLDER)
-    metadata_yaml = os.path.expanduser(f"{MOTION_FOLDER}/metadata.yaml")
-    max_origins_per_motion = 49
-
-    ensure_link_below_zero_ground = False
-    motion_start_from_middle_range = [0.0, 0.0]
-    motion_start_height_offset = 0.0
-    motion_bin_length_s = 1.0
-    buffer_device = "output_device"
-    motion_interpolate_func = motion_interpolate_bilinear
-    motion_target_framerate = 30.0
-    assumed_file_framerate = 30.0
-    velocity_estimation_method = "frontbackward"
-    env_starting_stub_sampling_strategy = "concat_motion_bins"
 
 
 @configclass
@@ -98,7 +79,7 @@ motion_reference_cfg = MotionReferenceManagerCfg(
     visualizing_robot_from="reference_frame",
     visualizing_marker_types=["relative_links", "links"],
     motion_buffers={
-        "TerrainMotion": TerrainMotionCfg(),
+        "AMASSMotion": AMASSMotionCfg(),
     },
     mp_split_method="None",
 )
@@ -122,22 +103,6 @@ class G1PerceptiveShadowingEnvCfg(perceptual_cfg.PerceptiveShadowingEnvCfg):
         self.actions.joint_pos.scale = beyondmimic_action_scale
 
         MOTION_NAME = list(self.scene.motion_reference.motion_buffers.keys())[0]
-        self.scene.motion_reference.motion_buffers[MOTION_NAME].metadata_yaml = os.path.join(
-            self.scene.motion_reference.motion_buffers[MOTION_NAME].path, "metadata.yaml"
-        )
-        PLANE_TERRAIN = False
-        if PLANE_TERRAIN:
-            self.scene.motion_reference.motion_buffers.pop(MOTION_NAME)
-            self.scene.motion_reference.motion_buffers["AMASSMotion"] = AMASSMotionCfg()
-            self.scene.terrain.terrain_type = "plane"
-            self.scene.terrain.terrain_generator = None
-        else:
-            self.scene.terrain.terrain_generator.sub_terrains["motion_matched"].path = (
-                self.scene.motion_reference.motion_buffers[MOTION_NAME].path
-            )
-            self.scene.terrain.terrain_generator.sub_terrains["motion_matched"].metadata_yaml = os.path.join(
-                self.scene.motion_reference.motion_buffers[MOTION_NAME].path, "metadata.yaml"
-            )
 
         # match key links for observation terms
         self.observations.critic.link_pos.params["asset_cfg"].body_names = self.scene.motion_reference.link_of_interests
@@ -185,17 +150,6 @@ class G1PerceptiveShadowingEnvCfg_PLAY(G1PerceptiveShadowingEnvCfg):
         # self.scene.motion_reference.motion_buffers[MOTION_NAME].path = (
         #     "/localhdd/Datasets/NoKov-Marslab-Motions-instinctnpz/20251116_50cm_kneeClimbStep1/20251106_diveroll4_roadRamp_noWall"
         # )
-        self.scene.motion_reference.motion_buffers[MOTION_NAME].metadata_yaml = os.path.join(
-            self.scene.motion_reference.motion_buffers[MOTION_NAME].path, "metadata.yaml"
-        )
-        if self.scene.terrain.terrain_type == "hacked_generator":
-            self.scene.terrain.terrain_generator.sub_terrains["motion_matched"].path = (
-                self.scene.motion_reference.motion_buffers[MOTION_NAME].path
-            )
-            self.scene.terrain.terrain_generator.sub_terrains["motion_matched"].metadata_yaml = os.path.join(
-                self.scene.motion_reference.motion_buffers[MOTION_NAME].path, "metadata.yaml"
-            )
-
         # Use non-terrain-matching motion and plane to hack the scene.
         self.scene.terrain.terrain_generator.num_rows = 13
         self.scene.terrain.terrain_generator.num_cols = 13

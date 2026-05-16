@@ -45,39 +45,38 @@ class PolicyCfg(InstinctRlEncoderActorCriticCfg):
 
 @configclass
 class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
+    """Must match dagger ``perceptive_dagger/config/g1/agents/instinct_rl_vae_cfg.VaePolicyCfg`` for ``--frozen-vae-bundle``."""
+
     encoder_configs = Conv2dHeadEncoderCfg()
 
     vae_encoder_kwargs = {
-        "hidden_sizes": [256, 128, 64],
+        "hidden_sizes": [1024, 512, 512],
         "nonlinearity": "ELU",
     }
     vae_decoder_kwargs = {
-        "hidden_sizes": [512, 256, 128],
+        "hidden_sizes": [1024, 1024, 512, 512],
         "nonlinearity": "ELU",
     }
     vae_prior_kwargs = {
-        "hidden_sizes": [512, 256, 128],
+        "hidden_sizes": [1024, 512, 512],
         "nonlinearity": "ELU",
     }
     vae_latent_size = 32
-    """Decoder sees z + zp (prior mean) concatenated with aux proprio obs; train encoder only when prior/decoder are frozen."""
-    vae_decode_add_prior_mean = True
-    vae_decode_prior_mean_scale = 1.0
-    vae_project_to_sphere = True
+    vae_decode_add_prior_mean = False
+    vae_project_to_sphere = False
     vae_input_subobs_components = [
         "joint_pos_ref",
         "joint_vel_ref",
         "position_ref",
         "rotation_ref",
-        # "parallel_latent_0_depth_image",  # based on the encoder_configs in Conv2dHeadEncoderCfg
-        # "projected_gravity",
-        # "base_ang_vel",
-        # "joint_pos",
-        # "joint_vel",
-        # "last_action",
+        "parallel_latent_0_depth_image",
+        "projected_gravity",
+        "base_ang_vel",
+        "joint_pos",
+        "joint_vel",
+        "last_action",
     ]
     vae_aux_subobs_components = [
-        # "parallel_latent_0_depth_image",
         "projected_gravity",
         "base_ang_vel",
         "joint_pos",
