@@ -1,11 +1,11 @@
 import math
-import os
 from dataclasses import MISSING
+from typing import Optional
 
 import isaaclab.envs.mdp as mdp
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
-from isaaclab.managers import CurriculumTermCfg, EventTermCfg
+from isaaclab.managers import EventTermCfg
 from isaaclab.managers import ObservationGroupCfg as ObsGroupCfg
 from isaaclab.managers import ObservationTermCfg as ObsTermCfg
 from isaaclab.managers import RewardTermCfg as RewTermCfg
@@ -13,26 +13,15 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTermCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import ContactSensorCfg, RayCasterCfg, patterns
-from isaaclab.terrains import FlatPatchSamplingCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import UniformNoiseCfg
 
 import instinctlab.envs.mdp as instinct_mdp
 from instinctlab.envs.manager_based_rl_env_cfg import InstinctLabRLEnvCfg
 from instinctlab.managers import MultiRewardCfg
-from instinctlab.monitors import (
-    MonitorTermCfg,
-    MotionReferenceMonitorTerm,
-    ShadowingJointPosMonitorTerm,
-    ShadowingJointVelMonitorTerm,
-    ShadowingLinkPosMonitorTerm,
-    ShadowingPositionMonitorTerm,
-    ShadowingRotationMonitorTerm,
-)
 from instinctlab.motion_reference import MotionReferenceManagerCfg
-from instinctlab.sensors import GroupedRayCasterCfg, NoisyGroupedRayCasterCameraCfg
+from instinctlab.sensors import NoisyGroupedRayCasterCameraCfg
 import instinctlab.terrains as terrain_gen
-from instinctlab.tasks.HSI import mdp as shadowing_mdp
 from instinctlab.terrains.terrain_generator_cfg import FiledTerrainGeneratorCfg
 from instinctlab.terrains.terrain_importer_cfg import TerrainImporterCfg
 from instinctlab.utils.noise import (
@@ -66,8 +55,8 @@ class PerceptiveShadowingSceneCfg(InteractiveSceneCfg):
     # robot reference articulation
     robot_reference: ArticulationCfg = None
 
-    # motion reference
-    motion_reference: MotionReferenceManagerCfg = MISSING  # type: ignore
+    # motion reference (optional; downstream VAE no longer uses AMASS/shadowing reference)
+    motion_reference: Optional[MotionReferenceManagerCfg] = None  # type: ignore
 
     # terrain
     terrain = TerrainImporterCfg(
@@ -247,30 +236,11 @@ class PerceptiveShadowingSceneCfg(InteractiveSceneCfg):
     )
 
     def __post_init__(self):
-        if type(self.motion_reference) is type(MISSING) or not self.motion_reference.debug_vis:
+        keep_robot_reference = False
+        if self.motion_reference is not None and not isinstance(self.motion_reference, type(MISSING)):
+            keep_robot_reference = bool(getattr(self.motion_reference, "debug_vis", False))
+        if not keep_robot_reference and hasattr(self, "robot_reference"):
             delattr(self, "robot_reference")
-
-
-@configclass
-class CommandCfg:
-    position_ref_command = instinct_mdp.PositionRefCommandCfg(
-        realtime_mode=True,
-        current_state_command=False,
-        anchor_frame="robot",
-    )
-    position_b_ref_command = instinct_mdp.PositionRefCommandCfg(
-        realtime_mode=True,
-        current_state_command=False,
-        anchor_frame="reference",
-    )
-    rotation_ref_command = instinct_mdp.RotationRefCommandCfg(
-        realtime_mode=True,
-        current_state_command=False,
-        in_base_frame=True,
-        rotation_mode="tannorm",
-    )
-    joint_pos_ref_command = instinct_mdp.JointPosRefCommandCfg(current_state_command=False)
-    joint_vel_ref_command = instinct_mdp.JointVelRefCommandCfg(current_state_command=False)
 
 
 @configclass
@@ -524,42 +494,27 @@ class EventsCfg:
         },
     )
 
-    match_motion_ref_with_scene = EventTermCfg(
-        func=instinct_mdp.match_motion_ref_with_scene,
-        mode="startup",
-        params={
-            "motion_ref_cfg": SceneEntityCfg("motion_reference"),
-        },
-    )
-    reset_robot = EventTermCfg(
-        func=instinct_mdp.reset_robot_state_by_reference,
+    # Default root pose/joints from articulation cfg `init_state` + env_origins (+ small jitter)
+    reset_base = EventTermCfg(
+        func=mdp.reset_root_state_uniform,
         mode="reset",
         params={
-            "motion_ref_cfg": SceneEntityCfg("motion_reference"),
             "asset_cfg": SceneEntityCfg("robot"),
-            # reset with position offset to put the robot_reference in scene.
-            "position_offset": [0.0, 0.0, 0.0],
-            "dof_vel_ratio": 1.0,
-            "base_lin_vel_ratio": 1.0,
-            "base_ang_vel_ratio": 1.0,
-            # Pose randomization (+-5cm position, +-6degrees rotation)
-            "randomize_pose_range": {
+            "pose_range": {
                 "x": (-0.15, 0.15),
                 "y": (-0.15, 0.15),
-                "z": (-0.0, 0.0),
+                "z": (0.0, 0.0),
             },
-            # Velocity randomization (+-0.1 m/s linear, +-0.1 rad/s angular)
-            "randomize_velocity_range": {},
-            # Joint position randomization (+-0.1 rad)
-            "randomize_joint_pos_range": (-0.1, 0.1),
+            "velocity_range": {},
         },
     )
-    bin_fail_counter_smoothing = EventTermCfg(
-        func=instinct_mdp.beyondmimic_bin_fail_counter_smoothing,
-        mode="interval",
-        interval_range_s=(0.02, 0.02),  # every environment step
+    reset_robot_joints = EventTermCfg(
+        func=mdp.reset_joints_by_offset,
+        mode="reset",
         params={
-            "curriculum_name": "beyond_adaptive_sampling",
+            "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
+            "position_range": (-0.1, 0.1),
+            "velocity_range": (0.0, 0.0),
         },
     )
     # push_robot = EventTermCfg(
@@ -581,24 +536,9 @@ class EventsCfg:
 
 
 @configclass
-class CurriculumCfg:
-    beyond_adaptive_sampling = CurriculumTermCfg(  # type: ignore
-        func=instinct_mdp.BeyondConcatMotionAdaptiveWeighting,
-    )
-
-
-@configclass
 class TerminationsCfg:
     time_out = DoneTermCfg(func=mdp.time_out, time_out=True)
 
-    dataset_exhausted = DoneTermCfg(
-        func=instinct_mdp.dataset_exhausted,
-        time_out=True,
-        params={
-            "reference_cfg": SceneEntityCfg("motion_reference"),
-            "print_reason": False,
-        },
-    )
     out_of_border = DoneTermCfg(
         func=instinct_mdp.terrain_out_of_bounds,
         time_out=True,
@@ -607,79 +547,16 @@ class TerminationsCfg:
 
 
 @configclass
-class MonitorCfg:
-    dataset = MonitorTermCfg(
-        func=MotionReferenceMonitorTerm,
-        params=dict(
-            asset_cfg=SceneEntityCfg("motion_reference"),
-            sample_stat_interval=500,
-            top_n_samples=5,
-        ),
-    )
-    shadowing_position = MonitorTermCfg(
-        func=ShadowingPositionMonitorTerm,
-        params=dict(
-            robot_cfg=SceneEntityCfg("robot"),
-            motion_reference_cfg=SceneEntityCfg("motion_reference"),
-            in_base_frame=True,
-            check_at_keyframe_threshold=0.03,
-        ),
-    )
-    shadowing_rotation = MonitorTermCfg(
-        func=ShadowingRotationMonitorTerm,
-        params=dict(
-            robot_cfg=SceneEntityCfg("robot"),
-            motion_reference_cfg=SceneEntityCfg("motion_reference"),
-            masking=True,
-        ),
-    )
-    shadowing_joint_pos = MonitorTermCfg(
-        func=ShadowingJointPosMonitorTerm,
-        params=dict(
-            robot_cfg=SceneEntityCfg("robot"),
-            motion_reference_cfg=SceneEntityCfg("motion_reference"),
-            masking=True,
-        ),
-    )
-    shadowing_joint_vel = MonitorTermCfg(
-        func=ShadowingJointVelMonitorTerm,
-        params=dict(
-            robot_cfg=SceneEntityCfg("robot"),
-            motion_reference_cfg=SceneEntityCfg("motion_reference"),
-            masking=True,
-        ),
-    )
-    shadowing_link_pos_b = MonitorTermCfg(
-        func=ShadowingLinkPosMonitorTerm,
-        params=dict(
-            robot_cfg=SceneEntityCfg("robot"),
-            motion_reference_cfg=SceneEntityCfg("motion_reference"),
-            in_base_frame=True,
-            masking=True,
-        ),
-    )
-    shadowing_link_pos_w = MonitorTermCfg(
-        func=ShadowingLinkPosMonitorTerm,
-        params=dict(
-            robot_cfg=SceneEntityCfg("robot"),
-            motion_reference_cfg=SceneEntityCfg("motion_reference"),
-            in_base_frame=False,
-            masking=True,
-        ),
-    )
-
-
-@configclass
 class PerceptiveShadowingEnvCfg(InstinctLabRLEnvCfg):
     scene: PerceptiveShadowingSceneCfg = PerceptiveShadowingSceneCfg()
-    commands: CommandCfg = CommandCfg()
+    commands = None  # type: ignore[assignment]
     actions: ActionsCfg = ActionsCfg()
     observations: ObservationsCfg = ObservationsCfg()
     rewards: RewardGroupsCfg = RewardGroupsCfg()
     events: EventsCfg = EventsCfg()
-    curriculum: CurriculumCfg = CurriculumCfg()
+    curriculum = None  # type: ignore[assignment]
     terminations: TerminationsCfg = TerminationsCfg()
-    monitors: MonitorCfg = MonitorCfg()
+    monitors = None  # type: ignore[assignment]
 
     def __post_init__(self):
         # general settings
