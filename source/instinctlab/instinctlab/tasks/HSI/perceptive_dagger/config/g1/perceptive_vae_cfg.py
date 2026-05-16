@@ -102,16 +102,34 @@ motion_reference_cfg = MotionReferenceManagerCfg(
 class ObservationsCfg:
     @configclass
     class PolicyObsCfg(ObsGroupCfg):
-        joint_pos_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_pos_ref_command"})
-        joint_vel_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_vel_ref_command"})
+        joint_pos_ref = ObsTermCfg(
+            func=instinct_mdp.generated_commands_slice,
+            params={
+                "command_name": "joint_pos_ref_command",
+                "ref_length": perceptual_cfg.POLICY_REF_LENGTH,
+            },
+        )
+        joint_vel_ref = ObsTermCfg(
+            func=instinct_mdp.generated_commands_slice,
+            params={
+                "command_name": "joint_vel_ref_command",
+                "ref_length": perceptual_cfg.POLICY_REF_LENGTH,
+            },
+        )
         position_ref = ObsTermCfg(
-            func=mdp.generated_commands,
-            params={"command_name": "position_b_ref_command"},
+            func=instinct_mdp.generated_commands_slice,
+            params={
+                "command_name": "position_b_ref_command",
+                "ref_length": perceptual_cfg.POLICY_REF_LENGTH,
+            },
             noise=UniformNoiseCfg(n_min=-0.25, n_max=0.25),
         )
         rotation_ref = ObsTermCfg(
-            func=mdp.generated_commands,
-            params={"command_name": "rotation_ref_command"},
+            func=instinct_mdp.generated_commands_slice,
+            params={
+                "command_name": "rotation_ref_command",
+                "ref_length": perceptual_cfg.POLICY_REF_LENGTH,
+            },
             noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
         )
 
@@ -159,16 +177,34 @@ class ObservationsCfg:
     @configclass
     class CriticObsCfg(ObsGroupCfg):
         # Should be the same as the teacher observations.
-        joint_pos_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_pos_ref_command"})
-        joint_vel_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_vel_ref_command"})
+        joint_pos_ref = ObsTermCfg(
+            func=instinct_mdp.generated_commands_slice,
+            params={
+                "command_name": "joint_pos_ref_command",
+                "ref_length": perceptual_cfg.CRITIC_REF_LENGTH,
+            },
+        )
+        joint_vel_ref = ObsTermCfg(
+            func=instinct_mdp.generated_commands_slice,
+            params={
+                "command_name": "joint_vel_ref_command",
+                "ref_length": perceptual_cfg.CRITIC_REF_LENGTH,
+            },
+        )
         position_ref = ObsTermCfg(
-            func=mdp.generated_commands,
-            params={"command_name": "position_b_ref_command"},
+            func=instinct_mdp.generated_commands_slice,
+            params={
+                "command_name": "position_b_ref_command",
+                "ref_length": perceptual_cfg.CRITIC_REF_LENGTH,
+            },
             noise=UniformNoiseCfg(n_min=-0.25, n_max=0.25),
         )
         rotation_ref = ObsTermCfg(
-            func=mdp.generated_commands,
-            params={"command_name": "rotation_ref_command"},
+            func=instinct_mdp.generated_commands_slice,
+            params={
+                "command_name": "rotation_ref_command",
+                "ref_length": perceptual_cfg.CRITIC_REF_LENGTH,
+            },
             noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
         )
 

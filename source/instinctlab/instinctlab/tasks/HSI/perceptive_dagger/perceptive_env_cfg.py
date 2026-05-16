@@ -47,8 +47,12 @@ from instinctlab.utils.noise import (
 )
 
 # PROPRIO_HISTORY_LENGTH = 0
-PROPRIO_HISTORY_LENGTH = 4
+PROPRIO_HISTORY_LENGTH = 3
 TEACHER_PROPRIO_HISTORY_LENGTH = 8
+
+# Truncate reference command observations along the motion time axis (must be <= motion_reference.num_frames).
+POLICY_REF_LENGTH = 3
+CRITIC_REF_LENGTH = 10
 
 
 @configclass
@@ -222,16 +226,22 @@ class ObservationsCfg:
     @configclass
     class PolicyObsCfg(ObsGroupCfg):
         # Currently, just a dummy observation
-        joint_pos_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_pos_ref_command"})
-        joint_vel_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_vel_ref_command"})
+        joint_pos_ref = ObsTermCfg(
+            func=instinct_mdp.generated_commands_slice,
+            params={"command_name": "joint_pos_ref_command", "ref_length": POLICY_REF_LENGTH},
+        )
+        joint_vel_ref = ObsTermCfg(
+            func=instinct_mdp.generated_commands_slice,
+            params={"command_name": "joint_vel_ref_command", "ref_length": POLICY_REF_LENGTH},
+        )
         position_ref = ObsTermCfg(
-            func=mdp.generated_commands,
-            params={"command_name": "position_b_ref_command"},
+            func=instinct_mdp.generated_commands_slice,
+            params={"command_name": "position_b_ref_command", "ref_length": POLICY_REF_LENGTH},
             noise=UniformNoiseCfg(n_min=-0.25, n_max=0.25),
         )
         rotation_ref = ObsTermCfg(
-            func=mdp.generated_commands,
-            params={"command_name": "rotation_ref_command"},
+            func=instinct_mdp.generated_commands_slice,
+            params={"command_name": "rotation_ref_command", "ref_length": POLICY_REF_LENGTH},
             noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
         )
 
@@ -285,9 +295,18 @@ class ObservationsCfg:
         """Critic observations for BeyondMimic."""
 
         # BeyondMimic specific reference observations
-        joint_pos_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_pos_ref_command"})
-        joint_vel_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_vel_ref_command"})
-        position_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "position_ref_command"})
+        joint_pos_ref = ObsTermCfg(
+            func=instinct_mdp.generated_commands_slice,
+            params={"command_name": "joint_pos_ref_command", "ref_length": CRITIC_REF_LENGTH},
+        )
+        joint_vel_ref = ObsTermCfg(
+            func=instinct_mdp.generated_commands_slice,
+            params={"command_name": "joint_vel_ref_command", "ref_length": CRITIC_REF_LENGTH},
+        )
+        position_ref = ObsTermCfg(
+            func=instinct_mdp.generated_commands_slice,
+            params={"command_name": "position_ref_command", "ref_length": CRITIC_REF_LENGTH},
+        )
 
         # proprioception
         link_pos = ObsTermCfg(

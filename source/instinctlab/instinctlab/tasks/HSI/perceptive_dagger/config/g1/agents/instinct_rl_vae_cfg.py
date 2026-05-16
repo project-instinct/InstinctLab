@@ -50,7 +50,7 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
     encoder_configs = Conv2dHeadEncoderCfg()
 
     vae_encoder_kwargs = {
-        "hidden_sizes": [1024, 1024, 512],
+        "hidden_sizes": [1024, 512, 512],
         "nonlinearity": "ELU",
     }
     vae_decoder_kwargs = {
@@ -58,22 +58,23 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
         "nonlinearity": "ELU",
     }
     vae_prior_kwargs = {
-        "hidden_sizes": [1024, 1024, 512],
+        "hidden_sizes": [1024, 512, 512],
         "nonlinearity": "ELU",
     }
     vae_latent_size = 32
-    vae_project_to_sphere = True
+    vae_decode_add_prior_mean = False
+    vae_project_to_sphere = False
     vae_input_subobs_components = [
         "joint_pos_ref",
         "joint_vel_ref",
         "position_ref",
         "rotation_ref",
-        # "parallel_latent_0_depth_image",  # based on the encoder_configs in Conv2dHeadEncoderCfg
-        # "projected_gravity",
-        # "base_ang_vel",
-        # "joint_pos",
-        # "joint_vel",
-        # "last_action",
+        "parallel_latent_0_depth_image",  # based on the encoder_configs in Conv2dHeadEncoderCfg
+        "projected_gravity",
+        "base_ang_vel",
+        "joint_pos",
+        "joint_vel",
+        "last_action",
     ]
     vae_aux_subobs_components = [
         # "parallel_latent_0_depth_image",
@@ -101,7 +102,7 @@ class AlgorithmCfg(InstinctRlPpoAlgorithmCfg):
     using_ppo = False
     num_learning_epochs = 5
     num_mini_batches = 4
-    learning_rate = 1e-3
+    learning_rate = 3e-4
     # PPO parameters should not affect anything.
     schedule = "adaptive"
     gamma = 0.99
