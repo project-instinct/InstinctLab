@@ -65,10 +65,10 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
     vae_decode_add_prior_mean = True
     vae_project_to_sphere = False
     vae_input_subobs_components = [
-        "joint_pos_ref",
-        "joint_vel_ref",
-        "position_ref",
-        "rotation_ref",
+        # "joint_pos_ref",
+        # "joint_vel_ref",
+        # "position_ref",
+        # "rotation_ref",
         "parallel_latent_0_depth_image",
         "projected_gravity",
         "base_ang_vel",
