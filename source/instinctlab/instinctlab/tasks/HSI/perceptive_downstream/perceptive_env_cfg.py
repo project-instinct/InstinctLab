@@ -221,18 +221,18 @@ class ObservationsCfg:
     @configclass
     class PolicyObsCfg(ObsGroupCfg):
         # Currently, just a dummy observation
-        joint_pos_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_pos_ref_command"})
-        joint_vel_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_vel_ref_command"})
-        position_ref = ObsTermCfg(
-            func=mdp.generated_commands,
-            params={"command_name": "position_b_ref_command"},
-            noise=UniformNoiseCfg(n_min=-0.25, n_max=0.25),
-        )
-        rotation_ref = ObsTermCfg(
-            func=mdp.generated_commands,
-            params={"command_name": "rotation_ref_command"},
-            noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
-        )
+        # joint_pos_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_pos_ref_command"})
+        # joint_vel_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_vel_ref_command"})
+        # position_ref = ObsTermCfg(
+        #     func=mdp.generated_commands,
+        #     params={"command_name": "position_b_ref_command"},
+        #     noise=UniformNoiseCfg(n_min=-0.25, n_max=0.25),
+        # )
+        # rotation_ref = ObsTermCfg(
+        #     func=mdp.generated_commands,
+        #     params={"command_name": "rotation_ref_command"},
+        #     noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
+        # )
 
         # height_scan = ObsTermCfg(
         #     func=mdp.height_scan,
@@ -284,9 +284,9 @@ class ObservationsCfg:
         """Critic observations for BeyondMimic."""
 
         # BeyondMimic specific reference observations
-        joint_pos_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_pos_ref_command"})
-        joint_vel_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_vel_ref_command"})
-        position_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "position_ref_command"})
+        # joint_pos_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_pos_ref_command"})
+        # joint_vel_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_vel_ref_command"})
+        # position_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "position_ref_command"})
 
         # proprioception
         link_pos = ObsTermCfg(
@@ -334,57 +334,7 @@ class ObservationsCfg:
 
 @configclass
 class RewardsCfg:
-    base_position_imitation_gauss = RewTermCfg(
-        func=instinct_mdp.base_position_imitation_gauss,
-        weight=0.5,
-        params={
-            "std": 0.3,
-        },
-    )
-    base_rot_imitation_gauss = RewTermCfg(
-        func=instinct_mdp.base_rot_imitation_gauss,
-        weight=0.5,
-        params={
-            "std": 0.4,
-            "difference_type": "axis_angle",
-        },
-    )
-    link_pos_imitation_gauss = RewTermCfg(
-        func=instinct_mdp.link_pos_imitation_gauss,
-        weight=1.0,
-        params={
-            "combine_method": "mean_prod",
-            "in_base_frame": False,
-            "in_relative_world_frame": True,
-            "std": 0.3,
-        },
-    )
-    link_rot_imitation_gauss = RewTermCfg(
-        func=instinct_mdp.link_rot_imitation_gauss,
-        weight=1.0,
-        params={
-            "combine_method": "mean_prod",
-            "in_base_frame": False,
-            "in_relative_world_frame": True,
-            "std": 0.4,
-        },
-    )
-    link_lin_vel_imitation_gauss = RewTermCfg(
-        func=instinct_mdp.link_lin_vel_imitation_gauss,
-        weight=1.0,
-        params={
-            "combine_method": "mean_prod",
-            "std": 1.0,
-        },
-    )
-    link_ang_vel_imitation_gauss = RewTermCfg(
-        func=instinct_mdp.link_ang_vel_imitation_gauss,
-        weight=1.0,
-        params={
-            "combine_method": "mean_prod",
-            "std": 3.14,
-        },
-    )
+
     action_rate_l2 = RewTermCfg(func=mdp.action_rate_l2, weight=-0.1)
     joint_limit = RewTermCfg(
         func=mdp.joint_pos_limits,
@@ -574,66 +524,6 @@ class CurriculumCfg:
 @configclass
 class TerminationsCfg:
     time_out = DoneTermCfg(func=mdp.time_out, time_out=True)
-    # illegal_reset_contact = DoneTermCfg(
-    #     func=instinct_mdp.illegal_reset_contact,
-    #     time_out=True,
-    #     params={
-    #         "sensor_cfg": SceneEntityCfg(
-    #             "contact_forces",
-    #             body_names=[
-    #                 r"^(?!left_ankle_roll_link$)(?!right_ankle_roll_link$)(?!left_wrist_yaw_link$)(?!right_wrist_yaw_link$).+$"
-    #             ],
-    #         ),
-    #         "threshold": 500,
-    #         "episode_length_threshold": 2,
-    #     },
-    # )
-    base_pos_too_far = DoneTermCfg(
-        func=instinct_mdp.pos_far_from_ref,
-        time_out=False,
-        params={
-            "asset_cfg": SceneEntityCfg("robot"),
-            "reference_cfg": SceneEntityCfg("motion_reference"),
-            "distance_threshold": 0.25,
-            "check_at_keyframe_threshold": -1,
-            "print_reason": False,
-            "height_only": True,
-        },
-    )
-    base_pg_too_far = DoneTermCfg(
-        func=instinct_mdp.projected_gravity_far_from_ref,
-        time_out=False,
-        params={
-            "asset_cfg": SceneEntityCfg("robot"),
-            "reference_cfg": SceneEntityCfg("motion_reference"),
-            "projected_gravity_threshold": 0.8,
-            "check_at_keyframe_threshold": -1,
-            "z_only": False,
-            "print_reason": False,
-        },
-    )
-    link_pos_too_far = DoneTermCfg(
-        func=instinct_mdp.link_pos_far_from_ref,
-        time_out=False,
-        params={
-            "asset_cfg": SceneEntityCfg("robot"),
-            "reference_cfg": SceneEntityCfg(
-                "motion_reference",
-                body_names=[
-                    "left_ankle_roll_link",
-                    "right_ankle_roll_link",
-                    "left_wrist_yaw_link",
-                    "right_wrist_yaw_link",
-                ],
-                preserve_order=True,
-            ),
-            "distance_threshold": 0.25,
-            "in_base_frame": False,
-            "check_at_keyframe_threshold": -1,
-            "height_only": True,
-            "print_reason": False,
-        },
-    )
 
     dataset_exhausted = DoneTermCfg(
         func=instinct_mdp.dataset_exhausted,
