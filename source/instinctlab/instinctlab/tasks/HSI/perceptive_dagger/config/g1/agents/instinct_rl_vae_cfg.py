@@ -50,15 +50,15 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
     encoder_configs = Conv2dHeadEncoderCfg()
 
     vae_encoder_kwargs = {
-        "hidden_sizes": [256, 128, 64],
+        "hidden_sizes": [1024, 1024, 512],
         "nonlinearity": "ELU",
     }
     vae_decoder_kwargs = {
-        "hidden_sizes": [512, 256, 128],
+        "hidden_sizes": [1024, 1024, 512, 512],
         "nonlinearity": "ELU",
     }
     vae_prior_kwargs = {
-        "hidden_sizes": [512, 256, 128],
+        "hidden_sizes": [1024, 1024, 512],
         "nonlinearity": "ELU",
     }
     vae_latent_size = 32
@@ -109,7 +109,7 @@ class AlgorithmCfg(InstinctRlPpoAlgorithmCfg):
     desired_kl = 0.01
     max_grad_norm = 1.0
 
-    teacher_act_prob = 0.2
+    teacher_act_prob = 0.0
     # update_times_scale = 20 * int(1e3)
 
     teacher_policy_class_name = InstinctRlEncoderActorCriticCfg().class_name

@@ -108,7 +108,7 @@ class AlgorithmCfg(InstinctRlPpoAlgorithmCfg):
     desired_kl = 0.01
     max_grad_norm = 1.0
 
-    teacher_act_prob = 0.2
+    teacher_act_prob = 0.0
     # update_times_scale = 20 * int(1e3)
 
     teacher_policy_class_name = InstinctRlEncoderActorCriticCfg().class_name
