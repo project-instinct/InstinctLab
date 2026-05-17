@@ -43,8 +43,8 @@ class TerrainMotionCfg(TerrainMotionCfgBase):
     motion_bin_length_s = 1.0
     buffer_device = "output_device"
     motion_interpolate_func = motion_interpolate_bilinear
-    motion_target_framerate = 30.0
-    assumed_file_framerate = 30.0
+    motion_target_framerate = 50.0
+    assumed_file_framerate = 50.0
     velocity_estimation_method = "frontbackward"
     env_starting_stub_sampling_strategy = "concat_motion_bins"
 
@@ -59,8 +59,8 @@ class AMASSMotionCfg(AmassMotionCfgBase):
     motion_bin_length_s = 1.0
     buffer_device = "output_device"
     motion_interpolate_func = motion_interpolate_bilinear
-    motion_target_framerate = 30.0
-    assumed_file_framerate = 30.0
+    motion_target_framerate = 50.0
+    assumed_file_framerate = 50.0
     velocity_estimation_method = "frontbackward"
     env_starting_stub_sampling_strategy = "concat_motion_bins"
 
