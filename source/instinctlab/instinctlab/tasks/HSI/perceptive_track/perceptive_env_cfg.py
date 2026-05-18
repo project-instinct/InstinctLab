@@ -265,7 +265,7 @@ class ObservationsCfg:
             scale=0.05,
         )
 
-        actions = ObsTermCfg(
+        last_action = ObsTermCfg(
             func=mdp.last_action,
             history_length=ACTOR_GLOBAL_TRACKING_HISTORY_LEN,
         )
@@ -341,7 +341,7 @@ class ObservationsCfg:
             scale=0.05,
         )
 
-        actions = ObsTermCfg(
+        last_action = ObsTermCfg(
             func=mdp.last_action,
             history_length=CRITIC_GLOBAL_TRACKING_HISTORY_LEN,
         )
