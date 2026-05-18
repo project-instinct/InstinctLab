@@ -126,6 +126,12 @@ class InstinctRlVaeActorCriticCfg(InstinctRlActorCriticCfg):
     vae_project_to_sphere: bool = False
     """If True, L2-normalize the latent z (after z+zp if enabled) before concat to decoder."""
 
+    vae_encoder_mean_only: bool = False
+    """If True, encoder outputs latent mean only (no variance head); z is deterministic (z = mean)."""
+
+    explore_latent: bool = False
+    """If True, PPO samples/plans in latent z-space while env.step receives decoded joint actions."""
+
     critic_hidden_dims: list[int] = [512, 256, 128]
     """The hidden dimensions of the critic network (typically not used for VAE distillation)."""
 

@@ -53,6 +53,8 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
 
     encoder_configs = Conv2dHeadEncoderCfg()
 
+    init_noise_std = 0.1
+
     vae_encoder_kwargs = {
         "hidden_sizes": [1024, 512, 512],
         "nonlinearity": "ELU",
@@ -68,6 +70,8 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
     vae_latent_size = 32
     vae_decode_add_prior_mean = True
     vae_project_to_sphere = False
+    vae_encoder_mean_only = True
+    explore_latent = True
     vae_input_subobs_components = [
         # "joint_pos_ref",
         # "joint_vel_ref",
