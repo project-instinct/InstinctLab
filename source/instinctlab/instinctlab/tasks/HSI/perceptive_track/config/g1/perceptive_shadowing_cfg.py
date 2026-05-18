@@ -139,9 +139,11 @@ class G1PerceptiveShadowingEnvCfg(perceptual_cfg.PerceptiveShadowingEnvCfg):
                 self.scene.motion_reference.motion_buffers[MOTION_NAME].path, "metadata.yaml"
             )
 
-        # match key links for observation terms
-        self.observations.critic.link_pos.params["asset_cfg"].body_names = self.scene.motion_reference.link_of_interests
-        self.observations.critic.link_rot.params["asset_cfg"].body_names = self.scene.motion_reference.link_of_interests
+        # match key links for observation terms (if enabled in observation config)
+        if hasattr(self.observations.critic, "link_pos") and self.observations.critic.link_pos is not None:
+            self.observations.critic.link_pos.params["asset_cfg"].body_names = self.scene.motion_reference.link_of_interests
+        if hasattr(self.observations.critic, "link_rot") and self.observations.critic.link_rot is not None:
+            self.observations.critic.link_rot.params["asset_cfg"].body_names = self.scene.motion_reference.link_of_interests
 
         self.run_name = "g1Perceptive" + "".join(
             [
@@ -207,7 +209,8 @@ class G1PerceptiveShadowingEnvCfg_PLAY(G1PerceptiveShadowingEnvCfg):
         # self.scene.terrain.terrain_generator = None
 
         self.scene.camera.debug_vis = True
-        self.observations.policy.depth_image.params["debug_vis"] = True
+        if hasattr(self.observations.policy, "depth_image") and self.observations.policy.depth_image is not None:
+            self.observations.policy.depth_image.params["debug_vis"] = True
 
         # change reset robot event with more pitch_down randomization (since the robot is facing -y axis)
         # self.events.reset_robot.params["randomize_pose_range"]["roll"] = (0.0, 0.6)

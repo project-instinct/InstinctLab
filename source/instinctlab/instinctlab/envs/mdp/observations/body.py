@@ -185,6 +185,134 @@ def local_body_ang_vel(
     return local_ang_vel.reshape(env.num_envs, -1)
 
 
+def target_body_pos(
+    env: ManagerBasedEnv,
+    command_name: str = "motion_reference",
+    body_names: list[str] | None = None,
+) -> torch.Tensor:
+    """Target body positions in heading frame, relative to robot root position."""
+    motion_ref: MotionReferenceManager = env.scene[command_name]
+    robot: Articulation = env.scene["robot"]
+
+    body_indices = _get_body_indexes(motion_ref, body_names)
+
+    heading_inv = _heading_inv_quat(robot.data.root_quat_w)
+    heading_inv_ext = heading_inv.unsqueeze(1).expand(-1, len(body_indices), -1)
+
+    ref_pos_w = motion_ref.reference_frame.link_pos_w[:, 0, body_indices]
+    target = math_utils.quat_apply(heading_inv_ext, ref_pos_w - robot.data.root_pos_w.unsqueeze(1))
+    return target.reshape(env.num_envs, -1)
+
+
+def target_body_pos_rel(
+    env: ManagerBasedEnv,
+    command_name: str = "motion_reference",
+    body_names: list[str] | None = None,
+) -> torch.Tensor:
+    """Target body position error in heading frame (target - robot)."""
+    motion_ref: MotionReferenceManager = env.scene[command_name]
+    robot: Articulation = env.scene["robot"]
+
+    body_indices = _get_body_indexes(motion_ref, body_names)
+    names = [motion_ref.body_names[i] for i in body_indices]
+    robot_body_ids, _ = robot.find_bodies(names, preserve_order=True)
+
+    heading_inv = _heading_inv_quat(robot.data.root_quat_w)
+    heading_inv_ext = heading_inv.unsqueeze(1).expand(-1, len(names), -1)
+
+    ref_pos_w = motion_ref.reference_frame.link_pos_w[:, 0, body_indices]
+    err_w = ref_pos_w - robot.data.body_link_pos_w[:, robot_body_ids]
+    err_b = math_utils.quat_apply(heading_inv_ext, err_w)
+    return err_b.reshape(env.num_envs, -1)
+
+
+def target_body_rot(
+    env: ManagerBasedEnv,
+    command_name: str = "motion_reference",
+    body_names: list[str] | None = None,
+) -> torch.Tensor:
+    """Target body rotations in heading frame, in tangent-normal representation."""
+    motion_ref: MotionReferenceManager = env.scene[command_name]
+    robot: Articulation = env.scene["robot"]
+
+    body_indices = _get_body_indexes(motion_ref, body_names)
+
+    heading_inv = _heading_inv_quat(robot.data.root_quat_w)
+    heading_inv_ext = heading_inv.unsqueeze(1).expand(-1, len(body_indices), -1)
+
+    ref_quat_w = motion_ref.reference_frame.link_quat_w[:, 0, body_indices]
+    target_quat = math_utils.quat_mul(heading_inv_ext, ref_quat_w)
+    return instinct_math.quat_to_tan_norm(target_quat).reshape(env.num_envs, -1)
+
+
+def target_body_rot_rel(
+    env: ManagerBasedEnv,
+    command_name: str = "motion_reference",
+    body_names: list[str] | None = None,
+) -> torch.Tensor:
+    """Target body rotation error in heading frame (target * conj(robot))."""
+    motion_ref: MotionReferenceManager = env.scene[command_name]
+    robot: Articulation = env.scene["robot"]
+
+    body_indices = _get_body_indexes(motion_ref, body_names)
+    names = [motion_ref.body_names[i] for i in body_indices]
+    robot_body_ids, _ = robot.find_bodies(names, preserve_order=True)
+
+    heading = math_utils.yaw_quat(robot.data.root_quat_w)
+    heading_inv = math_utils.quat_inv(heading)
+    heading_ext = heading.unsqueeze(1).expand(-1, len(names), -1)
+    heading_inv_ext = heading_inv.unsqueeze(1).expand(-1, len(names), -1)
+
+    ref_quat_w = motion_ref.reference_frame.link_quat_w[:, 0, body_indices]
+    rel = math_utils.quat_mul(ref_quat_w, math_utils.quat_inv(robot.data.body_link_quat_w[:, robot_body_ids]))
+    rel = math_utils.quat_mul(math_utils.quat_mul(heading_inv_ext, rel), heading_ext)
+    return instinct_math.quat_to_tan_norm(rel).reshape(env.num_envs, -1)
+
+
+def target_body_vel_rel(
+    env: ManagerBasedEnv,
+    command_name: str = "motion_reference",
+    body_names: list[str] | None = None,
+) -> torch.Tensor:
+    """Target body linear velocity error in heading frame."""
+    motion_ref: MotionReferenceManager = env.scene[command_name]
+    robot: Articulation = env.scene["robot"]
+
+    body_indices = _get_body_indexes(motion_ref, body_names)
+    names = [motion_ref.body_names[i] for i in body_indices]
+    robot_body_ids, _ = robot.find_bodies(names, preserve_order=True)
+
+    heading_inv = _heading_inv_quat(robot.data.root_quat_w)
+    heading_inv_ext = heading_inv.unsqueeze(1).expand(-1, len(names), -1)
+
+    ref_vel_w = motion_ref.reference_frame.link_lin_vel_w[:, 0, body_indices]
+    err_w = ref_vel_w - robot.data.body_lin_vel_w[:, robot_body_ids]
+    err_b = math_utils.quat_apply(heading_inv_ext, err_w)
+    return err_b.reshape(env.num_envs, -1)
+
+
+def target_body_ang_vel_rel(
+    env: ManagerBasedEnv,
+    command_name: str = "motion_reference",
+    body_names: list[str] | None = None,
+) -> torch.Tensor:
+    """Target body angular velocity error in heading frame."""
+    motion_ref: MotionReferenceManager = env.scene[command_name]
+    robot: Articulation = env.scene["robot"]
+
+    body_indices = _get_body_indexes(motion_ref, body_names)
+    names = [motion_ref.body_names[i] for i in body_indices]
+    robot_body_ids, _ = robot.find_bodies(names, preserve_order=True)
+
+    heading_inv = _heading_inv_quat(robot.data.root_quat_w)
+    heading_inv_ext = heading_inv.unsqueeze(1).expand(-1, len(names), -1)
+
+    ref_ang_w = motion_ref.reference_frame.link_ang_vel_w[:, 0, body_indices]
+    err_w = ref_ang_w - robot.data.body_ang_vel_w[:, robot_body_ids]
+    err_b = math_utils.quat_apply(heading_inv_ext, err_w)
+    return err_b.reshape(env.num_envs, -1)
+
+
 def link_pos_b(
     env: ManagerBasedEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"), in_base_frame: bool = True
 ) -> torch.Tensor:

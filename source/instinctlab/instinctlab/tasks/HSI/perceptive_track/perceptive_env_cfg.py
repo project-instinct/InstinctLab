@@ -48,6 +48,8 @@ from instinctlab.utils.noise import (
 
 # PROPRIO_HISTORY_LENGTH = 0
 PROPRIO_HISTORY_LENGTH = 8
+ACTOR_GLOBAL_TRACKING_HISTORY_LEN = 3
+CRITIC_GLOBAL_TRACKING_HISTORY_LEN = 3
 
 
 @configclass
@@ -220,48 +222,72 @@ class ActionsCfg:
 class ObservationsCfg:
     @configclass
     class PolicyObsCfg(ObsGroupCfg):
+
         root_height = ObsTermCfg(
             func=instinct_mdp.base_height,
             noise=UniformNoiseCfg(n_min=-0.01, n_max=0.01),
-            history_length=PROPRIO_HISTORY_LENGTH,
+            history_length=ACTOR_GLOBAL_TRACKING_HISTORY_LEN,
         )
         local_body_pos = ObsTermCfg(
             func=instinct_mdp.local_body_pos,
             params={"command_name": "motion_reference"},
             noise=UniformNoiseCfg(n_min=-0.01, n_max=0.01),
-            history_length=PROPRIO_HISTORY_LENGTH,
+            history_length=ACTOR_GLOBAL_TRACKING_HISTORY_LEN,
         )
         local_body_rot = ObsTermCfg(
             func=instinct_mdp.local_body_rot,
             params={"command_name": "motion_reference"},
             noise=UniformNoiseCfg(n_min=-0.01, n_max=0.01),
-            history_length=PROPRIO_HISTORY_LENGTH,
+            history_length=ACTOR_GLOBAL_TRACKING_HISTORY_LEN,
         )
         local_body_vel = ObsTermCfg(
             func=instinct_mdp.local_body_vel,
             params={"command_name": "motion_reference"},
             noise=UniformNoiseCfg(n_min=-0.01, n_max=0.01),
-            history_length=PROPRIO_HISTORY_LENGTH,
+            history_length=ACTOR_GLOBAL_TRACKING_HISTORY_LEN,
         )
         local_body_ang_vel = ObsTermCfg(
             func=instinct_mdp.local_body_ang_vel,
             params={"command_name": "motion_reference"},
             noise=UniformNoiseCfg(n_min=-0.01, n_max=0.01),
-            history_length=PROPRIO_HISTORY_LENGTH,
+            history_length=ACTOR_GLOBAL_TRACKING_HISTORY_LEN,
         )
-        
-        # Currently, just a dummy observation
-        joint_pos_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_pos_ref_command"})
-        joint_vel_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_vel_ref_command"})
-        position_ref = ObsTermCfg(
-            func=mdp.generated_commands,
-            params={"command_name": "position_b_ref_command"},
-            noise=UniformNoiseCfg(n_min=-0.25, n_max=0.25),
+
+        joint_pos = ObsTermCfg(
+            func=mdp.joint_pos_rel,
+            noise=UniformNoiseCfg(n_min=-0.01, n_max=0.01),
+            history_length=ACTOR_GLOBAL_TRACKING_HISTORY_LEN,
         )
-        rotation_ref = ObsTermCfg(
-            func=mdp.generated_commands,
-            params={"command_name": "rotation_ref_command"},
+        joint_vel = ObsTermCfg(
+            func=mdp.joint_vel_rel,
+            noise=UniformNoiseCfg(n_min=-0.5, n_max=0.5),
+            history_length=ACTOR_GLOBAL_TRACKING_HISTORY_LEN,
+            scale=0.05,
+        )
+
+        actions = ObsTermCfg(
+            func=mdp.last_action,
+            history_length=ACTOR_GLOBAL_TRACKING_HISTORY_LEN,
+        )
+        target_body_pos = ObsTermCfg(
+            func=instinct_mdp.target_body_pos,
+            params={"command_name": "motion_reference"},
             noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
+        )
+        target_body_pos_rel = ObsTermCfg(
+            func=instinct_mdp.target_body_pos_rel,
+            params={"command_name": "motion_reference"},
+            noise=UniformNoiseCfg(n_min=-0.01, n_max=0.01),
+        )
+        target_body_rot = ObsTermCfg(
+            func=instinct_mdp.target_body_rot,
+            params={"command_name": "motion_reference"},
+            noise=UniformNoiseCfg(n_min=-0.01, n_max=0.01),
+        )
+        target_body_rot_rel = ObsTermCfg(
+            func=instinct_mdp.target_body_rot_rel,
+            params={"command_name": "motion_reference"},
+            noise=UniformNoiseCfg(n_min=-0.01, n_max=0.01),
         )
 
         height_scan = ObsTermCfg(
@@ -269,39 +295,6 @@ class ObservationsCfg:
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
             clip=[-20.0, 20.0],
         )
-        depth_image = ObsTermCfg(
-            func=instinct_mdp.visualizable_image,
-            # params={"sensor_cfg": SceneEntityCfg("camera"), "data_type": "distance_to_image_plane"},
-            params={"sensor_cfg": SceneEntityCfg("camera"), "data_type": "distance_to_image_plane_noised"},
-        )
-
-        # proprioception
-        projected_gravity = ObsTermCfg(
-            func=mdp.projected_gravity,
-            noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
-            history_length=PROPRIO_HISTORY_LENGTH,
-        )
-        # base_lin_vel = ObsTermCfg(func=mdp.base_lin_vel)
-        base_ang_vel = ObsTermCfg(
-            func=mdp.base_ang_vel,
-            noise=UniformNoiseCfg(n_min=-0.2, n_max=0.2),
-            history_length=PROPRIO_HISTORY_LENGTH,
-        )
-        joint_pos = ObsTermCfg(
-            func=mdp.joint_pos_rel,
-            noise=UniformNoiseCfg(n_min=-0.01, n_max=0.01),
-            history_length=PROPRIO_HISTORY_LENGTH,
-        )
-        joint_vel = ObsTermCfg(
-            func=mdp.joint_vel_rel,
-            noise=UniformNoiseCfg(n_min=-0.5, n_max=0.5),
-            history_length=PROPRIO_HISTORY_LENGTH,
-        )
-        last_action = ObsTermCfg(
-            func=mdp.last_action,
-            history_length=PROPRIO_HISTORY_LENGTH,
-        )
-
         def __post_init__(self):
             self.enable_corruption = True
             self.concatenate_terms = False
@@ -313,19 +306,68 @@ class ObservationsCfg:
     class CriticObsCfg(ObsGroupCfg):
         """Critic observations for BeyondMimic."""
 
-        # BeyondMimic specific reference observations
-        joint_pos_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_pos_ref_command"})
-        joint_vel_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_vel_ref_command"})
-        position_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "position_ref_command"})
-
-        # proprioception
-        link_pos = ObsTermCfg(
-            func=instinct_mdp.link_pos_b,
-            params={"asset_cfg": SceneEntityCfg(name="robot", body_names=MISSING, preserve_order=True)},
+        root_height = ObsTermCfg(
+            func=instinct_mdp.base_height,
+            history_length=CRITIC_GLOBAL_TRACKING_HISTORY_LEN,
         )
-        link_rot = ObsTermCfg(
-            func=instinct_mdp.link_tannorm_b,
-            params={"asset_cfg": SceneEntityCfg(name="robot", body_names=MISSING, preserve_order=True)},
+        local_body_pos = ObsTermCfg(
+            func=instinct_mdp.local_body_pos,
+            params={"command_name": "motion_reference"},
+            history_length=CRITIC_GLOBAL_TRACKING_HISTORY_LEN,
+        )
+        local_body_rot = ObsTermCfg(
+            func=instinct_mdp.local_body_rot,
+            params={"command_name": "motion_reference"},
+            history_length=CRITIC_GLOBAL_TRACKING_HISTORY_LEN,
+        )
+        local_body_vel = ObsTermCfg(
+            func=instinct_mdp.local_body_vel,
+            params={"command_name": "motion_reference"},
+            history_length=CRITIC_GLOBAL_TRACKING_HISTORY_LEN,
+        )
+        local_body_ang_vel = ObsTermCfg(
+            func=instinct_mdp.local_body_ang_vel,
+            params={"command_name": "motion_reference"},
+            history_length=CRITIC_GLOBAL_TRACKING_HISTORY_LEN,
+        )
+
+        joint_pos = ObsTermCfg(
+            func=mdp.joint_pos_rel,
+            history_length=CRITIC_GLOBAL_TRACKING_HISTORY_LEN,
+        )
+        joint_vel = ObsTermCfg(
+            func=mdp.joint_vel_rel,
+            history_length=CRITIC_GLOBAL_TRACKING_HISTORY_LEN,
+            scale=0.05,
+        )
+
+        actions = ObsTermCfg(
+            func=mdp.last_action,
+            history_length=CRITIC_GLOBAL_TRACKING_HISTORY_LEN,
+        )
+        target_body_pos = ObsTermCfg(
+            func=instinct_mdp.target_body_pos,
+            params={"command_name": "motion_reference"},
+        )
+        target_body_pos_rel = ObsTermCfg(
+            func=instinct_mdp.target_body_pos_rel,
+            params={"command_name": "motion_reference"},
+        )
+        target_body_rot = ObsTermCfg(
+            func=instinct_mdp.target_body_rot,
+            params={"command_name": "motion_reference"},
+        )
+        target_body_rot_rel = ObsTermCfg(
+            func=instinct_mdp.target_body_rot_rel,
+            params={"command_name": "motion_reference"},
+        )
+        target_body_vel_rel = ObsTermCfg(
+            func=instinct_mdp.target_body_vel_rel,
+            params={"command_name": "motion_reference"},
+        )
+        target_body_ang_vel_rel = ObsTermCfg(
+            func=instinct_mdp.target_body_ang_vel_rel,
+            params={"command_name": "motion_reference"},
         )
 
         height_scan = ObsTermCfg(
@@ -333,48 +375,6 @@ class ObservationsCfg:
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
             clip=[-20.0, 20.0],
         )
-
-        base_lin_vel = ObsTermCfg(
-            func=mdp.base_lin_vel,
-            history_length=PROPRIO_HISTORY_LENGTH,
-        )
-        root_height = ObsTermCfg(
-            func=instinct_mdp.base_height,
-            history_length=PROPRIO_HISTORY_LENGTH,
-        )
-        local_body_pos = ObsTermCfg(
-            func=instinct_mdp.local_body_pos,
-            history_length=PROPRIO_HISTORY_LENGTH,
-        )
-        local_body_rot = ObsTermCfg(
-            func=instinct_mdp.local_body_rot,
-            history_length=PROPRIO_HISTORY_LENGTH,
-        )
-        local_body_vel = ObsTermCfg(
-            func=instinct_mdp.local_body_vel,
-            history_length=PROPRIO_HISTORY_LENGTH,
-        )
-        local_body_ang_vel = ObsTermCfg(
-            func=instinct_mdp.local_body_ang_vel,
-            history_length=PROPRIO_HISTORY_LENGTH,
-        )
-        base_ang_vel = ObsTermCfg(
-            func=mdp.base_ang_vel,
-            history_length=PROPRIO_HISTORY_LENGTH,
-        )
-        joint_pos = ObsTermCfg(
-            func=mdp.joint_pos_rel,
-            history_length=PROPRIO_HISTORY_LENGTH,
-        )
-        joint_vel = ObsTermCfg(
-            func=mdp.joint_vel_rel,
-            history_length=PROPRIO_HISTORY_LENGTH,
-        )
-        last_action = ObsTermCfg(
-            func=mdp.last_action,
-            history_length=PROPRIO_HISTORY_LENGTH,
-        )
-
         def __post_init__(self):
             self.enable_corruption = False
             self.concatenate_terms = False
@@ -624,20 +624,7 @@ class CurriculumCfg:
 @configclass
 class TerminationsCfg:
     time_out = DoneTermCfg(func=mdp.time_out, time_out=True)
-    # illegal_reset_contact = DoneTermCfg(
-    #     func=instinct_mdp.illegal_reset_contact,
-    #     time_out=True,
-    #     params={
-    #         "sensor_cfg": SceneEntityCfg(
-    #             "contact_forces",
-    #             body_names=[
-    #                 r"^(?!left_ankle_roll_link$)(?!right_ankle_roll_link$)(?!left_wrist_yaw_link$)(?!right_wrist_yaw_link$).+$"
-    #             ],
-    #         ),
-    #         "threshold": 500,
-    #         "episode_length_threshold": 2,
-    #     },
-    # )
+
     body_pos = DoneTermCfg(
         func=instinct_mdp.bad_global_body_pos,
         time_out=False,
@@ -648,52 +635,6 @@ class TerminationsCfg:
             "disable_flag": False,
         },
     )
-    # base_pos_too_far = DoneTermCfg(
-    #     func=instinct_mdp.pos_far_from_ref,
-    #     time_out=False,
-    #     params={
-    #         "asset_cfg": SceneEntityCfg("robot"),
-    #         "reference_cfg": SceneEntityCfg("motion_reference"),
-    #         "distance_threshold": 0.25,
-    #         "check_at_keyframe_threshold": -1,
-    #         "print_reason": False,
-    #         "height_only": True,
-    #     },
-    # )
-    # base_pg_too_far = DoneTermCfg(
-    #     func=instinct_mdp.projected_gravity_far_from_ref,
-    #     time_out=False,
-    #     params={
-    #         "asset_cfg": SceneEntityCfg("robot"),
-    #         "reference_cfg": SceneEntityCfg("motion_reference"),
-    #         "projected_gravity_threshold": 0.8,
-    #         "check_at_keyframe_threshold": -1,
-    #         "z_only": False,
-    #         "print_reason": False,
-    #     },
-    # )
-    # link_pos_too_far = DoneTermCfg(
-    #     func=instinct_mdp.link_pos_far_from_ref,
-    #     time_out=False,
-    #     params={
-    #         "asset_cfg": SceneEntityCfg("robot"),
-    #         "reference_cfg": SceneEntityCfg(
-    #             "motion_reference",
-    #             body_names=[
-    #                 "left_ankle_roll_link",
-    #                 "right_ankle_roll_link",
-    #                 "left_wrist_yaw_link",
-    #                 "right_wrist_yaw_link",
-    #             ],
-    #             preserve_order=True,
-    #         ),
-    #         "distance_threshold": 0.25,
-    #         "in_base_frame": False,
-    #         "check_at_keyframe_threshold": -1,
-    #         "height_only": True,
-    #         "print_reason": False,
-    #     },
-    # )
 
     dataset_exhausted = DoneTermCfg(
         func=instinct_mdp.dataset_exhausted,
