@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from isaaclab.assets import Articulation
     from isaaclab.envs import ManagerBasedEnv
     from isaaclab.managers import ObservationTermCfg
+    from instinctlab.motion_reference import MotionReferenceManager
 
 
 class base_pos_offset_since_motion_refresh(ManagerTermBase):
@@ -72,6 +73,116 @@ def root_tannorm_w(
     root_quat_w = asset.data.root_link_quat_w
     root_tannorm = instinct_math.quat_to_tan_norm(root_quat_w)
     return root_tannorm
+
+
+def _get_body_indexes(motion_ref: MotionReferenceManager, body_names: list[str] | None) -> list[int]:
+    """Select body indices in motion reference order."""
+    if body_names is None:
+        return list(range(len(motion_ref.body_names)))
+    name_to_idx = {name: i for i, name in enumerate(motion_ref.body_names)}
+    missing = [name for name in body_names if name not in name_to_idx]
+    if missing:
+        raise ValueError(f"Body names not found in motion reference: {missing}")
+    return [name_to_idx[name] for name in body_names]
+
+
+def _heading_inv_quat(root_quat_w: torch.Tensor) -> torch.Tensor:
+    """Yaw-only inverse quaternion."""
+    return math_utils.quat_inv(math_utils.yaw_quat(root_quat_w))
+
+
+def base_height(env: ManagerBasedEnv, command_name: str = "motion_reference") -> torch.Tensor:
+    """The height of the robot root in world frame."""
+    del command_name  # keep signature aligned with command-based observation terms.
+    robot: Articulation = env.scene["robot"]
+    return robot.data.root_pos_w[:, 2:3]
+
+
+def local_body_pos(
+    env: ManagerBasedEnv,
+    command_name: str = "motion_reference",
+    body_names: list[str] | None = None,
+    anchor_body_name: str | None = None,
+) -> torch.Tensor:
+    """Body positions in yaw-heading frame, relative to robot root position."""
+    motion_ref: MotionReferenceManager = env.scene[command_name]
+    robot: Articulation = env.scene["robot"]
+
+    body_indices = _get_body_indexes(motion_ref, body_names)
+    names = [motion_ref.body_names[i] for i in body_indices]
+    robot_body_ids, _ = robot.find_bodies(names, preserve_order=True)
+
+    heading_inv = _heading_inv_quat(robot.data.root_quat_w)
+    heading_inv_ext = heading_inv.unsqueeze(1).expand(-1, len(robot_body_ids), -1)
+    rel_pos_w = robot.data.body_link_pos_w[:, robot_body_ids] - robot.data.root_pos_w.unsqueeze(1)
+    local_pos = math_utils.quat_apply(heading_inv_ext, rel_pos_w)
+
+    if anchor_body_name is None:
+        anchor_body_name = motion_ref.body_names[0] if motion_ref.body_names else None
+    if anchor_body_name is not None and anchor_body_name in names:
+        anchor_i = names.index(anchor_body_name)
+        keep_mask = torch.ones(len(names), dtype=torch.bool, device=local_pos.device)
+        keep_mask[anchor_i] = False
+        local_pos = local_pos[:, keep_mask, :]
+
+    return local_pos.reshape(env.num_envs, -1)
+
+
+def local_body_rot(
+    env: ManagerBasedEnv,
+    command_name: str = "motion_reference",
+    body_names: list[str] | None = None,
+) -> torch.Tensor:
+    """Body rotations in yaw-heading frame, in tangent-normal representation."""
+    motion_ref: MotionReferenceManager = env.scene[command_name]
+    robot: Articulation = env.scene["robot"]
+
+    body_indices = _get_body_indexes(motion_ref, body_names)
+    names = [motion_ref.body_names[i] for i in body_indices]
+    robot_body_ids, _ = robot.find_bodies(names, preserve_order=True)
+
+    heading_inv = _heading_inv_quat(robot.data.root_quat_w)
+    heading_inv_ext = heading_inv.unsqueeze(1).expand(-1, len(robot_body_ids), -1)
+    local_quat = math_utils.quat_mul(heading_inv_ext, robot.data.body_link_quat_w[:, robot_body_ids])
+    return instinct_math.quat_to_tan_norm(local_quat).reshape(env.num_envs, -1)
+
+
+def local_body_vel(
+    env: ManagerBasedEnv,
+    command_name: str = "motion_reference",
+    body_names: list[str] | None = None,
+) -> torch.Tensor:
+    """Body linear velocities in yaw-heading frame."""
+    motion_ref: MotionReferenceManager = env.scene[command_name]
+    robot: Articulation = env.scene["robot"]
+
+    body_indices = _get_body_indexes(motion_ref, body_names)
+    names = [motion_ref.body_names[i] for i in body_indices]
+    robot_body_ids, _ = robot.find_bodies(names, preserve_order=True)
+
+    heading_inv = _heading_inv_quat(robot.data.root_quat_w)
+    heading_inv_ext = heading_inv.unsqueeze(1).expand(-1, len(robot_body_ids), -1)
+    local_vel = math_utils.quat_apply(heading_inv_ext, robot.data.body_lin_vel_w[:, robot_body_ids])
+    return local_vel.reshape(env.num_envs, -1)
+
+
+def local_body_ang_vel(
+    env: ManagerBasedEnv,
+    command_name: str = "motion_reference",
+    body_names: list[str] | None = None,
+) -> torch.Tensor:
+    """Body angular velocities in yaw-heading frame."""
+    motion_ref: MotionReferenceManager = env.scene[command_name]
+    robot: Articulation = env.scene["robot"]
+
+    body_indices = _get_body_indexes(motion_ref, body_names)
+    names = [motion_ref.body_names[i] for i in body_indices]
+    robot_body_ids, _ = robot.find_bodies(names, preserve_order=True)
+
+    heading_inv = _heading_inv_quat(robot.data.root_quat_w)
+    heading_inv_ext = heading_inv.unsqueeze(1).expand(-1, len(robot_body_ids), -1)
+    local_ang_vel = math_utils.quat_apply(heading_inv_ext, robot.data.body_ang_vel_w[:, robot_body_ids])
+    return local_ang_vel.reshape(env.num_envs, -1)
 
 
 def link_pos_b(

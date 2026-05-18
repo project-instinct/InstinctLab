@@ -220,6 +220,36 @@ class ActionsCfg:
 class ObservationsCfg:
     @configclass
     class PolicyObsCfg(ObsGroupCfg):
+        root_height = ObsTermCfg(
+            func=instinct_mdp.base_height,
+            noise=UniformNoiseCfg(n_min=-0.01, n_max=0.01),
+            history_length=PROPRIO_HISTORY_LENGTH,
+        )
+        local_body_pos = ObsTermCfg(
+            func=instinct_mdp.local_body_pos,
+            params={"command_name": "motion_reference"},
+            noise=UniformNoiseCfg(n_min=-0.01, n_max=0.01),
+            history_length=PROPRIO_HISTORY_LENGTH,
+        )
+        local_body_rot = ObsTermCfg(
+            func=instinct_mdp.local_body_rot,
+            params={"command_name": "motion_reference"},
+            noise=UniformNoiseCfg(n_min=-0.01, n_max=0.01),
+            history_length=PROPRIO_HISTORY_LENGTH,
+        )
+        local_body_vel = ObsTermCfg(
+            func=instinct_mdp.local_body_vel,
+            params={"command_name": "motion_reference"},
+            noise=UniformNoiseCfg(n_min=-0.01, n_max=0.01),
+            history_length=PROPRIO_HISTORY_LENGTH,
+        )
+        local_body_ang_vel = ObsTermCfg(
+            func=instinct_mdp.local_body_ang_vel,
+            params={"command_name": "motion_reference"},
+            noise=UniformNoiseCfg(n_min=-0.01, n_max=0.01),
+            history_length=PROPRIO_HISTORY_LENGTH,
+        )
+        
         # Currently, just a dummy observation
         joint_pos_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_pos_ref_command"})
         joint_vel_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_vel_ref_command"})
@@ -306,6 +336,26 @@ class ObservationsCfg:
 
         base_lin_vel = ObsTermCfg(
             func=mdp.base_lin_vel,
+            history_length=PROPRIO_HISTORY_LENGTH,
+        )
+        root_height = ObsTermCfg(
+            func=instinct_mdp.base_height,
+            history_length=PROPRIO_HISTORY_LENGTH,
+        )
+        local_body_pos = ObsTermCfg(
+            func=instinct_mdp.local_body_pos,
+            history_length=PROPRIO_HISTORY_LENGTH,
+        )
+        local_body_rot = ObsTermCfg(
+            func=instinct_mdp.local_body_rot,
+            history_length=PROPRIO_HISTORY_LENGTH,
+        )
+        local_body_vel = ObsTermCfg(
+            func=instinct_mdp.local_body_vel,
+            history_length=PROPRIO_HISTORY_LENGTH,
+        )
+        local_body_ang_vel = ObsTermCfg(
+            func=instinct_mdp.local_body_ang_vel,
             history_length=PROPRIO_HISTORY_LENGTH,
         )
         base_ang_vel = ObsTermCfg(
