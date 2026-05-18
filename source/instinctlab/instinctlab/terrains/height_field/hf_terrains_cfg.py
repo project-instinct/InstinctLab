@@ -62,6 +62,12 @@ class PerlinInvertedPyramidStairsTerrainCfg(HfInvertedPyramidStairsTerrainCfg, W
 
 @configclass
 class PerlinDiscreteObstaclesTerrainCfg(HfDiscreteObstaclesTerrainCfg, WallTerrainCfgMixin):
+    """Discrete obstacles with optional Perlin ground.
+
+    Extends Isaac Lab ``obstacle_height_mode`` with ``"random"``: each obstacle samples height uniformly in
+    ``obstacle_height_range`` (meters), quantized by ``vertical_scale``.
+    """
+
     function = hf_terrains.perlin_discrete_obstacles_terrain
     perlin_cfg: PerlinPlaneTerrainCfg | None = None
 

@@ -213,8 +213,10 @@ def perlin_discrete_obstacles_terrain(
 
     The terrain is a flat platform at the center of the terrain with randomly generated obstacles as pillars
     with positive and negative height. The obstacles are randomly generated cuboids with a random width and
-    height. They are placed randomly on the terrain with a minimum distance of :obj:`cfg.platform_width`
-    from the center of the terrain.
+    height. For ``obstacle_height_mode``: ``fixed`` uses one height from difficulty; ``choice`` randomizes
+    sign/fraction of that height; ``random`` samples each obstacle's height uniformly in
+    ``obstacle_height_range`` (meters), independently of ``difficulty``.
+    Obstacles are placed randomly; the central square of width :obj:`cfg.platform_width` is cleared (flat platform).
 
     .. image:: ../../_static/terrains/height_field/discrete_obstacles_terrain.jpg
        :width: 40%
@@ -229,17 +231,20 @@ def perlin_discrete_obstacles_terrain(
         The shape of the array is (width, length), where width and length are the number of points
         along the x and y axis, respectively.
     """
-    # resolve terrain configuration
-    obs_height = cfg.obstacle_height_range[0] + difficulty * (
-        cfg.obstacle_height_range[1] - cfg.obstacle_height_range[0]
+    # ``fixed`` / ``choice``: one reference height from difficulty; ``random``: per-obstacle uniform in range.
+    base_height_pix = round(
+        (
+            cfg.obstacle_height_range[0]
+            + difficulty * (cfg.obstacle_height_range[1] - cfg.obstacle_height_range[0])
+        )
+        / cfg.vertical_scale
     )
 
     # switch parameters to discrete units
     # -- terrain
     width_pixels = int(cfg.size[0] / cfg.horizontal_scale)
     length_pixels = int(cfg.size[1] / cfg.horizontal_scale)
-    # -- obstacles
-    obs_height = round(obs_height / cfg.vertical_scale)
+    # -- obstacles (planar size in pixels; height sampled in the loop)
     obs_width_min = round(cfg.obstacle_width_range[0] / cfg.horizontal_scale)
     obs_width_max = round(cfg.obstacle_width_range[1] / cfg.horizontal_scale)
     # -- center of the terrain
@@ -259,11 +264,19 @@ def perlin_discrete_obstacles_terrain(
     for _ in range(cfg.num_obstacles):
         # sample size
         if cfg.obstacle_height_mode == "choice":
-            height = np.random.choice([-obs_height, -obs_height // 2, obs_height // 2, obs_height])
+            height = np.random.choice(
+                [-base_height_pix, -base_height_pix // 2, base_height_pix // 2, base_height_pix]
+            )
         elif cfg.obstacle_height_mode == "fixed":
-            height = obs_height
+            height = base_height_pix
+        elif cfg.obstacle_height_mode == "random":
+            h_m = float(np.random.uniform(cfg.obstacle_height_range[0], cfg.obstacle_height_range[1]))
+            height = round(h_m / cfg.vertical_scale)
         else:
-            raise ValueError(f"Unknown obstacle height mode '{cfg.obstacle_height_mode}'. Must be 'choice' or 'fixed'.")
+            raise ValueError(
+                f"Unknown obstacle height mode '{cfg.obstacle_height_mode}'. "
+                "Must be 'choice', 'fixed', or 'random'."
+            )
         width = round(np.random.choice(obs_width_range))
         length = round(np.random.choice(obs_length_range))
         # sample position
