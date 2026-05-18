@@ -155,6 +155,7 @@ class AlgorithmCfg(InstinctRlPpoAlgorithmCfg):
                 "target_body_rot": (84,),
                 "target_body_rot_rel": (84,),
                 "height_scan": (187,),
+                "depth_image": (1, 18, 32),
             },
             "critic": {
                 "root_height": (3, 1),
