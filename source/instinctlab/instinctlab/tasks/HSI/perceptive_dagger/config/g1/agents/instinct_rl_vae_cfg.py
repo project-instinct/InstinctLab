@@ -50,20 +50,20 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
     encoder_configs = Conv2dHeadEncoderCfg()
 
     vae_encoder_kwargs = {
-        "hidden_sizes": [1024, 512, 512],
+        "hidden_sizes": [512, 256, 128],
         "nonlinearity": "ELU",
     }
     vae_decoder_kwargs = {
-        "hidden_sizes": [1024, 1024, 512, 512],
+        "hidden_sizes": [2048, 1024, 512, 256, 128],
         "nonlinearity": "ELU",
     }
     vae_prior_kwargs = {
-        "hidden_sizes": [1024, 512, 512],
+        "hidden_sizes": [512, 256, 128],
         "nonlinearity": "ELU",
     }
     vae_latent_size = 32
     vae_decode_add_prior_mean = False
-    vae_project_to_sphere = False
+    vae_project_to_sphere = True
     vae_input_subobs_components = [
         "joint_pos_ref",
         "joint_vel_ref",
@@ -98,11 +98,11 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
 class AlgorithmCfg(InstinctRlPpoAlgorithmCfg):
     class_name = "VaeDistill"
     kl_loss_func = "kl_divergence"
-    kl_loss_coef = 0.01
+    kl_loss_coef = 0.002
     using_ppo = False
     num_learning_epochs = 5
     num_mini_batches = 4
-    learning_rate = 3e-4
+    learning_rate = 1e-3
     # PPO parameters should not affect anything.
     schedule = "adaptive"
     gamma = 0.99
@@ -117,8 +117,8 @@ class AlgorithmCfg(InstinctRlPpoAlgorithmCfg):
     teacher_policy: dict = {
         "init_noise_std": 1.0,
         # Must match the teacher PPO run's policy MLP (see that run's params/agent.yaml).
-        "actor_hidden_dims": [1024, 1024, 512, 512],
-        "critic_hidden_dims": [2048, 1024, 512, 512],
+        "actor_hidden_dims": [2048, 2048, 1024, 1024, 512, 512],
+        "critic_hidden_dims": [2048, 2048, 1024, 1024, 512, 512],
         "activation": "elu",
         "encoder_configs": {
             "depth_image": {

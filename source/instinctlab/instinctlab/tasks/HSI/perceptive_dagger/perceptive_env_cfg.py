@@ -47,7 +47,7 @@ from instinctlab.utils.noise import (
 )
 
 # PROPRIO_HISTORY_LENGTH = 0
-PROPRIO_HISTORY_LENGTH = 3
+PROPRIO_HISTORY_LENGTH = 5
 TEACHER_PROPRIO_HISTORY_LENGTH = 8
 
 # Truncate reference command observations along the motion time axis (must be <= motion_reference.num_frames).

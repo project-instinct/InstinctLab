@@ -47,29 +47,31 @@ class PolicyCfg(InstinctRlEncoderActorCriticCfg):
 class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
     """VAE policy; frozen bundle loads decoder/prior only (see ``VaeFrozenPriorPPO``).
 
-    Downstream adds ``velocity_commands`` to ``vae_input_subobs_components`` for the trainable encoder;
+    Downstream adds ``root_position_commands`` to ``vae_input_subobs_components`` for the trainable encoder;
     dagger teacher configs omit it — decoder/aux/prior tensor layouts stay compatible with ``--frozen-vae-bundle``.
     """
 
     encoder_configs = Conv2dHeadEncoderCfg()
 
-    init_noise_std = 0.1
+    init_noise_std = 0.01
 
+    # Encoder is trainable and not loaded from --frozen-vae-bundle; may differ from dagger.
     vae_encoder_kwargs = {
         "hidden_sizes": [1024, 512, 512],
         "nonlinearity": "ELU",
     }
+    # Decoder / prior must match the dagger bundle (e.g. g1_hsidagger_perceptive_vae ... vae_phase_bundle_*.pt).
     vae_decoder_kwargs = {
-        "hidden_sizes": [1024, 1024, 512, 512],
+        "hidden_sizes": [2048, 1024, 512, 256, 128],
         "nonlinearity": "ELU",
     }
     vae_prior_kwargs = {
-        "hidden_sizes": [1024, 512, 512],
+        "hidden_sizes": [512, 256, 128],
         "nonlinearity": "ELU",
     }
     vae_latent_size = 32
     vae_decode_add_prior_mean = True
-    vae_project_to_sphere = False
+    vae_project_to_sphere = True
     vae_encoder_mean_only = True
     explore_latent = True
     vae_input_subobs_components = [
@@ -79,7 +81,7 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
         # "rotation_ref",
         "parallel_latent_0_depth_image",
         "projected_gravity",
-        "velocity_commands",
+        "root_position_commands",
         "base_ang_vel",
         "joint_pos",
         "joint_vel",

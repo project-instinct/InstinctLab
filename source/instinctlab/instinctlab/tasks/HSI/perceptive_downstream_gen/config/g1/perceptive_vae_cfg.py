@@ -1,5 +1,7 @@
+import torch
+
 import isaaclab.envs.mdp as mdp
-from isaaclab.envs import ViewerCfg
+from isaaclab.envs import ManagerBasedEnv, ManagerBasedRLEnv, ViewerCfg
 from isaaclab.managers import ObservationGroupCfg as ObsGroupCfg
 from isaaclab.managers import ObservationTermCfg as ObsTermCfg
 from isaaclab.managers import RewardTermCfg as RewTermCfg
@@ -10,7 +12,7 @@ from isaaclab.utils import configclass
 from isaaclab.utils.noise import UniformNoiseCfg
 
 import instinctlab.envs.mdp as instinct_mdp
-import instinctlab.tasks.parkour.mdp as parkour_mdp
+import instinctlab.tasks.parkour.mdp as parkour_mdp  # terrain / termination utilities only
 import instinctlab.tasks.HSI.perceptive_downstream_gen.perceptive_env_cfg as perceptual_cfg
 from instinctlab.assets.unitree_g1 import (
     G1_29DOF_LINKS,
@@ -20,6 +22,44 @@ from instinctlab.assets.unitree_g1 import (
 )
 from instinctlab.monitors import ActuatorMonitorTerm, MonitorTermCfg
 from instinctlab.sensors import get_link_prim_targets
+from instinctlab.tasks.HSI.perceptive_downstream_gen.commands import RootPositionTrajectoryCommandCfg
+
+
+def root_position_command_relative(
+    env: ManagerBasedEnv,
+    command_name: str,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """World command position minus robot root world position ``(num_envs, 3)``."""
+    asset = env.scene[asset_cfg.name]
+    cmd = env.command_manager.get_command(command_name)
+    return cmd - asset.data.root_pos_w
+
+
+def track_root_pos_xy_exp(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    std: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    cmd = env.command_manager.get_command(command_name)
+    asset = env.scene[asset_cfg.name]
+    err_xy = torch.sum(torch.square(asset.data.root_pos_w[:, :2] - cmd[:, :2]), dim=-1)
+    return torch.exp(-err_xy / std**2)
+
+
+def root_position_command_error_too_large(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    max_xy_error: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Terminate when planar root XY is farther than ``max_xy_error`` from the commanded world position."""
+    cmd = env.command_manager.get_command(command_name)
+    asset = env.scene[asset_cfg.name]
+    dist_xy = torch.norm(asset.data.root_pos_w[:, :2] - cmd[:, :2], dim=-1)
+    return dist_xy > max_xy_error
+
 
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_SPHEREHAND_CFG
 # Must match frozen VAE bundle (dagger run name uses propHistory4_depthHist10Skip3).
@@ -29,28 +69,19 @@ TEACHER_PROPRIO_HISTORY_LENGTH = 8
 
 @configclass
 class CommandsCfg:
-    """Velocity / pose-style commands (same family as parkour ``base_velocity``)."""
+    """World-frame root XY trajectory over flat-patch waypoint chain (see RootPositionTrajectoryCommand)."""
 
-    base_velocity = parkour_mdp.PoseVelocityCommandCfg(
+    root_position = RootPositionTrajectoryCommandCfg(
         asset_name="robot",
-        resampling_time_range=(8.0, 12.0),
+        resampling_time_range=(30.0, 45.0),
         debug_vis=False,
-        velocity_control_stiffness=2.0,
-        heading_control_stiffness=2.0,
-        rel_standing_envs=0.05,
-        ranges=parkour_mdp.PoseVelocityCommandCfg.Ranges(
-            lin_vel_x=(0.0, 0.0), lin_vel_y=(0.0, 0.0), ang_vel_z=(-1.0, 1.0)
-        ),
-        random_velocity_terrain=None,
-        # Keys must match ``sub_terrains`` in ``PerceptiveShadowingSceneCfg.terrain`` (perceptive_env_cfg.py).
-        velocity_ranges={
-            "boxes": {"lin_vel_x": (0.45, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
-            # "mesh_boxes": {"lin_vel_x": (0.45, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
-        },
-        only_positive_lin_vel_x=True,
-        lin_vel_threshold=0.0,
-        ang_vel_threshold=0.0,
-        target_dis_threshold=0.4,
+        speed=0.2,
+        num_waypoints=8,
+        max_waypoints_stored=64,
+        target_patch_key="target",
+        arrival_tolerance=0.02,
+        command_z_offset_from_root=0.0,
+        pos_metrics_std=0.35,
     )
 
 
@@ -72,13 +103,6 @@ class ObservationsCfg:
             noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
             history_length=PROPRIO_HISTORY_LENGTH,
         )
-        velocity_commands = ObsTermCfg(
-            func=mdp.generated_commands,
-            history_length=8,
-            flatten_history_dim=True,
-            params={"command_name": "base_velocity"},
-            noise=None,
-        )
         base_ang_vel = ObsTermCfg(
             func=mdp.base_ang_vel,
             noise=UniformNoiseCfg(n_min=-0.2, n_max=0.2),
@@ -96,6 +120,13 @@ class ObservationsCfg:
         )
         last_action = ObsTermCfg(func=mdp.last_action, history_length=PROPRIO_HISTORY_LENGTH)
 
+        root_position_commands = ObsTermCfg(
+            func=root_position_command_relative,
+            history_length=8,
+            flatten_history_dim=True,
+            params={"command_name": "root_position"},
+            noise=None,
+        )
         def __post_init__(self):
             self.enable_corruption = True
             self.concatenate_terms = False
@@ -112,13 +143,6 @@ class ObservationsCfg:
             func=mdp.projected_gravity,
             noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
             history_length=TEACHER_PROPRIO_HISTORY_LENGTH,
-        )
-        velocity_commands = ObsTermCfg(
-            func=mdp.generated_commands,
-            history_length=8,
-            flatten_history_dim=True,
-            params={"command_name": "base_velocity"},
-            noise=None,
         )
         base_ang_vel = ObsTermCfg(
             func=mdp.base_ang_vel,
@@ -137,6 +161,13 @@ class ObservationsCfg:
         )
         last_action = ObsTermCfg(func=mdp.last_action, history_length=TEACHER_PROPRIO_HISTORY_LENGTH)
 
+        root_position_commands = ObsTermCfg(
+            func=root_position_command_relative,
+            history_length=8,
+            flatten_history_dim=True,
+            params={"command_name": "root_position"},
+            noise=None,
+        )
         def __post_init__(self):
             self.enable_corruption = False
             self.concatenate_terms = False
@@ -175,33 +206,14 @@ class G1PerceptiveVaePlayMonitorCfg:
 
 @configclass
 class G1PerceptiveVaeRewardsCfg(perceptual_cfg.RewardsCfg):
-    """Parkour-aligned task rewards in addition to base downstream regularizers."""
+    """Rewards aligned with ``RootPositionTrajectoryCommand`` (world XY position + planner velocity)."""
 
-    track_lin_vel_xy_exp = RewTermCfg(
-        func=parkour_mdp.track_lin_vel_xy_exp,
+    track_root_pos_xy_exp = RewTermCfg(
+        func=track_root_pos_xy_exp,
         weight=2.0,
-        params={"command_name": "base_velocity", "std": 0.5},
+        params={"command_name": "root_position", "std": 0.35},
     )
-    track_ang_vel_z_exp = RewTermCfg(
-        func=parkour_mdp.track_ang_vel_z_exp,
-        weight=2.0,
-        params={"command_name": "base_velocity", "std": 0.5},
-    )
-    heading_error = RewTermCfg(
-        func=parkour_mdp.heading_error,
-        weight=-1.0,
-        params={"command_name": "base_velocity"},
-    )
-    dont_wait = RewTermCfg(
-        func=parkour_mdp.dont_wait,
-        weight=-0.5,
-        params={"command_name": "base_velocity"},
-    )
-    stand_still = RewTermCfg(
-        func=parkour_mdp.stand_still,
-        weight=-0.3,
-        params={"command_name": "base_velocity", "offset": 4.0},
-    )
+    is_alive = RewTermCfg(func=mdp.is_alive, weight=10.0)
     action_rate_l2 = RewTermCfg(func=mdp.action_rate_l2, weight=-0.1)
     joint_limit = RewTermCfg(
         func=mdp.joint_pos_limits,
@@ -246,6 +258,15 @@ class G1PerceptiveVaeTerminationsCfg(perceptual_cfg.TerminationsCfg):
     time_out = DoneTermCfg(func=mdp.time_out, time_out=True)
 
     bad_orientation = DoneTermCfg(func=parkour_mdp.bad_orientation, params={"limit_angle": 1.0})
+
+    root_position_tracking_lost = DoneTermCfg(
+        func=root_position_command_error_too_large,
+        time_out=True,
+        params={
+            "command_name": "root_position",
+            "max_xy_error": 2.0,
+        },
+    )
     root_height = DoneTermCfg(
         func=parkour_mdp.root_height_below_env_origin_minimum,
         params={"minimum_height": 0.5},
@@ -272,7 +293,7 @@ class G1PerceptiveVaeEnvCfg(perceptual_cfg.PerceptiveShadowingEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        # PoseVelocityCommand requires flat patch sampling key ``target`` on terrain sub-terrains.
+        # RootPositionTrajectoryCommand uses ``terrain.flat_patches["target"]``; ensure patch sampling exists.
         _target_patch = FlatPatchSamplingCfg(
             num_patches=50,
             patch_radius=[0.05, 0.10, 0.15, 0.20],
@@ -324,8 +345,8 @@ class G1PerceptiveVaeEnvCfg_PLAY(G1PerceptiveVaeEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        self.scene.terrain.terrain_generator.num_rows = 13
-        self.scene.terrain.terrain_generator.num_cols = 13
+        self.scene.terrain.terrain_generator.num_rows = 1
+        self.scene.terrain.terrain_generator.num_cols = 1
 
         self.scene.camera.debug_vis = True
         self.observations.policy.depth_image.params["debug_vis"] = True
