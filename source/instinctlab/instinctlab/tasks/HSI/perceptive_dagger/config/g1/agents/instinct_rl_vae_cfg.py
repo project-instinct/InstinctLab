@@ -65,16 +65,20 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
     vae_decode_add_prior_mean = False
     vae_project_to_sphere = True
     vae_input_subobs_components = [
-        "joint_pos_ref",
-        "joint_vel_ref",
-        "position_ref",
-        "rotation_ref",
-        "parallel_latent_0_depth_image",  # based on the encoder_configs in Conv2dHeadEncoderCfg
-        "projected_gravity",
-        "base_ang_vel",
-        "joint_pos",
-        "joint_vel",
-        "last_action",
+        "target_body_pos",
+        "target_body_pos_rel",
+        "target_body_rot",
+        "target_body_rot_rel",
+        # "joint_pos_ref",
+        # "joint_vel_ref",
+        # "position_ref",
+        # "rotation_ref",
+        # "parallel_latent_0_depth_image",  # based on the encoder_configs in Conv2dHeadEncoderCfg
+        # "projected_gravity",
+        # "base_ang_vel",
+        # "joint_pos",
+        # "joint_vel",
+        # "last_action",
     ]
     vae_aux_subobs_components = [
         # "parallel_latent_0_depth_image",

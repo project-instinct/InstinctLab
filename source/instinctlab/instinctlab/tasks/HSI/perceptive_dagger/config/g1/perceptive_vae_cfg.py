@@ -104,35 +104,21 @@ motion_reference_cfg = MotionReferenceManagerCfg(
 class ObservationsCfg:
     @configclass
     class PolicyObsCfg(ObsGroupCfg):
-        joint_pos_ref = ObsTermCfg(
-            func=instinct_mdp.generated_commands_slice,
-            params={
-                "command_name": "joint_pos_ref_command",
-                "ref_length": perceptual_cfg.POLICY_REF_LENGTH,
-            },
+        target_body_pos = ObsTermCfg(
+            func=instinct_mdp.target_body_pos,
+            params={"command_name": "motion_reference"},
         )
-        joint_vel_ref = ObsTermCfg(
-            func=instinct_mdp.generated_commands_slice,
-            params={
-                "command_name": "joint_vel_ref_command",
-                "ref_length": perceptual_cfg.POLICY_REF_LENGTH,
-            },
+        target_body_pos_rel = ObsTermCfg(
+            func=instinct_mdp.target_body_pos_rel,
+            params={"command_name": "motion_reference"},
         )
-        position_ref = ObsTermCfg(
-            func=instinct_mdp.generated_commands_slice,
-            params={
-                "command_name": "position_b_ref_command",
-                "ref_length": perceptual_cfg.POLICY_REF_LENGTH,
-            },
-            noise=UniformNoiseCfg(n_min=-0.25, n_max=0.25),
+        target_body_rot = ObsTermCfg(
+            func=instinct_mdp.target_body_rot,
+            params={"command_name": "motion_reference"},
         )
-        rotation_ref = ObsTermCfg(
-            func=instinct_mdp.generated_commands_slice,
-            params={
-                "command_name": "rotation_ref_command",
-                "ref_length": perceptual_cfg.POLICY_REF_LENGTH,
-            },
-            noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
+        target_body_rot_rel = ObsTermCfg(
+            func=instinct_mdp.target_body_rot_rel,
+            params={"command_name": "motion_reference"},
         )
 
         # above are vae encoder observations
