@@ -39,6 +39,8 @@ from .perceptive_shadowing_cfg import MOTION_FOLDER
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_SPHEREHAND_CFG
 PROPRIO_HISTORY_LENGTH = 4
 TEACHER_PROPRIO_HISTORY_LENGTH = 8
+ACTOR_GLOBAL_TRACKING_HISTORY_LEN = 3
+CRITIC_GLOBAL_TRACKING_HISTORY_LEN = 3
 
 
 @configclass
@@ -177,71 +179,72 @@ class ObservationsCfg:
     @configclass
     class CriticObsCfg(ObsGroupCfg):
         # Should be the same as the teacher observations.
-        joint_pos_ref = ObsTermCfg(
-            func=instinct_mdp.generated_commands_slice,
-            params={
-                "command_name": "joint_pos_ref_command",
-                "ref_length": perceptual_cfg.CRITIC_REF_LENGTH,
-            },
+        root_height = ObsTermCfg(
+            func=instinct_mdp.base_height,
+            history_length=CRITIC_GLOBAL_TRACKING_HISTORY_LEN,
         )
-        joint_vel_ref = ObsTermCfg(
-            func=instinct_mdp.generated_commands_slice,
-            params={
-                "command_name": "joint_vel_ref_command",
-                "ref_length": perceptual_cfg.CRITIC_REF_LENGTH,
-            },
+        local_body_pos = ObsTermCfg(
+            func=instinct_mdp.local_body_pos,
+            params={"command_name": "motion_reference"},
+            history_length=CRITIC_GLOBAL_TRACKING_HISTORY_LEN,
         )
-        position_ref = ObsTermCfg(
-            func=instinct_mdp.generated_commands_slice,
-            params={
-                "command_name": "position_b_ref_command",
-                "ref_length": perceptual_cfg.CRITIC_REF_LENGTH,
-            },
-            noise=UniformNoiseCfg(n_min=-0.25, n_max=0.25),
+        local_body_rot = ObsTermCfg(
+            func=instinct_mdp.local_body_rot,
+            params={"command_name": "motion_reference"},
+            history_length=CRITIC_GLOBAL_TRACKING_HISTORY_LEN,
         )
-        rotation_ref = ObsTermCfg(
-            func=instinct_mdp.generated_commands_slice,
-            params={
-                "command_name": "rotation_ref_command",
-                "ref_length": perceptual_cfg.CRITIC_REF_LENGTH,
-            },
-            noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
+        local_body_vel = ObsTermCfg(
+            func=instinct_mdp.local_body_vel,
+            params={"command_name": "motion_reference"},
+            history_length=CRITIC_GLOBAL_TRACKING_HISTORY_LEN,
         )
-
+        local_body_ang_vel = ObsTermCfg(
+            func=instinct_mdp.local_body_ang_vel,
+            params={"command_name": "motion_reference"},
+            history_length=CRITIC_GLOBAL_TRACKING_HISTORY_LEN,
+        )
+        joint_pos = ObsTermCfg(
+            func=mdp.joint_pos_rel,
+            history_length=CRITIC_GLOBAL_TRACKING_HISTORY_LEN,
+        )
+        joint_vel = ObsTermCfg(
+            func=mdp.joint_vel_rel,
+            history_length=CRITIC_GLOBAL_TRACKING_HISTORY_LEN,
+            scale=0.05,
+        )
+        last_action = ObsTermCfg(
+            func=mdp.last_action,
+            history_length=CRITIC_GLOBAL_TRACKING_HISTORY_LEN,
+        )
+        target_body_pos = ObsTermCfg(
+            func=instinct_mdp.target_body_pos,
+            params={"command_name": "motion_reference"},
+        )
+        target_body_pos_rel = ObsTermCfg(
+            func=instinct_mdp.target_body_pos_rel,
+            params={"command_name": "motion_reference"},
+        )
+        target_body_rot = ObsTermCfg(
+            func=instinct_mdp.target_body_rot,
+            params={"command_name": "motion_reference"},
+        )
+        target_body_rot_rel = ObsTermCfg(
+            func=instinct_mdp.target_body_rot_rel,
+            params={"command_name": "motion_reference"},
+        )
+        target_body_vel_rel = ObsTermCfg(
+            func=instinct_mdp.target_body_vel_rel,
+            params={"command_name": "motion_reference"},
+        )
+        target_body_ang_vel_rel = ObsTermCfg(
+            func=instinct_mdp.target_body_ang_vel_rel,
+            params={"command_name": "motion_reference"},
+        )
         height_scan = ObsTermCfg(
             func=mdp.height_scan,
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
             clip=[-20.0, 20.0],
         )
-        depth_image = ObsTermCfg(
-            func=instinct_mdp.visualizable_image,
-            # params={"sensor_cfg": SceneEntityCfg("camera"), "data_type": "distance_to_image_plane"},
-            params={"sensor_cfg": SceneEntityCfg("camera"), "data_type": "distance_to_image_plane_noised"},
-        )
-
-        # proprioception
-        projected_gravity = ObsTermCfg(
-            func=mdp.projected_gravity,
-            noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
-            history_length=TEACHER_PROPRIO_HISTORY_LENGTH,
-        )
-        # base_lin_vel = ObsTermCfg(func=mdp.base_lin_vel)
-        base_ang_vel = ObsTermCfg(
-            func=mdp.base_ang_vel,
-            noise=UniformNoiseCfg(n_min=-0.2, n_max=0.2),
-            history_length=TEACHER_PROPRIO_HISTORY_LENGTH,
-        )
-        joint_pos = ObsTermCfg(
-            func=mdp.joint_pos_rel,
-            noise=UniformNoiseCfg(n_min=-0.01, n_max=0.01),
-            history_length=TEACHER_PROPRIO_HISTORY_LENGTH,
-        )
-        joint_vel = ObsTermCfg(
-            func=mdp.joint_vel_rel,
-            noise=UniformNoiseCfg(n_min=-0.5, n_max=0.5),
-            history_length=TEACHER_PROPRIO_HISTORY_LENGTH,
-        )
-        last_action = ObsTermCfg(func=mdp.last_action, history_length=TEACHER_PROPRIO_HISTORY_LENGTH)
 
         def __post_init__(self):
             self.enable_corruption = False
