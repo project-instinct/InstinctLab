@@ -106,7 +106,6 @@ class AlgorithmCfg(InstinctRlPpoAlgorithmCfg):
     kl_loss_coef = 0.01
     mu_temporal_loss_coef = 0.005
     mu_temporal_phi = 0.99
-    mu_temporal_chunk_size = 2048
     mu_temporal_skip_start_steps = 2
     using_ppo = False
     num_learning_epochs = 5
