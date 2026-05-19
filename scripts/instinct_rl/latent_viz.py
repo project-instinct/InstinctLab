@@ -364,13 +364,35 @@ def _write_interactive_sphere_html(
       font-weight: 600;
       font-size: 14px;
     }}
+    .legend-controls {{
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+    }}
+    .control-btn {{
+      border: 1px solid var(--border);
+      background: #11161e;
+      color: var(--text);
+      border-radius: 6px;
+      font-size: 12px;
+      padding: 4px 8px;
+      cursor: pointer;
+    }}
+    .control-btn:hover {{
+      background: #1b2330;
+    }}
     .legend-item {{
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       margin-bottom: 6px;
       font-size: 12px;
       color: var(--text);
+    }}
+    .legend-item input[type="checkbox"] {{
+      margin: 0;
+      accent-color: #6aa6ff;
+      cursor: pointer;
     }}
     .dot {{
       width: 10px;
@@ -378,6 +400,16 @@ def _write_interactive_sphere_html(
       border-radius: 50%;
       flex: 0 0 10px;
       border: 1px solid #ffffff55;
+    }}
+    .legend-name {{
+      flex: 1 1 auto;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
+    .legend-count {{
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
     }}
     .tooltip {{
       margin-top: 14px;
@@ -411,6 +443,10 @@ def _write_interactive_sphere_html(
     </div>
     <aside class="side">
       <h2 class="section-title">Legend (Top Motions)</h2>
+      <div class="legend-controls">
+        <button class="control-btn" id="showAllBtn" type="button">Show all</button>
+        <button class="control-btn" id="hideAllBtn" type="button">Hide all</button>
+      </div>
       <div id="legend"></div>
       <div class="tooltip" id="tooltip">Hover a point to view details.</div>
     </aside>
@@ -423,19 +459,14 @@ def _write_interactive_sphere_html(
     const titleNode = document.getElementById("title");
     const legendNode = document.getElementById("legend");
     const tooltipNode = document.getElementById("tooltip");
+    const showAllBtn = document.getElementById("showAllBtn");
+    const hideAllBtn = document.getElementById("hideAllBtn");
     titleNode.textContent = payload.title;
 
-    for (const item of payload.legend) {{
-      const row = document.createElement("div");
-      row.className = "legend-item";
-      const dot = document.createElement("span");
-      dot.className = "dot";
-      dot.style.background = item.color;
-      const text = document.createElement("span");
-      text.textContent = item.name;
-      row.appendChild(dot);
-      row.appendChild(text);
-      legendNode.appendChild(row);
+    const groupCounts = Object.create(null);
+    for (const p of payload.points) {{
+      const key = p.group;
+      groupCounts[key] = (groupCounts[key] || 0) + 1;
     }}
 
     const state = {{
@@ -446,7 +477,53 @@ def _write_interactive_sphere_html(
       lastX: 0,
       lastY: 0,
       projected: [],
+      visibleGroups: new Set(payload.legend.map((item) => item.name)),
     }};
+
+    function renderLegend() {{
+      legendNode.replaceChildren();
+      for (const item of payload.legend) {{
+        const row = document.createElement("label");
+        row.className = "legend-item";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = state.visibleGroups.has(item.name);
+        checkbox.addEventListener("change", () => {{
+          if (checkbox.checked) {{
+            state.visibleGroups.add(item.name);
+          }} else {{
+            state.visibleGroups.delete(item.name);
+          }}
+          draw();
+        }});
+        const dot = document.createElement("span");
+        dot.className = "dot";
+        dot.style.background = item.color;
+        const text = document.createElement("span");
+        text.className = "legend-name";
+        text.textContent = item.name;
+        text.title = item.name;
+        const count = document.createElement("span");
+        count.className = "legend-count";
+        count.textContent = "(" + String(groupCounts[item.name] || 0) + ")";
+        row.appendChild(checkbox);
+        row.appendChild(dot);
+        row.appendChild(text);
+        row.appendChild(count);
+        legendNode.appendChild(row);
+      }}
+    }}
+
+    function setAllGroupsVisible(visible) {{
+      state.visibleGroups.clear();
+      if (visible) {{
+        for (const item of payload.legend) {{
+          state.visibleGroups.add(item.name);
+        }}
+      }}
+      renderLegend();
+      draw();
+    }}
 
     function resizeCanvas() {{
       const dpr = Math.max(1, window.devicePixelRatio || 1);
@@ -539,7 +616,8 @@ def _write_interactive_sphere_html(
       ctx.clearRect(0, 0, width, height);
       drawWireframe(width, height);
 
-      state.projected = payload.points.map((p, i) => {{
+      const visiblePoints = payload.points.filter((p) => state.visibleGroups.has(p.group));
+      state.projected = visiblePoints.map((p, i) => {{
         const rp = rotatePoint(p);
         const pp = projectPoint(rp, width, height);
         return {{ idx: i, p, screen: pp }};
@@ -620,7 +698,11 @@ def _write_interactive_sphere_html(
       draw();
     }}, {{ passive: false }});
 
+    showAllBtn.addEventListener("click", () => setAllGroupsVisible(true));
+    hideAllBtn.addEventListener("click", () => setAllGroupsVisible(false));
+
     window.addEventListener("resize", resizeCanvas);
+    renderLegend();
     resizeCanvas();
   </script>
 </body>
