@@ -104,6 +104,8 @@ class AlgorithmCfg(InstinctRlPpoAlgorithmCfg):
     class_name = "VaeDistill"
     kl_loss_func = "kl_divergence"
     kl_loss_coef = 0.01
+    mu_temporal_loss_coef = 0.005
+    mu_temporal_phi = 0.99
     using_ppo = False
     num_learning_epochs = 5
     num_mini_batches = 4
