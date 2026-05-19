@@ -107,18 +107,22 @@ class ObservationsCfg:
         target_body_pos = ObsTermCfg(
             func=instinct_mdp.target_body_pos,
             params={"command_name": "motion_reference"},
+            history_length=PROPRIO_HISTORY_LENGTH,
         )
         target_body_pos_rel = ObsTermCfg(
             func=instinct_mdp.target_body_pos_rel,
             params={"command_name": "motion_reference"},
+            history_length=PROPRIO_HISTORY_LENGTH,
         )
         target_body_rot = ObsTermCfg(
             func=instinct_mdp.target_body_rot,
             params={"command_name": "motion_reference"},
+            history_length=PROPRIO_HISTORY_LENGTH,
         )
         target_body_rot_rel = ObsTermCfg(
             func=instinct_mdp.target_body_rot_rel,
             params={"command_name": "motion_reference"},
+            history_length=PROPRIO_HISTORY_LENGTH,
         )
 
         # above are vae encoder observations
