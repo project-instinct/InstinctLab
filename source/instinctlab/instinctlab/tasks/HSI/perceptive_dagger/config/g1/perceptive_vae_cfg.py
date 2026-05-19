@@ -137,6 +137,12 @@ class ObservationsCfg:
                 "history_skip_frames": 2,
             },
         )
+        height_scan = ObsTermCfg(
+            func=mdp.height_scan,
+            params={"sensor_cfg": SceneEntityCfg("height_scanner")},
+            clip=[-20.0, 20.0],
+            history_length=PROPRIO_HISTORY_LENGTH,
+        )
 
         # proprioception
         projected_gravity = ObsTermCfg(

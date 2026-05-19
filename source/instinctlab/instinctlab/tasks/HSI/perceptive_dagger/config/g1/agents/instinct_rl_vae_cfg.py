@@ -69,6 +69,7 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
         "target_body_pos_rel",
         "target_body_rot",
         "target_body_rot_rel",
+        "height_scan",
         # "joint_pos_ref",
         # "joint_vel_ref",
         # "position_ref",
@@ -102,11 +103,11 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
 class AlgorithmCfg(InstinctRlPpoAlgorithmCfg):
     class_name = "VaeDistill"
     kl_loss_func = "kl_divergence"
-    kl_loss_coef = 0.002
+    kl_loss_coef = 0.01
     using_ppo = False
     num_learning_epochs = 5
     num_mini_batches = 4
-    learning_rate = 1e-3
+    learning_rate = 3e-4
     # PPO parameters should not affect anything.
     schedule = "adaptive"
     gamma = 0.99
