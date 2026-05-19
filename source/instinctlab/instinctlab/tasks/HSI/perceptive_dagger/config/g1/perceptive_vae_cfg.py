@@ -218,20 +218,16 @@ class ObservationsCfg:
             func=instinct_mdp.target_body_rot_rel,
             params={"command_name": "motion_reference"},
         )
-        target_body_vel_rel = ObsTermCfg(
-            func=instinct_mdp.target_body_vel_rel,
-            params={"command_name": "motion_reference"},
-        )
-        target_body_ang_vel_rel = ObsTermCfg(
-            func=instinct_mdp.target_body_ang_vel_rel,
-            params={"command_name": "motion_reference"},
-        )
         height_scan = ObsTermCfg(
             func=mdp.height_scan,
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
             clip=[-20.0, 20.0],
         )
-
+        depth_image = ObsTermCfg(
+            func=instinct_mdp.visualizable_image,
+            # params={"sensor_cfg": SceneEntityCfg("camera"), "data_type": "distance_to_image_plane"},
+            params={"sensor_cfg": SceneEntityCfg("camera"), "data_type": "distance_to_image_plane_noised"},
+        )
         def __post_init__(self):
             self.enable_corruption = False
             self.concatenate_terms = False

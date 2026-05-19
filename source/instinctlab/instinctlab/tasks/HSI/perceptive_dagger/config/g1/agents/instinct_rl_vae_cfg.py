@@ -50,15 +50,15 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
     encoder_configs = Conv2dHeadEncoderCfg()
 
     vae_encoder_kwargs = {
-        "hidden_sizes": [512, 256, 128],
+        "hidden_sizes": [1024, 512, 512],
         "nonlinearity": "ELU",
     }
     vae_decoder_kwargs = {
-        "hidden_sizes": [2048, 1024, 512, 256, 128],
+        "hidden_sizes": [1024, 1024, 512, 512],
         "nonlinearity": "ELU",
     }
     vae_prior_kwargs = {
-        "hidden_sizes": [512, 256, 128],
+        "hidden_sizes": [1024, 512, 512],
         "nonlinearity": "ELU",
     }
     vae_latent_size = 32
@@ -121,8 +121,8 @@ class AlgorithmCfg(InstinctRlPpoAlgorithmCfg):
     teacher_policy: dict = {
         "init_noise_std": 1.0,
         # Must match the teacher PPO run's policy MLP (see that run's params/agent.yaml).
-        "actor_hidden_dims": [512, 256, 128],
-        "critic_hidden_dims": [512, 256, 128],
+        "actor_hidden_dims": [1024, 1024, 512, 512],
+        "critic_hidden_dims": [2048, 1024, 512, 512],
         "activation": "elu",
         "encoder_configs": {
             "depth_image": {

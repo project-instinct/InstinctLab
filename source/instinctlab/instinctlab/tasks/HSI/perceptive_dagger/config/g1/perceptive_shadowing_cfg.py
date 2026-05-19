@@ -139,10 +139,6 @@ class G1PerceptiveShadowingEnvCfg(perceptual_cfg.PerceptiveShadowingEnvCfg):
                 self.scene.motion_reference.motion_buffers[MOTION_NAME].path, "metadata.yaml"
             )
 
-        # match key links for observation terms
-        self.observations.critic.link_pos.params["asset_cfg"].body_names = self.scene.motion_reference.link_of_interests
-        self.observations.critic.link_rot.params["asset_cfg"].body_names = self.scene.motion_reference.link_of_interests
-
         self.run_name = "g1Perceptive" + "".join(
             [
                 (
