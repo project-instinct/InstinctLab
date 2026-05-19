@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import os
 from collections import Counter
 from typing import Any, Literal
@@ -11,6 +12,28 @@ import numpy as np
 import torch
 
 LEGEND_TOP_K = 15
+_COLOR_PALETTE = (
+    (0.1215686275, 0.4666666667, 0.7058823529),
+    (1.0, 0.4980392157, 0.0549019608),
+    (0.1725490196, 0.6274509804, 0.1725490196),
+    (0.8392156863, 0.1529411765, 0.1568627451),
+    (0.5803921569, 0.4039215686, 0.7411764706),
+    (0.5490196078, 0.3372549020, 0.2941176471),
+    (0.8901960784, 0.4666666667, 0.7607843137),
+    (0.4980392157, 0.4980392157, 0.4980392157),
+    (0.7372549020, 0.7411764706, 0.1333333333),
+    (0.0901960784, 0.7450980392, 0.8117647059),
+    (0.6823529412, 0.7803921569, 0.9098039216),
+    (1.0, 0.7333333333, 0.4705882353),
+    (0.5960784314, 0.8745098039, 0.5411764706),
+    (1.0, 0.5960784314, 0.5882352941),
+    (0.7725490196, 0.6901960784, 0.8352941176),
+    (0.7686274510, 0.6117647059, 0.5803921569),
+    (0.9686274510, 0.7137254902, 0.8235294118),
+    (0.7803921569, 0.7803921569, 0.7803921569),
+    (0.8588235294, 0.8588235294, 0.5529411765),
+    (0.6196078431, 0.8549019608, 0.8980392157),
+)
 
 ProjectMode = Literal["pca", "first3"]
 
@@ -215,6 +238,398 @@ def _add_unit_sphere_wireframe(ax: Any, u_segments: int = 40, v_segments: int = 
     ax.plot_wireframe(x, y, z, rstride=2, cstride=2, linewidth=0.4, alpha=0.25)
 
 
+def _rgba_to_hex(color: tuple[float, ...]) -> str:
+    r = max(0, min(255, int(round(float(color[0]) * 255.0))))
+    g = max(0, min(255, int(round(float(color[1]) * 255.0))))
+    b = max(0, min(255, int(round(float(color[2]) * 255.0))))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _write_interactive_sphere_html(
+    out_path: str,
+    *,
+    sphere3: np.ndarray,
+    motions: np.ndarray,
+    steps: np.ndarray,
+    envs: np.ndarray,
+    top: list[str],
+    color_for: dict[str, Any],
+    gray: tuple[float, float, float],
+    title: str,
+) -> None:
+    legend_names = set(top)
+    gray_hex = _rgba_to_hex(gray)
+    points: list[dict[str, Any]] = []
+    for i in range(int(sphere3.shape[0])):
+        motion_name = str(motions[i])
+        color = color_for.get(motion_name)
+        if motion_name in legend_names and color is not None:
+            color_hex = _rgba_to_hex(tuple(float(c) for c in color[:3]))
+            group = motion_name
+        else:
+            color_hex = gray_hex
+            group = "other"
+        points.append(
+            {
+                "x": float(sphere3[i, 0]),
+                "y": float(sphere3[i, 1]),
+                "z": float(sphere3[i, 2]),
+                "step": int(steps[i]),
+                "env_idx": int(envs[i]),
+                "motion_id": motion_name,
+                "group": group,
+                "color": color_hex,
+            }
+        )
+
+    legend_items = [{"name": name, "color": _rgba_to_hex(tuple(float(c) for c in color_for[name][:3]))} for name in top]
+    if any(p["group"] == "other" for p in points):
+        legend_items.append({"name": "other", "color": gray_hex})
+
+    payload = {"title": title, "points": points, "legend": legend_items}
+    payload_json = json.dumps(payload, ensure_ascii=True)
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>latent_viz sphere</title>
+  <style>
+    :root {{
+      color-scheme: dark;
+      --bg: #0f1116;
+      --panel: #181c23;
+      --text: #f2f5fa;
+      --muted: #9aa6b2;
+      --border: #2b3440;
+    }}
+    body {{
+      margin: 0;
+      font-family: Inter, Segoe UI, Arial, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+    }}
+    .wrap {{
+      display: flex;
+      flex-direction: row;
+      gap: 16px;
+      padding: 16px;
+      box-sizing: border-box;
+      min-height: 100vh;
+    }}
+    .viewer {{
+      flex: 1 1 auto;
+      min-width: 0;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      box-sizing: border-box;
+    }}
+    .title {{
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0 0 10px 0;
+    }}
+    canvas {{
+      width: 100%;
+      height: min(74vh, 900px);
+      display: block;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #0a0d12;
+      cursor: grab;
+    }}
+    canvas.dragging {{
+      cursor: grabbing;
+    }}
+    .hint {{
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 8px;
+    }}
+    .side {{
+      width: 280px;
+      flex: 0 0 280px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      box-sizing: border-box;
+      max-height: calc(100vh - 32px);
+      overflow: auto;
+    }}
+    .section-title {{
+      margin: 0 0 10px 0;
+      font-weight: 600;
+      font-size: 14px;
+    }}
+    .legend-item {{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+      font-size: 12px;
+      color: var(--text);
+    }}
+    .dot {{
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex: 0 0 10px;
+      border: 1px solid #ffffff55;
+    }}
+    .tooltip {{
+      margin-top: 14px;
+      font-size: 12px;
+      line-height: 1.45;
+      color: var(--muted);
+      white-space: pre-wrap;
+      border-top: 1px solid var(--border);
+      padding-top: 10px;
+    }}
+    @media (max-width: 980px) {{
+      .wrap {{
+        flex-direction: column;
+      }}
+      .side {{
+        width: auto;
+        flex: 1 1 auto;
+      }}
+      canvas {{
+        height: min(62vh, 720px);
+      }}
+    }}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="viewer">
+      <h1 class="title" id="title"></h1>
+      <canvas id="sphereCanvas"></canvas>
+      <div class="hint">Drag to rotate, mouse wheel to zoom, hover points to inspect metadata.</div>
+    </div>
+    <aside class="side">
+      <h2 class="section-title">Legend (Top Motions)</h2>
+      <div id="legend"></div>
+      <div class="tooltip" id="tooltip">Hover a point to view details.</div>
+    </aside>
+  </div>
+  <script>
+    "use strict";
+    const payload = {payload_json};
+    const canvas = document.getElementById("sphereCanvas");
+    const ctx = canvas.getContext("2d");
+    const titleNode = document.getElementById("title");
+    const legendNode = document.getElementById("legend");
+    const tooltipNode = document.getElementById("tooltip");
+    titleNode.textContent = payload.title;
+
+    for (const item of payload.legend) {{
+      const row = document.createElement("div");
+      row.className = "legend-item";
+      const dot = document.createElement("span");
+      dot.className = "dot";
+      dot.style.background = item.color;
+      const text = document.createElement("span");
+      text.textContent = item.name;
+      row.appendChild(dot);
+      row.appendChild(text);
+      legendNode.appendChild(row);
+    }}
+
+    const state = {{
+      yaw: 0.8,
+      pitch: 0.35,
+      zoom: 1.0,
+      dragging: false,
+      lastX: 0,
+      lastY: 0,
+      projected: [],
+    }};
+
+    function resizeCanvas() {{
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+      canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      draw();
+    }}
+
+    function rotatePoint(p) {{
+      const cy = Math.cos(state.yaw);
+      const sy = Math.sin(state.yaw);
+      const cp = Math.cos(state.pitch);
+      const sp = Math.sin(state.pitch);
+      const x1 = cy * p.x + sy * p.z;
+      const z1 = -sy * p.x + cy * p.z;
+      const y2 = cp * p.y - sp * z1;
+      const z2 = sp * p.y + cp * z1;
+      return {{ x: x1, y: y2, z: z2 }};
+    }}
+
+    function projectPoint(p3, width, height) {{
+      const cameraZ = 3.2;
+      const persp = cameraZ / (cameraZ - p3.z);
+      const scale = Math.min(width, height) * 0.36 * state.zoom;
+      return {{
+        x: width * 0.5 + p3.x * scale * persp,
+        y: height * 0.5 - p3.y * scale * persp,
+        z: p3.z,
+        size: 2.0 + 2.4 * (0.3 + Math.max(0, p3.z + 1.0) * 0.5),
+      }};
+    }}
+
+    function drawWireframe(width, height) {{
+      const rings = 10;
+      const slices = 20;
+      ctx.strokeStyle = "#8da0b333";
+      ctx.lineWidth = 1;
+
+      for (let ri = 1; ri < rings; ri += 1) {{
+        const phi = (Math.PI * ri) / rings;
+        ctx.beginPath();
+        let first = true;
+        for (let si = 0; si <= slices; si += 1) {{
+          const theta = (2 * Math.PI * si) / slices;
+          const p = {{
+            x: Math.cos(theta) * Math.sin(phi),
+            y: Math.cos(phi),
+            z: Math.sin(theta) * Math.sin(phi),
+          }};
+          const pr = projectPoint(rotatePoint(p), width, height);
+          if (first) {{
+            ctx.moveTo(pr.x, pr.y);
+            first = false;
+          }} else {{
+            ctx.lineTo(pr.x, pr.y);
+          }}
+        }}
+        ctx.stroke();
+      }}
+
+      for (let si = 0; si < slices; si += 2) {{
+        const theta = (2 * Math.PI * si) / slices;
+        ctx.beginPath();
+        let first = true;
+        for (let ri = 0; ri <= rings; ri += 1) {{
+          const phi = (Math.PI * ri) / rings;
+          const p = {{
+            x: Math.cos(theta) * Math.sin(phi),
+            y: Math.cos(phi),
+            z: Math.sin(theta) * Math.sin(phi),
+          }};
+          const pr = projectPoint(rotatePoint(p), width, height);
+          if (first) {{
+            ctx.moveTo(pr.x, pr.y);
+            first = false;
+          }} else {{
+            ctx.lineTo(pr.x, pr.y);
+          }}
+        }}
+        ctx.stroke();
+      }}
+    }}
+
+    function draw() {{
+      const rect = canvas.getBoundingClientRect();
+      const width = rect.width;
+      const height = rect.height;
+      ctx.clearRect(0, 0, width, height);
+      drawWireframe(width, height);
+
+      state.projected = payload.points.map((p, i) => {{
+        const rp = rotatePoint(p);
+        const pp = projectPoint(rp, width, height);
+        return {{ idx: i, p, screen: pp }};
+      }});
+      state.projected.sort((a, b) => a.screen.z - b.screen.z);
+
+      for (const item of state.projected) {{
+        ctx.beginPath();
+        ctx.arc(item.screen.x, item.screen.y, item.screen.size, 0, 2 * Math.PI);
+        ctx.fillStyle = item.p.color;
+        ctx.globalAlpha = 0.93;
+        ctx.fill();
+      }}
+      ctx.globalAlpha = 1;
+    }}
+
+    function updateHover(clientX, clientY) {{
+      const rect = canvas.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+      let best = null;
+      let bestDist2 = 64.0;
+      for (const item of state.projected) {{
+        const dx = item.screen.x - x;
+        const dy = item.screen.y - y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestDist2) {{
+          bestDist2 = d2;
+          best = item;
+        }}
+      }}
+      if (best) {{
+        const p = best.p;
+        tooltipNode.textContent =
+          "motion_id: " + p.motion_id + "\\n" +
+          "group: " + p.group + "\\n" +
+          "step: " + p.step + " | env_idx: " + p.env_idx + "\\n" +
+          "xyz: (" + p.x.toFixed(4) + ", " + p.y.toFixed(4) + ", " + p.z.toFixed(4) + ")";
+      }} else {{
+        tooltipNode.textContent = "Hover a point to view details.";
+      }}
+    }}
+
+    canvas.addEventListener("mousedown", (ev) => {{
+      state.dragging = true;
+      state.lastX = ev.clientX;
+      state.lastY = ev.clientY;
+      canvas.classList.add("dragging");
+    }});
+
+    window.addEventListener("mouseup", () => {{
+      state.dragging = false;
+      canvas.classList.remove("dragging");
+    }});
+
+    canvas.addEventListener("mousemove", (ev) => {{
+      if (state.dragging) {{
+        const dx = ev.clientX - state.lastX;
+        const dy = ev.clientY - state.lastY;
+        state.lastX = ev.clientX;
+        state.lastY = ev.clientY;
+        state.yaw += dx * 0.008;
+        state.pitch += dy * 0.008;
+        const lim = 1.4;
+        if (state.pitch > lim) state.pitch = lim;
+        if (state.pitch < -lim) state.pitch = -lim;
+        draw();
+      }}
+      updateHover(ev.clientX, ev.clientY);
+    }});
+
+    canvas.addEventListener("wheel", (ev) => {{
+      ev.preventDefault();
+      const factor = ev.deltaY < 0 ? 1.08 : 0.92;
+      state.zoom *= factor;
+      if (state.zoom < 0.45) state.zoom = 0.45;
+      if (state.zoom > 2.8) state.zoom = 2.8;
+      draw();
+    }}, {{ passive: false }});
+
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
+  </script>
+</body>
+</html>
+"""
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(html)
+
+
 def save_latent_visualization(
     z_rows: list[torch.Tensor],
     motion_labels: list[str],
@@ -225,7 +640,7 @@ def save_latent_visualization(
     project_mode: ProjectMode | str = "pca",
     pca_basis_path: str | None = None,
 ) -> None:
-    """Writes z_raw.npy; z_pca_points.csv, z_pca_by_motion.png; z_sphere_points.csv, z_sphere_by_motion.png.
+    """Writes z_raw.npy; z_pca_points.csv, z_pca_by_motion.png; z_sphere_points.csv, z_sphere_by_motion.png/html.
 
     Sphere coordinates follow `play_dagger.py`: NumPy SVD PCA (or first3), then row-wise normalization to S^2.
     When ``project_mode=="pca"``, a fixed basis file under ``out_dir`` is used unless ``pca_basis_path`` is set.
@@ -280,6 +695,23 @@ def save_latent_visualization(
                 ]
             )
 
+    counts = Counter(str(m) for m in motions)
+    top = [m for m, _ in counts.most_common(LEGEND_TOP_K)]
+    color_for = {name: _COLOR_PALETTE[i % len(_COLOR_PALETTE)] for i, name in enumerate(top)}
+    gray = (0.45,) * 3
+    html_sphere = os.path.join(out_dir, "z_sphere_by_motion.html")
+    _write_interactive_sphere_html(
+        html_sphere,
+        sphere3=sphere3,
+        motions=motions,
+        steps=steps,
+        envs=envs,
+        top=top,
+        color_for=color_for,
+        gray=gray,
+        title=f"VAE z on sphere (N={sphere3.shape[0]}, z_dim={z_np.shape[1]}, mode={project_mode})",
+    )
+
     try:
         import matplotlib
 
@@ -288,15 +720,9 @@ def save_latent_visualization(
         from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
     except ImportError as e:
         print(
-            f"[latent_viz] matplotlib missing; wrote numpy/csv only: {z_raw_path}, {csv_path}, {sphere_csv_path}. ({e})"
+            f"[latent_viz] matplotlib missing; wrote numpy/csv/html: {z_raw_path}, {csv_path}, {sphere_csv_path}, {html_sphere}. ({e})"
         )
         return
-
-    counts = Counter(str(m) for m in motions)
-    top = [m for m, _ in counts.most_common(LEGEND_TOP_K)]
-    cmap = plt.get_cmap("tab20")
-    color_for = {name: cmap(i % 20) for i, name in enumerate(top)}
-    gray = (0.45,) * 3
 
     fig, ax = plt.subplots(figsize=(9, 7))
     for name in top:
@@ -366,5 +792,5 @@ def save_latent_visualization(
     fig3.savefig(png_sphere, dpi=220, bbox_inches="tight")
     plt.close(fig3)
     print(
-        f"[latent_viz] Wrote {z_raw_path}, {csv_path}, {png}, {sphere_csv_path}, {png_sphere}"
+        f"[latent_viz] Wrote {z_raw_path}, {csv_path}, {png}, {sphere_csv_path}, {png_sphere}, {html_sphere}"
     )
