@@ -273,21 +273,25 @@ class ObservationsCfg:
             func=instinct_mdp.target_body_pos,
             params={"command_name": "motion_reference"},
             noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
+            history_length=ACTOR_GLOBAL_TRACKING_HISTORY_LEN,
         )
         target_body_pos_rel = ObsTermCfg(
             func=instinct_mdp.target_body_pos_rel,
             params={"command_name": "motion_reference"},
             noise=UniformNoiseCfg(n_min=-0.01, n_max=0.01),
+            history_length=ACTOR_GLOBAL_TRACKING_HISTORY_LEN,
         )
         target_body_rot = ObsTermCfg(
             func=instinct_mdp.target_body_rot,
             params={"command_name": "motion_reference"},
             noise=UniformNoiseCfg(n_min=-0.01, n_max=0.01),
+            history_length=ACTOR_GLOBAL_TRACKING_HISTORY_LEN,
         )
         target_body_rot_rel = ObsTermCfg(
             func=instinct_mdp.target_body_rot_rel,
             params={"command_name": "motion_reference"},
             noise=UniformNoiseCfg(n_min=-0.01, n_max=0.01),
+            history_length=ACTOR_GLOBAL_TRACKING_HISTORY_LEN,
         )
 
         height_scan = ObsTermCfg(
@@ -353,26 +357,32 @@ class ObservationsCfg:
         target_body_pos = ObsTermCfg(
             func=instinct_mdp.target_body_pos,
             params={"command_name": "motion_reference"},
+            history_length=CRITIC_GLOBAL_TRACKING_HISTORY_LEN,
         )
         target_body_pos_rel = ObsTermCfg(
             func=instinct_mdp.target_body_pos_rel,
             params={"command_name": "motion_reference"},
+            history_length=CRITIC_GLOBAL_TRACKING_HISTORY_LEN,
         )
         target_body_rot = ObsTermCfg(
             func=instinct_mdp.target_body_rot,
             params={"command_name": "motion_reference"},
+            history_length=CRITIC_GLOBAL_TRACKING_HISTORY_LEN,
         )
         target_body_rot_rel = ObsTermCfg(
             func=instinct_mdp.target_body_rot_rel,
             params={"command_name": "motion_reference"},
+            history_length=CRITIC_GLOBAL_TRACKING_HISTORY_LEN,
         )
         target_body_vel_rel = ObsTermCfg(
             func=instinct_mdp.target_body_vel_rel,
             params={"command_name": "motion_reference"},
+            history_length=CRITIC_GLOBAL_TRACKING_HISTORY_LEN,
         )
         target_body_ang_vel_rel = ObsTermCfg(
             func=instinct_mdp.target_body_ang_vel_rel,
             params={"command_name": "motion_reference"},
+            history_length=CRITIC_GLOBAL_TRACKING_HISTORY_LEN,
         )
 
         height_scan = ObsTermCfg(
