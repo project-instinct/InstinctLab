@@ -125,6 +125,7 @@ class AlgorithmCfg(InstinctRlPpoAlgorithmCfg):
     frozen_vae_bundle = None
     freeze_prior = True
     freeze_decoder = True
+    freeze_depth_encoder = True
 
 
 @configclass

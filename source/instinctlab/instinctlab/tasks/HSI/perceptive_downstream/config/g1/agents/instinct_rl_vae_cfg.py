@@ -53,7 +53,7 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
 
     encoder_configs = Conv2dHeadEncoderCfg()
 
-    init_noise_std = 0.1
+    init_noise_std = 1.0
 
     vae_encoder_kwargs = {
         "hidden_sizes": [1024, 512, 512],
@@ -67,9 +67,10 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
         "hidden_sizes": [1024, 512, 512],
         "nonlinearity": "ELU",
     }
-    vae_latent_size = 32
+    # Must match dagger bundle (e.g. 20260519 ... vae_phase_bundle_*.pt); latent 32 only for legacy bundles.
+    vae_latent_size = 64
     vae_decode_add_prior_mean = True
-    vae_project_to_sphere = False
+    vae_project_to_sphere = True
     vae_encoder_mean_only = True
     explore_latent = True
     vae_input_subobs_components = [
@@ -123,6 +124,7 @@ class AlgorithmCfg(InstinctRlPpoAlgorithmCfg):
     frozen_vae_bundle = None
     freeze_prior = True
     freeze_decoder = True
+    freeze_depth_encoder = True
 
 
 @configclass

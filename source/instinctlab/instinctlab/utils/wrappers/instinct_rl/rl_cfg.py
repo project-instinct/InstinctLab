@@ -245,6 +245,9 @@ class InstinctRlPpoAlgorithmCfg:
     freeze_decoder: bool = True
     """If True and frozen_vae_bundle is set, load decoder weights and freeze decoder."""
 
+    freeze_depth_encoder: bool = False
+    """If True and frozen_vae_bundle is set, load and freeze depth encoder weights in actor_critic.encoders."""
+
 
 @configclass
 class InstinctRlNormalizerCfg:
