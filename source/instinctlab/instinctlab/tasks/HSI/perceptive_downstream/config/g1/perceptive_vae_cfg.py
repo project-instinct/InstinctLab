@@ -43,7 +43,7 @@ class CommandsCfg:
         ),
         random_velocity_terrain=None,
         velocity_ranges={
-            "perlin_rough": {"lin_vel_x": (0.45, 1.0), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
+            "perlin_rough": {"lin_vel_x": (0.0, 0.0), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
         },
         only_positive_lin_vel_x=True,
         lin_vel_threshold=0.0,
@@ -185,7 +185,7 @@ class G1PerceptiveVaeRewardsCfg(perceptual_cfg.RewardsCfg):
     #     weight=2.0,
     #     params={"command_name": "base_velocity", "std": 0.5},
     # )
-    is_alive = RewTermCfg(func=mdp.is_alive, weight=10.0)
+    is_alive = RewTermCfg(func=mdp.is_alive, weight=3.0)
     # heading_error = RewTermCfg(
     #     func=parkour_mdp.heading_error,
     #     weight=-1.0,
@@ -196,11 +196,11 @@ class G1PerceptiveVaeRewardsCfg(perceptual_cfg.RewardsCfg):
     #     weight=-0.5,
     #     params={"command_name": "base_velocity"},
     # )
-    # stand_still = RewTermCfg(
-    #     func=parkour_mdp.stand_still,
-    #     weight=-0.3,
-    #     params={"command_name": "base_velocity", "offset": 4.0},
-    # )
+    stand_still = RewTermCfg(
+        func=parkour_mdp.stand_still,
+        weight=-0.3,
+        params={"command_name": "base_velocity", "offset": 4.0},
+    )
     action_rate_l2 = RewTermCfg(func=mdp.action_rate_l2, weight=-0.1)
     joint_limit = RewTermCfg(
         func=mdp.joint_pos_limits,
