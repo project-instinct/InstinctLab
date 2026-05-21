@@ -1,11 +1,11 @@
 import math
-import os
 from dataclasses import MISSING
+from typing import Optional
 
 import isaaclab.envs.mdp as mdp
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
-from isaaclab.managers import CurriculumTermCfg, EventTermCfg
+from isaaclab.managers import EventTermCfg
 from isaaclab.managers import ObservationGroupCfg as ObsGroupCfg
 from isaaclab.managers import ObservationTermCfg as ObsTermCfg
 from isaaclab.managers import RewardTermCfg as RewTermCfg
@@ -13,28 +13,17 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTermCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import ContactSensorCfg, RayCasterCfg, patterns
-from isaaclab.terrains import FlatPatchSamplingCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import UniformNoiseCfg
 
 import instinctlab.envs.mdp as instinct_mdp
 from instinctlab.envs.manager_based_rl_env_cfg import InstinctLabRLEnvCfg
 from instinctlab.managers import MultiRewardCfg
-from instinctlab.monitors import (
-    MonitorTermCfg,
-    MotionReferenceMonitorTerm,
-    ShadowingJointPosMonitorTerm,
-    ShadowingJointVelMonitorTerm,
-    ShadowingLinkPosMonitorTerm,
-    ShadowingPositionMonitorTerm,
-    ShadowingRotationMonitorTerm,
-)
 from instinctlab.motion_reference import MotionReferenceManagerCfg
-from instinctlab.sensors import GroupedRayCasterCfg, NoisyGroupedRayCasterCameraCfg
-from instinctlab.tasks.HSI import mdp as shadowing_mdp
+from instinctlab.sensors import NoisyGroupedRayCasterCameraCfg
+import instinctlab.terrains as terrain_gen
 from instinctlab.terrains.terrain_generator_cfg import FiledTerrainGeneratorCfg
 from instinctlab.terrains.terrain_importer_cfg import TerrainImporterCfg
-from instinctlab.terrains.trimesh import MotionMatchedTerrainCfg
 from instinctlab.utils.noise import (
     CropAndResizeCfg,
     DepthArtifactNoiseCfg,
@@ -47,8 +36,7 @@ from instinctlab.utils.noise import (
 )
 
 # PROPRIO_HISTORY_LENGTH = 0
-PROPRIO_HISTORY_LENGTH = 3
-TEACHER_PROPRIO_HISTORY_LENGTH = 8
+PROPRIO_HISTORY_LENGTH = 8
 
 # Truncate reference command observations along the motion time axis (must be <= motion_reference.num_frames).
 POLICY_REF_LENGTH = 3
@@ -67,8 +55,8 @@ class PerceptiveShadowingSceneCfg(InteractiveSceneCfg):
     # robot reference articulation
     robot_reference: ArticulationCfg = None
 
-    # motion reference
-    motion_reference: MotionReferenceManagerCfg = MISSING  # type: ignore
+    # motion reference (optional; downstream VAE no longer uses AMASS/shadowing reference)
+    motion_reference: Optional[MotionReferenceManagerCfg] = None  # type: ignore
 
     # terrain
     terrain = TerrainImporterCfg(
@@ -77,14 +65,29 @@ class PerceptiveShadowingSceneCfg(InteractiveSceneCfg):
         # terrain_generator=None,
         terrain_type="hacked_generator",
         terrain_generator=FiledTerrainGeneratorCfg(
+            seed=0,
             size=(20, 20),
             border_width=0.0,
             border_height=0.0,
-            num_rows=13,
-            num_cols=13,
+            num_rows=4,
+            num_cols=4,
+            # Use 0.1 so (size / horizontal_scale) stays representable; 0.05 + inner M=379 gives
+            # int(M * 0.05 / 0.05) == 378 (float error) vs height buffer 379 — broadcast error.
+            horizontal_scale=0.1,
+            vertical_scale=0.01,
+            slope_threshold=1.0,
+            use_cache=False,
+            curriculum=False,
             sub_terrains={
-                "motion_matched": MotionMatchedTerrainCfg(
+                "perlin_rough": terrain_gen.PerlinPlaneTerrainCfg(
                     proportion=1.0,
+                    noise_scale=[0.0, 0.08],
+                    noise_frequency=20,
+                    fractal_octaves=2,
+                    fractal_lacunarity=2.0,
+                    fractal_gain=0.25,
+                    centering=True,
+                    wall_prob=[0.0, 0.0, 0.0, 0.0],
                 ),
             },
         ),
@@ -186,30 +189,11 @@ class PerceptiveShadowingSceneCfg(InteractiveSceneCfg):
     )
 
     def __post_init__(self):
-        if type(self.motion_reference) is type(MISSING) or not self.motion_reference.debug_vis:
+        keep_robot_reference = False
+        if self.motion_reference is not None and not isinstance(self.motion_reference, type(MISSING)):
+            keep_robot_reference = bool(getattr(self.motion_reference, "debug_vis", False))
+        if not keep_robot_reference and hasattr(self, "robot_reference"):
             delattr(self, "robot_reference")
-
-
-@configclass
-class CommandCfg:
-    position_ref_command = instinct_mdp.PositionRefCommandCfg(
-        realtime_mode=True,
-        current_state_command=False,
-        anchor_frame="robot",
-    )
-    position_b_ref_command = instinct_mdp.PositionRefCommandCfg(
-        realtime_mode=True,
-        current_state_command=False,
-        anchor_frame="reference",
-    )
-    rotation_ref_command = instinct_mdp.RotationRefCommandCfg(
-        realtime_mode=True,
-        current_state_command=False,
-        in_base_frame=True,
-        rotation_mode="tannorm",
-    )
-    joint_pos_ref_command = instinct_mdp.JointPosRefCommandCfg(current_state_command=False)
-    joint_vel_ref_command = instinct_mdp.JointVelRefCommandCfg(current_state_command=False)
 
 
 @configclass
@@ -226,24 +210,18 @@ class ObservationsCfg:
     @configclass
     class PolicyObsCfg(ObsGroupCfg):
         # Currently, just a dummy observation
-        joint_pos_ref = ObsTermCfg(
-            func=instinct_mdp.generated_commands_slice,
-            params={"command_name": "joint_pos_ref_command", "ref_length": POLICY_REF_LENGTH},
-        )
-        joint_vel_ref = ObsTermCfg(
-            func=instinct_mdp.generated_commands_slice,
-            params={"command_name": "joint_vel_ref_command", "ref_length": POLICY_REF_LENGTH},
-        )
-        position_ref = ObsTermCfg(
-            func=instinct_mdp.generated_commands_slice,
-            params={"command_name": "position_b_ref_command", "ref_length": POLICY_REF_LENGTH},
-            noise=UniformNoiseCfg(n_min=-0.25, n_max=0.25),
-        )
-        rotation_ref = ObsTermCfg(
-            func=instinct_mdp.generated_commands_slice,
-            params={"command_name": "rotation_ref_command", "ref_length": POLICY_REF_LENGTH},
-            noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
-        )
+        # joint_pos_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_pos_ref_command"})
+        # joint_vel_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_vel_ref_command"})
+        # position_ref = ObsTermCfg(
+        #     func=mdp.generated_commands,
+        #     params={"command_name": "position_b_ref_command"},
+        #     noise=UniformNoiseCfg(n_min=-0.25, n_max=0.25),
+        # )
+        # rotation_ref = ObsTermCfg(
+        #     func=mdp.generated_commands,
+        #     params={"command_name": "rotation_ref_command"},
+        #     noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
+        # )
 
         # height_scan = ObsTermCfg(
         #     func=mdp.height_scan,
@@ -295,18 +273,9 @@ class ObservationsCfg:
         """Critic observations for BeyondMimic."""
 
         # BeyondMimic specific reference observations
-        joint_pos_ref = ObsTermCfg(
-            func=instinct_mdp.generated_commands_slice,
-            params={"command_name": "joint_pos_ref_command", "ref_length": CRITIC_REF_LENGTH},
-        )
-        joint_vel_ref = ObsTermCfg(
-            func=instinct_mdp.generated_commands_slice,
-            params={"command_name": "joint_vel_ref_command", "ref_length": CRITIC_REF_LENGTH},
-        )
-        position_ref = ObsTermCfg(
-            func=instinct_mdp.generated_commands_slice,
-            params={"command_name": "position_ref_command", "ref_length": CRITIC_REF_LENGTH},
-        )
+        # joint_pos_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_pos_ref_command"})
+        # joint_vel_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_vel_ref_command"})
+        # position_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "position_ref_command"})
 
         # proprioception
         link_pos = ObsTermCfg(
@@ -326,23 +295,23 @@ class ObservationsCfg:
 
         base_lin_vel = ObsTermCfg(
             func=mdp.base_lin_vel,
-            history_length=TEACHER_PROPRIO_HISTORY_LENGTH,
+            history_length=PROPRIO_HISTORY_LENGTH,
         )
         base_ang_vel = ObsTermCfg(
             func=mdp.base_ang_vel,
-            history_length=TEACHER_PROPRIO_HISTORY_LENGTH,
+            history_length=PROPRIO_HISTORY_LENGTH,
         )
         joint_pos = ObsTermCfg(
             func=mdp.joint_pos_rel,
-            history_length=TEACHER_PROPRIO_HISTORY_LENGTH,
+            history_length=PROPRIO_HISTORY_LENGTH,
         )
         joint_vel = ObsTermCfg(
             func=mdp.joint_vel_rel,
-            history_length=TEACHER_PROPRIO_HISTORY_LENGTH,
+            history_length=PROPRIO_HISTORY_LENGTH,
         )
         last_action = ObsTermCfg(
             func=mdp.last_action,
-            history_length=TEACHER_PROPRIO_HISTORY_LENGTH,
+            history_length=PROPRIO_HISTORY_LENGTH,
         )
 
         def __post_init__(self):
@@ -354,57 +323,7 @@ class ObservationsCfg:
 
 @configclass
 class RewardsCfg:
-    base_position_imitation_gauss = RewTermCfg(
-        func=instinct_mdp.base_position_imitation_gauss,
-        weight=0.5,
-        params={
-            "std": 0.3,
-        },
-    )
-    base_rot_imitation_gauss = RewTermCfg(
-        func=instinct_mdp.base_rot_imitation_gauss,
-        weight=0.5,
-        params={
-            "std": 0.4,
-            "difference_type": "axis_angle",
-        },
-    )
-    link_pos_imitation_gauss = RewTermCfg(
-        func=instinct_mdp.link_pos_imitation_gauss,
-        weight=1.0,
-        params={
-            "combine_method": "mean_prod",
-            "in_base_frame": False,
-            "in_relative_world_frame": True,
-            "std": 0.3,
-        },
-    )
-    link_rot_imitation_gauss = RewTermCfg(
-        func=instinct_mdp.link_rot_imitation_gauss,
-        weight=1.0,
-        params={
-            "combine_method": "mean_prod",
-            "in_base_frame": False,
-            "in_relative_world_frame": True,
-            "std": 0.4,
-        },
-    )
-    link_lin_vel_imitation_gauss = RewTermCfg(
-        func=instinct_mdp.link_lin_vel_imitation_gauss,
-        weight=1.0,
-        params={
-            "combine_method": "mean_prod",
-            "std": 1.0,
-        },
-    )
-    link_ang_vel_imitation_gauss = RewTermCfg(
-        func=instinct_mdp.link_ang_vel_imitation_gauss,
-        weight=1.0,
-        params={
-            "combine_method": "mean_prod",
-            "std": 3.14,
-        },
-    )
+
     action_rate_l2 = RewTermCfg(func=mdp.action_rate_l2, weight=-0.1)
     joint_limit = RewTermCfg(
         func=mdp.joint_pos_limits,
@@ -528,42 +447,27 @@ class EventsCfg:
         },
     )
 
-    match_motion_ref_with_scene = EventTermCfg(
-        func=instinct_mdp.match_motion_ref_with_scene,
-        mode="startup",
-        params={
-            "motion_ref_cfg": SceneEntityCfg("motion_reference"),
-        },
-    )
-    reset_robot = EventTermCfg(
-        func=instinct_mdp.reset_robot_state_by_reference,
+    # Default root pose/joints from articulation cfg `init_state` + env_origins (+ small jitter)
+    reset_base = EventTermCfg(
+        func=mdp.reset_root_state_uniform,
         mode="reset",
         params={
-            "motion_ref_cfg": SceneEntityCfg("motion_reference"),
             "asset_cfg": SceneEntityCfg("robot"),
-            # reset with position offset to put the robot_reference in scene.
-            "position_offset": [0.0, 0.0, 0.0],
-            "dof_vel_ratio": 1.0,
-            "base_lin_vel_ratio": 1.0,
-            "base_ang_vel_ratio": 1.0,
-            # Pose randomization (+-5cm position, +-6degrees rotation)
-            "randomize_pose_range": {
+            "pose_range": {
                 "x": (-0.15, 0.15),
                 "y": (-0.15, 0.15),
-                "z": (-0.0, 0.0),
+                "z": (0.0, 0.0),
             },
-            # Velocity randomization (+-0.1 m/s linear, +-0.1 rad/s angular)
-            "randomize_velocity_range": {},
-            # Joint position randomization (+-0.1 rad)
-            "randomize_joint_pos_range": (-0.1, 0.1),
+            "velocity_range": {},
         },
     )
-    bin_fail_counter_smoothing = EventTermCfg(
-        func=instinct_mdp.beyondmimic_bin_fail_counter_smoothing,
-        mode="interval",
-        interval_range_s=(0.02, 0.02),  # every environment step
+    reset_robot_joints = EventTermCfg(
+        func=mdp.reset_joints_by_offset,
+        mode="reset",
         params={
-            "curriculum_name": "beyond_adaptive_sampling",
+            "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
+            "position_range": (-0.1, 0.1),
+            "velocity_range": (0.0, 0.0),
         },
     )
     # push_robot = EventTermCfg(
@@ -585,94 +489,9 @@ class EventsCfg:
 
 
 @configclass
-class CurriculumCfg:
-    beyond_adaptive_sampling = CurriculumTermCfg(  # type: ignore
-        func=instinct_mdp.BeyondConcatMotionAdaptiveWeighting,
-    )
-
-
-@configclass
 class TerminationsCfg:
     time_out = DoneTermCfg(func=mdp.time_out, time_out=True)
-    # illegal_reset_contact = DoneTermCfg(
-    #     func=instinct_mdp.illegal_reset_contact,
-    #     time_out=True,
-    #     params={
-    #         "sensor_cfg": SceneEntityCfg(
-    #             "contact_forces",
-    #             body_names=[
-    #                 r"^(?!left_ankle_roll_link$)(?!right_ankle_roll_link$)(?!left_wrist_yaw_link$)(?!right_wrist_yaw_link$).+$"
-    #             ],
-    #         ),
-    #         "threshold": 500,
-    #         "episode_length_threshold": 2,
-    #     },
-    # )
-    body_pos = DoneTermCfg(
-        func=instinct_mdp.bad_global_body_pos,
-        time_out=False,
-        params={
-            "asset_cfg": SceneEntityCfg("robot"),
-            "command_name": "motion_reference",
-            "threshold": 0.5,
-            "disable_flag": False,
-        },
-    )
-    # base_pos_too_far = DoneTermCfg(
-    #     func=instinct_mdp.pos_far_from_ref,
-    #     time_out=False,
-    #     params={
-    #         "asset_cfg": SceneEntityCfg("robot"),
-    #         "reference_cfg": SceneEntityCfg("motion_reference"),
-    #         "distance_threshold": 0.25,
-    #         "check_at_keyframe_threshold": -1,
-    #         "print_reason": False,
-    #         "height_only": True,
-    #     },
-    # )
-    # base_pg_too_far = DoneTermCfg(
-    #     func=instinct_mdp.projected_gravity_far_from_ref,
-    #     time_out=False,
-    #     params={
-    #         "asset_cfg": SceneEntityCfg("robot"),
-    #         "reference_cfg": SceneEntityCfg("motion_reference"),
-    #         "projected_gravity_threshold": 0.8,
-    #         "check_at_keyframe_threshold": -1,
-    #         "z_only": False,
-    #         "print_reason": False,
-    #     },
-    # )
-    # link_pos_too_far = DoneTermCfg(
-    #     func=instinct_mdp.link_pos_far_from_ref,
-    #     time_out=False,
-    #     params={
-    #         "asset_cfg": SceneEntityCfg("robot"),
-    #         "reference_cfg": SceneEntityCfg(
-    #             "motion_reference",
-    #             body_names=[
-    #                 "left_ankle_roll_link",
-    #                 "right_ankle_roll_link",
-    #                 "left_wrist_yaw_link",
-    #                 "right_wrist_yaw_link",
-    #             ],
-    #             preserve_order=True,
-    #         ),
-    #         "distance_threshold": 0.25,
-    #         "in_base_frame": False,
-    #         "check_at_keyframe_threshold": -1,
-    #         "height_only": True,
-    #         "print_reason": False,
-    #     },
-    # )
 
-    dataset_exhausted = DoneTermCfg(
-        func=instinct_mdp.dataset_exhausted,
-        time_out=True,
-        params={
-            "reference_cfg": SceneEntityCfg("motion_reference"),
-            "print_reason": False,
-        },
-    )
     out_of_border = DoneTermCfg(
         func=instinct_mdp.terrain_out_of_bounds,
         time_out=True,
@@ -681,82 +500,16 @@ class TerminationsCfg:
 
 
 @configclass
-class MonitorCfg:
-    dataset = MonitorTermCfg(
-        func=MotionReferenceMonitorTerm,
-        params=dict(
-            asset_cfg=SceneEntityCfg("motion_reference"),
-            sample_stat_interval=500,
-            top_n_samples=5,
-        ),
-    )
-    shadowing_position = MonitorTermCfg(
-        func=ShadowingPositionMonitorTerm,
-        params=dict(
-            robot_cfg=SceneEntityCfg("robot"),
-            motion_reference_cfg=SceneEntityCfg("motion_reference"),
-            in_base_frame=True,
-            check_at_keyframe_threshold=0.03,
-        ),
-    )
-    shadowing_rotation = MonitorTermCfg(
-        func=ShadowingRotationMonitorTerm,
-        params=dict(
-            robot_cfg=SceneEntityCfg("robot"),
-            motion_reference_cfg=SceneEntityCfg("motion_reference"),
-            masking=True,
-        ),
-    )
-    shadowing_joint_pos = MonitorTermCfg(
-        func=ShadowingJointPosMonitorTerm,
-        params=dict(
-            robot_cfg=SceneEntityCfg("robot"),
-            motion_reference_cfg=SceneEntityCfg("motion_reference"),
-            masking=True,
-        ),
-    )
-    shadowing_joint_vel = MonitorTermCfg(
-        func=ShadowingJointVelMonitorTerm,
-        params=dict(
-            robot_cfg=SceneEntityCfg("robot"),
-            motion_reference_cfg=SceneEntityCfg("motion_reference"),
-            masking=True,
-        ),
-    )
-    shadowing_link_pos_b = MonitorTermCfg(
-        func=ShadowingLinkPosMonitorTerm,
-        params=dict(
-            robot_cfg=SceneEntityCfg("robot"),
-            motion_reference_cfg=SceneEntityCfg("motion_reference"),
-            in_base_frame=True,
-            masking=True,
-        ),
-    )
-    shadowing_link_pos_w = MonitorTermCfg(
-        func=ShadowingLinkPosMonitorTerm,
-        params=dict(
-            robot_cfg=SceneEntityCfg("robot"),
-            motion_reference_cfg=SceneEntityCfg("motion_reference"),
-            in_base_frame=False,
-            masking=True,
-        ),
-    )
-
-
-@configclass
 class PerceptiveShadowingEnvCfg(InstinctLabRLEnvCfg):
-    # 是否启用基于 STL 连通块的 box 级随机缩放（与 motion-matched 地形 bank 配合）
-    enable_stl_box_randomization: bool = True
-
     scene: PerceptiveShadowingSceneCfg = PerceptiveShadowingSceneCfg()
-    commands: CommandCfg = CommandCfg()
+    commands = None  # type: ignore[assignment]
     actions: ActionsCfg = ActionsCfg()
     observations: ObservationsCfg = ObservationsCfg()
     rewards: RewardGroupsCfg = RewardGroupsCfg()
     events: EventsCfg = EventsCfg()
-    curriculum: CurriculumCfg = CurriculumCfg()
+    curriculum = None  # type: ignore[assignment]
     terminations: TerminationsCfg = TerminationsCfg()
-    monitors: MonitorCfg = MonitorCfg()
+    monitors = None  # type: ignore[assignment]
 
     def __post_init__(self):
         # general settings
@@ -767,23 +520,5 @@ class PerceptiveShadowingEnvCfg(InstinctLabRLEnvCfg):
         self.sim.render_interval = self.decimation
         self.sim.physics_material = self.scene.terrain.physics_material
         self.sim.physx.gpu_max_rigid_patch_count = 10 * 2**15
-        self.sim.physx.gpu_max_rigid_contact_count = 2**27
-        self.sim.physx.gpu_collision_stack_size = 2**27
-
-        try:
-            tg = self.scene.terrain.terrain_generator
-            if tg is not None and hasattr(tg, "sub_terrains"):
-                mm_cfg = tg.sub_terrains["motion_matched"]
-                mm_cfg.randomize_boxes = bool(self.enable_stl_box_randomization)
-                # 尺寸扰动区间（米）使用 MotionMatchedTerrainCfg 默认的 box_size_delta_range_{x,y,z}
-        except Exception:
-            pass
-
-        if (
-            hasattr(self.scene, "terrain")
-            and hasattr(self.scene.terrain, "terrain_generator")
-            and self.scene.terrain.terrain_generator is not None
-            and hasattr(self, "seed")
-            and self.seed is not None
-        ):
-            self.scene.terrain.terrain_generator.seed = int(self.seed)
+        self.sim.physx.gpu_max_rigid_contact_count = 2**26
+        self.sim.physx.gpu_collision_stack_size = 2**26
