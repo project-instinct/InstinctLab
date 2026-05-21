@@ -57,6 +57,24 @@ parser.add_argument(
     default=None,
     help="Optional path to fixed PCA basis npz (mean, basis). Default: latent_viz/z_sphere_pca_basis.npz when mode=pca.",
 )
+parser.add_argument(
+    "--decoder_random_z",
+    action="store_true",
+    default=False,
+    help="Bypass VAE encoder: sample z ~ N(0, std^2 I) each step and decode (decoder manifold test).",
+)
+parser.add_argument(
+    "--decoder_random_z_std",
+    type=float,
+    default=1.0,
+    help="Std dev for standard Gaussian latent sampling when --decoder_random_z is set.",
+)
+parser.add_argument(
+    "--decoder_random_z_seed",
+    type=int,
+    default=None,
+    help="Optional RNG seed for reproducible random z sampling.",
+)
 # append Instinct-RL cli arguments
 cli_args.add_instinct_rl_args(parser)
 # append AppLauncher cli args
@@ -180,7 +198,22 @@ def main():
         ppo_runner.load(resume_path)
 
     # obtain the trained policy for inference
-    if args_cli.sample:
+    if args_cli.decoder_random_z:
+        if args_cli.decoder_random_z_seed is not None:
+            torch.manual_seed(args_cli.decoder_random_z_seed)
+        norm = ppo_runner.normalizers["policy"] if "policy" in ppo_runner.normalizers else None
+        if norm is not None:
+            norm.to(env.unwrapped.device)
+        policy = latent_viz.make_decoder_random_z_policy(
+            ppo_runner.alg.actor_critic,
+            normalizer=norm,
+            std=args_cli.decoder_random_z_std,
+        )
+        latent_viz.warn_if_not_project_to_sphere(ppo_runner.alg.actor_critic)
+        print(
+            f"[play] decoder_random_z: N(0, {args_cli.decoder_random_z_std}^2 I), resample every step (scripts-only)"
+        )
+    elif args_cli.sample:
         policy = ppo_runner.alg.actor_critic.act
     else:
         policy = ppo_runner.get_inference_policy(device=env.unwrapped.device)

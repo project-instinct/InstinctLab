@@ -72,6 +72,54 @@ def warn_if_not_project_to_sphere(actor_critic: Any) -> None:
         print("\033[93m[latent_viz] project_to_sphere is False; z may not be unit sphere.\033[0m")
 
 
+def _require_vae_actor(actor_critic: Any) -> Any:
+    """Return MlpVae actor or raise if the checkpoint is not a VAE policy."""
+    actor = getattr(actor_critic, "actor", None)
+    if actor is None or not hasattr(actor, "decoder") or not hasattr(actor, "latent_size"):
+        raise RuntimeError(
+            "[latent_viz] --decoder_random_z requires a VAE actor_critic with actor.decoder and actor.latent_size."
+        )
+    return actor
+
+
+def decode_with_random_z(actor_critic: Any, observations: torch.Tensor, *, std: float = 1.0) -> torch.Tensor:
+    """Decode actions from z ~ N(0, std^2 I) without running the VAE encoder (play diagnostic)."""
+    vae = _require_vae_actor(actor_critic)
+    gather = getattr(actor_critic, "_gather_vae_inputs", None)
+    if gather is None or not callable(gather):
+        raise RuntimeError(
+            "[latent_viz] --decoder_random_z requires VaeActorCritic._gather_vae_inputs (not a VAE policy?)."
+        )
+
+    if hasattr(actor_critic, "encoders"):
+        observations = actor_critic.encoders(observations)
+
+    ctx = gather(observations)
+    batch = observations.shape[0]
+    z = torch.randn(batch, int(vae.latent_size), device=observations.device, dtype=observations.dtype) * std
+
+    prior_mean = None
+    if vae.decode_add_prior_mean and vae.prior_net is not None and ctx.get("prior_cond") is not None:
+        prior_mean, _ = vae.prior_net(ctx["prior_cond"]).chunk(2, dim=-1)
+
+    return vae.decode_latent(z, decoder_aux_input=ctx.get("decoder_aux_input"), prior_mean=prior_mean)
+
+
+def make_decoder_random_z_policy(
+    actor_critic: Any,
+    normalizer: Any | None = None,
+    *,
+    std: float = 1.0,
+):
+    """Callable policy for play.py: normalize obs, then decode_with_random_z each step."""
+
+    def _policy(observations: torch.Tensor) -> torch.Tensor:
+        x = normalizer(observations) if normalizer is not None else observations
+        return decode_with_random_z(actor_critic, x, std=std)
+
+    return _policy
+
+
 def _warn_motion_id_fallback_once(message: str) -> None:
     global _MOTION_ID_FALLBACK_WARNED
     if not _MOTION_ID_FALLBACK_WARNED:
