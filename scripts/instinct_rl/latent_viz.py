@@ -120,6 +120,58 @@ def make_decoder_random_z_policy(
     return _policy
 
 
+def decode_with_prior_mean_z(actor_critic: Any, observations: torch.Tensor) -> torch.Tensor:
+    """Decode actions using only the learned prior mean (no encoder z).
+
+    When decode_add_prior_mean is False: z = mu_prior.
+    When True: z = 0 and prior_mean = mu_prior so z_body = scale * mu_prior.
+    """
+    vae = _require_vae_actor(actor_critic)
+    gather = getattr(actor_critic, "_gather_vae_inputs", None)
+    if gather is None or not callable(gather):
+        raise RuntimeError(
+            "[latent_viz] --decoder_prior_mean_z requires VaeActorCritic._gather_vae_inputs (not a VAE policy?)."
+        )
+    if vae.prior_net is None:
+        raise RuntimeError("[latent_viz] --decoder_prior_mean_z requires a VAE with prior_net.")
+
+    if hasattr(actor_critic, "encoders"):
+        observations = actor_critic.encoders(observations)
+
+    ctx = gather(observations)
+    prior_cond = ctx.get("prior_cond")
+    if prior_cond is None:
+        raise RuntimeError(
+            "[latent_viz] --decoder_prior_mean_z requires prior_cond (configure vae_prior_subobs_components)."
+        )
+
+    mu_prior, _ = vae.prior_net(prior_cond).chunk(2, dim=-1)
+    batch = observations.shape[0]
+    latent_size = int(vae.latent_size)
+
+    if vae.decode_add_prior_mean:
+        z = torch.zeros(batch, latent_size, device=observations.device, dtype=observations.dtype)
+        prior_mean = mu_prior
+    else:
+        z = mu_prior
+        prior_mean = None
+
+    return vae.decode_latent(z, decoder_aux_input=ctx.get("decoder_aux_input"), prior_mean=prior_mean)
+
+
+def make_prior_mean_z_policy(
+    actor_critic: Any,
+    normalizer: Any | None = None,
+):
+    """Callable policy for play.py: normalize obs, then decode_with_prior_mean_z each step."""
+
+    def _policy(observations: torch.Tensor) -> torch.Tensor:
+        x = normalizer(observations) if normalizer is not None else observations
+        return decode_with_prior_mean_z(actor_critic, x)
+
+    return _policy
+
+
 def _warn_motion_id_fallback_once(message: str) -> None:
     global _MOTION_ID_FALLBACK_WARNED
     if not _MOTION_ID_FALLBACK_WARNED:

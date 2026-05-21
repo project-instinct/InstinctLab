@@ -75,6 +75,12 @@ parser.add_argument(
     default=None,
     help="Optional RNG seed for reproducible random z sampling.",
 )
+parser.add_argument(
+    "--decoder_prior_mean_z",
+    action="store_true",
+    default=False,
+    help="Bypass VAE encoder: decode using only the learned prior mean p(z|c) (scripts-only).",
+)
 # append Instinct-RL cli arguments
 cli_args.add_instinct_rl_args(parser)
 # append AppLauncher cli args
@@ -198,6 +204,8 @@ def main():
         ppo_runner.load(resume_path)
 
     # obtain the trained policy for inference
+    if args_cli.decoder_random_z and args_cli.decoder_prior_mean_z:
+        raise RuntimeError("Cannot use --decoder_random_z and --decoder_prior_mean_z together.")
     if args_cli.decoder_random_z:
         if args_cli.decoder_random_z_seed is not None:
             torch.manual_seed(args_cli.decoder_random_z_seed)
@@ -213,6 +221,16 @@ def main():
         print(
             f"[play] decoder_random_z: N(0, {args_cli.decoder_random_z_std}^2 I), resample every step (scripts-only)"
         )
+    elif args_cli.decoder_prior_mean_z:
+        norm = ppo_runner.normalizers["policy"] if "policy" in ppo_runner.normalizers else None
+        if norm is not None:
+            norm.to(env.unwrapped.device)
+        policy = latent_viz.make_prior_mean_z_policy(
+            ppo_runner.alg.actor_critic,
+            normalizer=norm,
+        )
+        latent_viz.warn_if_not_project_to_sphere(ppo_runner.alg.actor_critic)
+        print("[play] decoder_prior_mean_z: prior mean only, no encoder (scripts-only)")
     elif args_cli.sample:
         policy = ppo_runner.alg.actor_critic.act
     else:
