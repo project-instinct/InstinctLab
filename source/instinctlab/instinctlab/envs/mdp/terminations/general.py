@@ -9,7 +9,7 @@ from isaaclab.managers import ManagerTermBase, ManagerTermBaseCfg, SceneEntityCf
 from isaaclab.sensors import ContactSensor
 
 if TYPE_CHECKING:
-    from isaaclab.assets import RigidObject
+    from isaaclab.assets import Articulation, RigidObject
     from isaaclab.envs import ManagerBasedRLEnv
 
     from instinctlab.motion_reference import MotionReferenceManager
@@ -114,6 +114,49 @@ def abnormal_joint_acc(
 ):
     asset = env.scene[asset_cfg.name]
     return torch.any(torch.abs(asset.data.joint_acc) > max_value, dim=-1)
+
+
+class bad_global_body_pos_from_default(ManagerTermBase):
+    """Terminate if tracked body positions drift too far from per-episode reset pose."""
+
+    def __init__(self, cfg: ManagerTermBaseCfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self._default_body_pos_w = None
+
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        threshold: float = 0.5,
+        asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+        disable_flag: bool = False,
+        print_reason: bool = False,
+    ) -> torch.Tensor:
+        if disable_flag:
+            return torch.zeros((env.num_envs,), device=env.device, dtype=torch.bool)
+
+        robot: Articulation = env.scene[asset_cfg.name]
+        curr_body_pos_w = robot.data.body_link_pos_w[:, asset_cfg.body_ids]
+
+        if self._default_body_pos_w is None or self._default_body_pos_w.shape != curr_body_pos_w.shape:
+            self._default_body_pos_w = torch.zeros_like(curr_body_pos_w)
+
+        new_episode_mask = env.episode_length_buf <= 1
+        if torch.any(new_episode_mask):
+            self._default_body_pos_w[new_episode_mask] = curr_body_pos_w[new_episode_mask]
+
+        error = torch.norm(curr_body_pos_w - self._default_body_pos_w, dim=-1)
+        return_ = torch.any(error > threshold, dim=-1)
+
+        if print_reason and return_.any():
+            print(f"bad_global_body_pos_from_default: {return_.sum()} envs")
+        return return_
+
+    def reset(self, env_ids: Sequence[int] | slice | None = None) -> None:
+        if self._default_body_pos_w is None:
+            return
+        if env_ids is None:
+            env_ids = slice(None)
+        self._default_body_pos_w[env_ids] = 0.0
 
 
 class illegal_reset_contact(ManagerTermBase):

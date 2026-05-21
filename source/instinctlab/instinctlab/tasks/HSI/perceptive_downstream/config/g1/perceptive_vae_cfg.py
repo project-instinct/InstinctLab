@@ -175,6 +175,58 @@ class G1PerceptiveVaePlayMonitorCfg:
 class G1PerceptiveVaeRewardsCfg(perceptual_cfg.RewardsCfg):
     """Parkour-aligned task rewards in addition to base downstream regularizers."""
 
+    base_position_imitation_gauss = RewTermCfg(
+        func=instinct_mdp.base_position_imitation_gauss_from_initial,
+        weight=0.5,
+        params={
+            "std": 0.3,
+        },
+    )
+    base_rot_imitation_gauss = RewTermCfg(
+        func=instinct_mdp.base_rot_imitation_gauss_from_initial,
+        weight=0.5,
+        params={
+            "std": 0.4,
+            "difference_type": "axis_angle",
+        },
+    )
+    link_pos_imitation_gauss = RewTermCfg(
+        func=instinct_mdp.link_pos_imitation_gauss_from_initial,
+        weight=1.0,
+        params={
+            "combine_method": "mean_prod",
+            "in_base_frame": False,
+            "in_relative_world_frame": True,
+            "std": 0.3,
+        },
+    )
+    link_rot_imitation_gauss = RewTermCfg(
+        func=instinct_mdp.link_rot_imitation_gauss_from_initial,
+        weight=1.0,
+        params={
+            "combine_method": "mean_prod",
+            "in_base_frame": False,
+            "in_relative_world_frame": True,
+            "std": 0.4,
+        },
+    )
+    link_lin_vel_imitation_gauss = RewTermCfg(
+        func=instinct_mdp.link_lin_vel_imitation_gauss_from_initial,
+        weight=1.0,
+        params={
+            "combine_method": "mean_prod",
+            "std": 1.0,
+        },
+    )
+    link_ang_vel_imitation_gauss = RewTermCfg(
+        func=instinct_mdp.link_ang_vel_imitation_gauss_from_initial,
+        weight=1.0,
+        params={
+            "combine_method": "mean_prod",
+            "std": 3.14,
+        },
+    )
+
     # track_lin_vel_xy_exp = RewTermCfg(
     #     func=parkour_mdp.track_lin_vel_xy_exp,
     #     weight=2.0,
@@ -185,7 +237,7 @@ class G1PerceptiveVaeRewardsCfg(perceptual_cfg.RewardsCfg):
     #     weight=2.0,
     #     params={"command_name": "base_velocity", "std": 0.5},
     # )
-    is_alive = RewTermCfg(func=mdp.is_alive, weight=3.0)
+    # is_alive = RewTermCfg(func=mdp.is_alive, weight=3.0)
     # heading_error = RewTermCfg(
     #     func=parkour_mdp.heading_error,
     #     weight=-1.0,
@@ -196,11 +248,11 @@ class G1PerceptiveVaeRewardsCfg(perceptual_cfg.RewardsCfg):
     #     weight=-0.5,
     #     params={"command_name": "base_velocity"},
     # )
-    stand_still = RewTermCfg(
-        func=parkour_mdp.stand_still,
-        weight=-0.3,
-        params={"command_name": "base_velocity", "offset": 4.0},
-    )
+    # stand_still = RewTermCfg(
+    #     func=parkour_mdp.stand_still,
+    #     weight=-0.3,
+    #     params={"command_name": "base_velocity", "offset": 4.0},
+    # )
     action_rate_l2 = RewTermCfg(func=mdp.action_rate_l2, weight=-0.1)
     joint_limit = RewTermCfg(
         func=mdp.joint_pos_limits,
@@ -245,6 +297,15 @@ class G1PerceptiveVaeTerminationsCfg(perceptual_cfg.TerminationsCfg):
     time_out = DoneTermCfg(func=mdp.time_out, time_out=True)
 
     bad_orientation = DoneTermCfg(func=parkour_mdp.bad_orientation, params={"limit_angle": 1.0})
+    body_pos_default = DoneTermCfg(
+        func=instinct_mdp.bad_global_body_pos_from_default,
+        time_out=False,
+        params={
+            "asset_cfg": SceneEntityCfg("robot"),
+            "threshold": 0.5,
+            "disable_flag": False,
+        },
+    )
     root_height = DoneTermCfg(
         func=parkour_mdp.root_height_below_env_origin_minimum,
         params={"minimum_height": 0.5},
@@ -273,7 +334,7 @@ class G1PerceptiveVaeEnvCfg(perceptual_cfg.PerceptiveShadowingEnvCfg):
 
         # PoseVelocityCommand requires flat patch sampling key ``target`` on terrain sub-terrains.
         _target_patch = FlatPatchSamplingCfg(
-            num_patches=50,
+            num_patches=5,
             patch_radius=[0.05, 0.10, 0.15, 0.20],
             max_height_diff=0.05,
         )
@@ -323,8 +384,8 @@ class G1PerceptiveVaeEnvCfg_PLAY(G1PerceptiveVaeEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        self.scene.terrain.terrain_generator.num_rows = 13
-        self.scene.terrain.terrain_generator.num_cols = 13
+        self.scene.terrain.terrain_generator.num_rows = 4
+        self.scene.terrain.terrain_generator.num_cols = 4
 
         self.scene.camera.debug_vis = True
         self.observations.policy.depth_image.params["debug_vis"] = True
