@@ -61,7 +61,7 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
         "hidden_sizes": [1024, 512, 512],
         "nonlinearity": "ELU",
     }
-    vae_latent_size = 32
+    vae_latent_size = 64
     vae_decode_add_prior_mean = False
     vae_project_to_sphere = True
     vae_input_subobs_components = [

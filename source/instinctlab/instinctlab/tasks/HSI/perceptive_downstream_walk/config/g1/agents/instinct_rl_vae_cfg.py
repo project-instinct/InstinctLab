@@ -53,7 +53,7 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
 
     encoder_configs = Conv2dHeadEncoderCfg()
 
-    init_noise_std = 1.0
+    init_noise_std = 0.1
 
     vae_encoder_kwargs = {
         "hidden_sizes": [1024, 512, 512],

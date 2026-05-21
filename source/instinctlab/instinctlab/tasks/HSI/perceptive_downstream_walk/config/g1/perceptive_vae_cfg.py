@@ -1,3 +1,5 @@
+import math
+
 import isaaclab.envs.mdp as mdp
 from isaaclab.envs import ViewerCfg
 from isaaclab.managers import ObservationGroupCfg as ObsGroupCfg
@@ -172,117 +174,139 @@ class G1PerceptiveVaePlayMonitorCfg:
 
 
 @configclass
-class G1PerceptiveVaeRewardsCfg(perceptual_cfg.RewardsCfg):
-    """Parkour-aligned task rewards in addition to base downstream regularizers."""
+class G1PerceptiveVaeRewardsCfg:
+    """Reward terms copied from ``parkour_env_cfg.G1Rewards`` (parkour locomotion MDP)."""
 
-    base_position_imitation_gauss = RewTermCfg(
-        func=instinct_mdp.base_position_imitation_gauss_from_initial,
-        weight=0.5,
-        params={
-            "std": 0.3,
-        },
+    track_lin_vel_xy_exp = RewTermCfg(
+        func=parkour_mdp.track_lin_vel_xy_exp,
+        weight=2.0,
+        params={"command_name": "base_velocity", "std": 0.5},
     )
-    base_rot_imitation_gauss = RewTermCfg(
-        func=instinct_mdp.base_rot_imitation_gauss_from_initial,
-        weight=0.5,
-        params={
-            "std": 0.4,
-            "difference_type": "axis_angle",
-        },
+    track_ang_vel_z_exp = RewTermCfg(
+        func=parkour_mdp.track_ang_vel_z_exp,
+        weight=2.0,
+        params={"command_name": "base_velocity", "std": 0.5},
     )
-    link_pos_imitation_gauss = RewTermCfg(
-        func=instinct_mdp.link_pos_imitation_gauss_from_initial,
-        weight=1.0,
-        params={
-            "combine_method": "mean_prod",
-            "in_base_frame": False,
-            "in_relative_world_frame": True,
-            "std": 0.3,
-        },
-    )
-    link_rot_imitation_gauss = RewTermCfg(
-        func=instinct_mdp.link_rot_imitation_gauss_from_initial,
-        weight=1.0,
-        params={
-            "combine_method": "mean_prod",
-            "in_base_frame": False,
-            "in_relative_world_frame": True,
-            "std": 0.4,
-        },
-    )
-    link_lin_vel_imitation_gauss = RewTermCfg(
-        func=instinct_mdp.link_lin_vel_imitation_gauss_from_initial,
-        weight=1.0,
-        params={
-            "combine_method": "mean_prod",
-            "std": 1.0,
-        },
-    )
-    link_ang_vel_imitation_gauss = RewTermCfg(
-        func=instinct_mdp.link_ang_vel_imitation_gauss_from_initial,
-        weight=1.0,
-        params={
-            "combine_method": "mean_prod",
-            "std": 3.14,
-        },
+    heading_error = RewTermCfg(func=parkour_mdp.heading_error, weight=-1.0, params={"command_name": "base_velocity"})
+    dont_wait = RewTermCfg(func=parkour_mdp.dont_wait, weight=-0.5, params={"command_name": "base_velocity"})
+    is_alive = RewTermCfg(func=parkour_mdp.is_alive, weight=3.0)
+    stand_still = RewTermCfg(
+        func=parkour_mdp.stand_still, weight=-0.3, params={"command_name": "base_velocity", "offset": 4.0}
     )
 
-    # track_lin_vel_xy_exp = RewTermCfg(
-    #     func=parkour_mdp.track_lin_vel_xy_exp,
-    #     weight=2.0,
-    #     params={"command_name": "base_velocity", "std": 0.5},
-    # )
-    # track_ang_vel_z_exp = RewTermCfg(
-    #     func=parkour_mdp.track_ang_vel_z_exp,
-    #     weight=2.0,
-    #     params={"command_name": "base_velocity", "std": 0.5},
-    # )
-    # is_alive = RewTermCfg(func=mdp.is_alive, weight=3.0)
-    # heading_error = RewTermCfg(
-    #     func=parkour_mdp.heading_error,
-    #     weight=-1.0,
-    #     params={"command_name": "base_velocity"},
-    # )
-    # dont_wait = RewTermCfg(
-    #     func=parkour_mdp.dont_wait,
-    #     weight=-0.5,
-    #     params={"command_name": "base_velocity"},
-    # )
-    # stand_still = RewTermCfg(
-    #     func=parkour_mdp.stand_still,
-    #     weight=-0.3,
-    #     params={"command_name": "base_velocity", "offset": 4.0},
-    # )
-    action_rate_l2 = RewTermCfg(func=mdp.action_rate_l2, weight=-0.1)
-    joint_limit = RewTermCfg(
-        func=mdp.joint_pos_limits,
-        weight=-10.0,
+    volume_points_penetration = RewTermCfg(
+        func=parkour_mdp.volume_points_penetration,
+        weight=-4.0,
+        params={
+            "sensor_cfg": SceneEntityCfg("leg_volume_points"),
+        },
+    )
+    feet_air_time = RewTermCfg(
+        func=parkour_mdp.feet_air_time,
+        weight=0.5,
+        params={
+            "command_name": "base_velocity",
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_ankle_roll_link"),
+            "vel_threshold": 0.15,
+        },
+    )
+    feet_slide = RewTermCfg(
+        func=parkour_mdp.contact_slide,
+        weight=-0.4,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_ankle_roll_link"),
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*_ankle_roll_link"),
+            "threshold": 1.0,
+        },
+    )
+    joint_deviation_hip = RewTermCfg(
+        func=parkour_mdp.joint_deviation_square,
+        weight=-0.5,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_yaw_joint", ".*_hip_roll_joint"])},
+    )
+    ang_vel_xy_l2 = RewTermCfg(func=parkour_mdp.ang_vel_xy_l2, weight=-0.05)
+    dof_torques_l2 = RewTermCfg(
+        func=parkour_mdp.joint_torques_l2,
+        weight=-1.5e-7,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_knee_joint", ".*_ankle_.*"])},
+    )
+    dof_acc_l2 = RewTermCfg(
+        func=parkour_mdp.joint_acc_l2,
+        weight=-1.25e-7,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
     )
-    # undesired_contacts = RewTermCfg(
-    #     func=mdp.undesired_contacts,
-    #     weight=-0.1,
-    #     params={
-    #         "sensor_cfg": SceneEntityCfg(
-    #             "contact_forces",
-    #             body_names=[
-    #                 r"^(?!left_ankle_roll_link$)(?!right_ankle_roll_link$)(?!left_wrist_yaw_link$)(?!right_wrist_yaw_link$).+$"
-    #             ],
-    #         ),
-    #         "threshold": 1.0,
-    #     },
-    # )
-    applied_torque_limits_by_ratio = RewTermCfg(
-        func=instinct_mdp.applied_torque_limits_by_ratio,
-        weight=-0.05,
+    dof_vel_l2 = RewTermCfg(
+        func=parkour_mdp.joint_vel_l2,
+        weight=-1e-4,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
+    )
+    action_rate_l2 = RewTermCfg(func=parkour_mdp.action_rate_l2, weight=-0.005)
+    flat_orientation_l2 = RewTermCfg(func=parkour_mdp.flat_orientation_l2, weight=-3.0)
+    pelvis_orientation_l2 = RewTermCfg(
+        func=parkour_mdp.link_orientation, weight=-3.0, params={"asset_cfg": SceneEntityCfg("robot", body_names="pelvis")}
+    )
+    feet_flat_ori = RewTermCfg(
+        func=parkour_mdp.feet_orientation_contact,
+        weight=-0.4,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_ankle_roll_link"),
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*_ankle_roll_link"),
+        },
+    )
+    feet_at_plane = RewTermCfg(
+        func=parkour_mdp.feet_at_plane,
+        weight=-0.1,
+        params={
+            "contact_sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_ankle_roll_link"),
+            "left_height_scanner_cfg": SceneEntityCfg("left_height_scanner"),
+            "right_height_scanner_cfg": SceneEntityCfg("right_height_scanner"),
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*_ankle_roll_link"),
+            "height_offset": 0.035,
+        },
+    )
+    feet_close_xy = RewTermCfg(
+        func=parkour_mdp.feet_close_xy_gauss,
+        weight=0.4,
+        params={
+            "threshold": 0.12,
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*_ankle_roll_link"),
+            "std": math.sqrt(0.05),
+        },
+    )
+    energy = RewTermCfg(
+        func=parkour_mdp.motors_power_square,
+        weight=-5e-5,
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_knee_joint", ".*_ankle_.*"]),
+            "normalize_by_stiffness": True,
+        },
+    )
+    freeze_upper_body = RewTermCfg(
+        func=parkour_mdp.joint_deviation_l1,
+        weight=-0.004,
         params={
             "asset_cfg": SceneEntityCfg(
-                "robot",
-                joint_names=[
-                    ".*ankle.*",
-                    ".*wrist.*",
-                ],
-            )
+                "robot", joint_names=[".*_shoulder_.*", ".*_elbow_.*", ".*_wrist.*", "waist_.*"]
+            ),
+        },
+    )
+
+    dof_pos_limits = RewTermCfg(
+        func=parkour_mdp.joint_pos_limits,
+        weight=-1.0,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
+    )
+    dof_vel_limits = RewTermCfg(
+        func=parkour_mdp.joint_vel_limits,
+        weight=-1.0,
+        params={"soft_ratio": 0.9, "asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
+    )
+    torque_limits = RewTermCfg(
+        func=parkour_mdp.applied_torque_limits_by_ratio,
+        weight=-0.01,
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=[".*"]),
+            "limit_ratio": 0.8,
         },
     )
 

@@ -20,7 +20,7 @@ import instinctlab.envs.mdp as instinct_mdp
 from instinctlab.envs.manager_based_rl_env_cfg import InstinctLabRLEnvCfg
 from instinctlab.managers import MultiRewardCfg
 from instinctlab.motion_reference import MotionReferenceManagerCfg
-from instinctlab.sensors import NoisyGroupedRayCasterCameraCfg
+from instinctlab.sensors import Grid3dPointsGeneratorCfg, NoisyGroupedRayCasterCameraCfg, VolumePointsCfg
 import instinctlab.terrains as terrain_gen
 from instinctlab.terrains.terrain_generator_cfg import FiledTerrainGeneratorCfg
 from instinctlab.terrains.terrain_importer_cfg import TerrainImporterCfg
@@ -81,7 +81,7 @@ class PerceptiveShadowingSceneCfg(InteractiveSceneCfg):
             sub_terrains={
                 "perlin_rough": terrain_gen.PerlinPlaneTerrainCfg(
                     proportion=1.0,
-                    noise_scale=[0.0, 0.08],
+                    noise_scale=[0.0, 0.0],
                     noise_frequency=20,
                     fractal_octaves=2,
                     fractal_lacunarity=2.0,
@@ -121,6 +121,39 @@ class PerceptiveShadowingSceneCfg(InteractiveSceneCfg):
         pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.6, 1.0]),
         debug_vis=False,
         mesh_prim_paths=["/World/ground"],
+    )
+    left_height_scanner = RayCasterCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/left_ankle_roll_link",
+        offset=RayCasterCfg.OffsetCfg(pos=(0.04, 0.0, 20.0)),
+        ray_alignment="yaw",
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.12, size=[0.12, 0.0]),
+        debug_vis=False,
+        mesh_prim_paths=["/World/ground"],
+        update_period=0.02,
+    )
+    right_height_scanner = RayCasterCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/right_ankle_roll_link",
+        offset=RayCasterCfg.OffsetCfg(pos=(0.04, 0.0, 20.0)),
+        ray_alignment="yaw",
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.12, size=[0.12, 0.0]),
+        debug_vis=False,
+        mesh_prim_paths=["/World/ground"],
+        update_period=0.02,
+    )
+    leg_volume_points = VolumePointsCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/.*_ankle_roll_link",
+        points_generator=Grid3dPointsGeneratorCfg(
+            x_min=-0.025,
+            x_max=0.12,
+            x_num=10,
+            y_min=-0.03,
+            y_max=0.03,
+            y_num=5,
+            z_min=-0.04,
+            z_max=0.0,
+            z_num=2,
+        ),
+        debug_vis=False,
     )
     camera = NoisyGroupedRayCasterCameraCfg(
         prim_path="{ENV_REGEX_NS}/Robot/torso_link",
