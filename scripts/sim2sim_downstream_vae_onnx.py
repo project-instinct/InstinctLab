@@ -79,10 +79,12 @@ RENDER_H, RENDER_W = 27, 48
 DEPTH_MIN, DEPTH_MAX = 0.0, 2.0
 CROP_UP, CROP_DOWN, CROP_LEFT, CROP_RIGHT = 2, 2, 2, 2
 RESIZE_H, RESIZE_W = 18, 32
-DEPTH_HISTORY = 10
-DEPTH_SKIP = 3
-DEPTH_FRAME_IDXS = (0, 3, 6, 9)
-DEPTH_OUT_FRAMES = len(DEPTH_FRAME_IDXS)
+DEPTH_HISTORY = 37
+DEPTH_SKIP = 5
+DEPTH_OUT_FRAMES = 8
+DEPTH_FRAME_IDXS = tuple(
+    DEPTH_HISTORY - off - 1 for off in range((DEPTH_OUT_FRAMES - 1) * DEPTH_SKIP, -1, -DEPTH_SKIP)
+)
 
 PROPRIO_HISTORY = 4
 CMD_HISTORY = 8
@@ -127,20 +129,28 @@ class Hist:
 
 
 class DepthRing:
-    def __init__(self, maxlen: int = DEPTH_HISTORY):
+    def __init__(
+        self,
+        maxlen: int = DEPTH_HISTORY,
+        frame_idxs: tuple[int, ...] = DEPTH_FRAME_IDXS,
+        frame_shape: tuple[int, int] = (RESIZE_H, RESIZE_W),
+    ):
         self._dq: deque[np.ndarray] = deque(maxlen=maxlen)
-        self._zeros = np.zeros((RESIZE_H, RESIZE_W), dtype=np.float32)
+        self._frame_idxs = tuple(int(i) for i in frame_idxs)
+        self._zeros = np.zeros(frame_shape, dtype=np.float32)
 
     def push(self, frame_hw: np.ndarray) -> None:
         self._dq.append(np.asarray(frame_hw, dtype=np.float32).copy())
 
     def sampled_stack(self) -> np.ndarray:
         if len(self._dq) == 0:
-            return np.stack([self._zeros for _ in DEPTH_FRAME_IDXS], axis=0)
+            return np.stack([self._zeros for _ in self._frame_idxs], axis=0)
         arr = np.stack(list(self._dq), axis=0)
         out = []
-        for idx in DEPTH_FRAME_IDXS:
+        for idx in self._frame_idxs:
             j = int(idx)
+            if j < 0:
+                j = 0
             if j >= arr.shape[0]:
                 j = arr.shape[0] - 1
             out.append(arr[j])
@@ -172,6 +182,51 @@ def restore_viewer_context(viewer) -> None:
         pass
 
 
+def depth_frame_indices(history_len: int, history_skip: int, num_output_frames: int) -> tuple[int, ...]:
+    history_len = int(history_len)
+    history_skip = max(int(history_skip), 1)
+    num_output_frames = max(int(num_output_frames), 1)
+    frames_needed = (num_output_frames - 1) * history_skip + 1
+    if frames_needed > history_len:
+        raise RuntimeError(
+            "Depth history is too short for exported encoder: "
+            f"history={history_len}, skip={history_skip}, frames={num_output_frames}, needs at least {frames_needed}"
+        )
+    return tuple(history_len - off - 1 for off in range((num_output_frames - 1) * history_skip, -1, -history_skip))
+
+
+def infer_depth_sampling(args: argparse.Namespace, depth_path: Path, num_output_frames: int) -> tuple[int, int, tuple[int, ...]]:
+    history_len: int | None = None
+    history_skip: int | None = None
+
+    run_dir = depth_path.parent.parent if depth_path.parent.name == "exported" else depth_path.parent
+    env_yaml = run_dir / "params" / "env.yaml"
+    if env_yaml.is_file():
+        text = env_yaml.read_text(encoding="utf-8", errors="ignore")
+        m_hist = re.search(r"distance_to_image_plane_noised:\s*(\d+)", text)
+        m_skip = re.search(r"history_skip_frames:\s*(\d+)", text)
+        if m_hist:
+            history_len = int(m_hist.group(1))
+        if m_skip:
+            history_skip = int(m_skip.group(1))
+
+    if history_len is None or history_skip is None:
+        for s in (args.load_run or "", str(depth_path)):
+            m = re.search(r"depthHist(\d+)Skip(\d+)", s)
+            if m:
+                history_len = int(m.group(1))
+                history_skip = int(m.group(2))
+                break
+
+    if history_len is None:
+        history_len = DEPTH_HISTORY
+    if history_skip is None:
+        history_skip = DEPTH_SKIP
+
+    frame_idxs = depth_frame_indices(history_len, history_skip, num_output_frames)
+    return history_len, history_skip, frame_idxs
+
+
 def flatten_raw_obs(
     depth_stack: np.ndarray,
     h_gravity: Hist,
@@ -180,6 +235,7 @@ def flatten_raw_obs(
     h_jp: Hist,
     h_jv: Hist,
     h_act: Hist,
+    expected_dim: int = RAW_OBS_DIM,
 ) -> np.ndarray:
     parts = [
         depth_stack.reshape(-1).astype(np.float32),
@@ -191,8 +247,8 @@ def flatten_raw_obs(
         h_act.flat(),
     ]
     obs = np.concatenate(parts, axis=0).astype(np.float32)
-    if obs.shape[0] != RAW_OBS_DIM:
-        raise RuntimeError(f"Raw obs dim {obs.shape[0]} != expected {RAW_OBS_DIM}")
+    if obs.shape[0] != expected_dim:
+        raise RuntimeError(f"Raw obs dim {obs.shape[0]} != expected {expected_dim}")
     return obs
 
 
@@ -431,12 +487,6 @@ def run_mujoco(args: argparse.Namespace) -> None:
         raise FileNotFoundError(
             f"VAE actor ONNX not found: {vae_path}\nRun play export first (scripts/instinct_rl/play.py --exportonnx)."
         )
-    mean_npz, std_npz, eps_npz = load_normalizer(norm_path)
-    if mean_npz is None:
-        warnings.warn("policy_normalizer.npz missing; running without obs normalization.")
-    elif mean_npz.shape[0] != RAW_OBS_DIM:
-        raise RuntimeError(f"Normalizer dim {mean_npz.shape[0]} != expected raw obs dim {RAW_OBS_DIM}")
-
     providers = ["CPUExecutionProvider"]
     sess_opts = ort.SessionOptions()
     depth_sess = ort.InferenceSession(str(depth_path), sess_opts, providers=providers)
@@ -448,9 +498,27 @@ def run_mujoco(args: argparse.Namespace) -> None:
     if not all(isinstance(d, int) for d in depth_shape[1:]):
         raise RuntimeError(f"Depth encoder requires fixed [C,H,W], got {depth_shape}")
     d_f, d_h, d_w = int(depth_shape[1]), int(depth_shape[2]), int(depth_shape[3])
-    if (d_f, d_h, d_w) != (DEPTH_OUT_FRAMES, RESIZE_H, RESIZE_W):
+    if (d_h, d_w) != (RESIZE_H, RESIZE_W):
         raise RuntimeError(
-            f"Depth encoder expects {(d_f, d_h, d_w)} but script builds {(DEPTH_OUT_FRAMES, RESIZE_H, RESIZE_W)}"
+            f"Depth encoder expects image size {(d_h, d_w)} but script builds {(RESIZE_H, RESIZE_W)}"
+        )
+    depth_history, depth_skip, depth_frame_idxs = infer_depth_sampling(args, depth_path, d_f)
+    depth_feature_dim = d_f * d_h * d_w
+    raw_obs_dim = depth_feature_dim + PROPRIO_FEATURE_DIM
+    print(
+        "[sim2sim] depth sampling "
+        f"history={depth_history}, skip={depth_skip}, frames={d_f}, frame_idxs={depth_frame_idxs}; "
+        f"raw_obs_dim={raw_obs_dim}"
+    )
+
+    mean_npz, std_npz, eps_npz = load_normalizer(norm_path)
+    if mean_npz is None:
+        warnings.warn("policy_normalizer.npz missing; running without obs normalization.")
+    elif mean_npz.shape[0] != raw_obs_dim:
+        raise RuntimeError(
+            f"Normalizer dim {mean_npz.shape[0]} != expected raw obs dim {raw_obs_dim} "
+            f"(depth {depth_feature_dim} + proprio {PROPRIO_FEATURE_DIM}). "
+            "Check that --load_run/--exported_dir/--policy_normalizer belong to the same export."
         )
     latent_dim = int(depth_sess.get_outputs()[0].shape[-1])
     if latent_dim != LATENT_DIM_CFG:
@@ -514,7 +582,7 @@ def run_mujoco(args: argparse.Namespace) -> None:
     h_jp = Hist(PROPRIO_HISTORY, JOINT_DIM)
     h_jv = Hist(PROPRIO_HISTORY, JOINT_DIM)
     h_act = Hist(PROPRIO_HISTORY, JOINT_DIM)
-    depth_ring = DepthRing(maxlen=DEPTH_HISTORY)
+    depth_ring = DepthRing(maxlen=depth_history, frame_idxs=depth_frame_idxs, frame_shape=(d_h, d_w))
 
     target_q_mj = q_defaults_mj.copy()
     dec = int(args.decimation)
@@ -549,12 +617,21 @@ def run_mujoco(args: argparse.Namespace) -> None:
 
             depth_ring.push(process_depth(depth_hw))
             depth_stack = depth_ring.sampled_stack()
-            raw_obs = flatten_raw_obs(depth_stack, h_gravity, h_cmd, h_ang, h_jp, h_jv, h_act)
+            raw_obs = flatten_raw_obs(
+                depth_stack,
+                h_gravity,
+                h_cmd,
+                h_ang,
+                h_jp,
+                h_jv,
+                h_act,
+                expected_dim=raw_obs_dim,
+            )
             obs_n = apply_normalizer(raw_obs, mean_npz, std_npz, eps_npz).astype(np.float32)
-            depth_flat = obs_n[:DEPTH_FEATURE_DIM]
-            proprio_flat = obs_n[DEPTH_FEATURE_DIM:]
+            depth_flat = obs_n[:depth_feature_dim]
+            proprio_flat = obs_n[depth_feature_dim:]
 
-            depth_in = depth_flat.reshape(1, DEPTH_OUT_FRAMES, RESIZE_H, RESIZE_W).astype(np.float32)
+            depth_in = depth_flat.reshape(1, d_f, d_h, d_w).astype(np.float32)
             latent = np.asarray(depth_sess.run(None, {depth_in_name: depth_in})[0], dtype=np.float32).reshape(1, -1)
             if latent.shape[1] != latent_dim:
                 raise RuntimeError(f"Depth encoder output dim {latent.shape[1]} != expected {latent_dim}")
