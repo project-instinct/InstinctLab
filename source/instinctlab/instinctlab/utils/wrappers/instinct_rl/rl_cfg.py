@@ -287,6 +287,18 @@ class InstinctRlOnPolicyRunnerCfg:
     Empty dict for no normalizer running in the RL runner.
     """
 
+    partial_policy_normalizer_from_bundle: bool | str = False
+    """If enabled, copy selected policy-normalizer component stats from a frozen VAE bundle.
+
+    True uses algorithm.frozen_vae_bundle; a string is interpreted as an explicit bundle path.
+    """
+
+    partial_policy_normalizer_components: list[str] = []
+    """Policy observation components whose normalizer stats should be copied from the frozen VAE bundle."""
+
+    partial_policy_normalizer_freeze_components: bool = True
+    """If True, keep copied component stats fixed while other normalizer dimensions keep updating."""
+
     ##
     # Checkpointing parameters
     ##

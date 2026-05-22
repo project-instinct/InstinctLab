@@ -321,15 +321,15 @@ class G1PerceptiveVaeTerminationsCfg(perceptual_cfg.TerminationsCfg):
     time_out = DoneTermCfg(func=mdp.time_out, time_out=True)
 
     bad_orientation = DoneTermCfg(func=parkour_mdp.bad_orientation, params={"limit_angle": 1.0})
-    body_pos_default = DoneTermCfg(
-        func=instinct_mdp.bad_global_body_pos_from_default,
-        time_out=False,
-        params={
-            "asset_cfg": SceneEntityCfg("robot"),
-            "threshold": 0.5,
-            "disable_flag": False,
-        },
-    )
+    # body_pos_default = DoneTermCfg(
+    #     func=instinct_mdp.bad_global_body_pos_from_default,
+    #     time_out=False,
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot"),
+    #         "threshold": 0.5,
+    #         "disable_flag": False,
+    #     },
+    # )
     root_height = DoneTermCfg(
         func=parkour_mdp.root_height_below_env_origin_minimum,
         params={"minimum_height": 0.5},

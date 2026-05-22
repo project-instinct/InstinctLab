@@ -53,7 +53,7 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
 
     encoder_configs = Conv2dHeadEncoderCfg()
 
-    init_noise_std = 0.1
+    init_noise_std = 2.0
 
     vae_encoder_kwargs = {
         "hidden_sizes": [1024, 512, 512],
@@ -138,6 +138,16 @@ class G1PerceptiveVaePPORunnerCfg(InstinctRlOnPolicyRunnerCfg):
     policy: VaePolicyCfg = VaePolicyCfg()
     algorithm: AlgorithmCfg = AlgorithmCfg()
     normalizers: NormalizersCfg = NormalizersCfg()
+    partial_policy_normalizer_from_bundle = True
+    partial_policy_normalizer_components = [
+        "depth_image",
+        "projected_gravity",
+        "base_ang_vel",
+        "joint_pos",
+        "joint_vel",
+        "last_action",
+    ]
+    partial_policy_normalizer_freeze_components = True
 
     num_steps_per_env = 24
     max_iterations = 50000
