@@ -18,7 +18,7 @@ from instinctlab.assets.unitree_g1 import (
     G1_29DOF_LINKS,
     G1_29DOF_TORSOBASE_POPSICLE_SPHEREHAND_CFG,
     beyondmimic_action_scale,
-    beyondmimic_g1_29dof_actuators,
+    beyondmimic_g1_29dof_delayed_actuators,
 )
 from instinctlab.monitors import ActuatorMonitorTerm, MonitorTermCfg
 from instinctlab.sensors import get_link_prim_targets
@@ -59,11 +59,14 @@ class ObservationsCfg:
     @configclass
     class PolicyObsCfg(ObsGroupCfg):
         depth_image = ObsTermCfg(
-            func=instinct_mdp.visualizable_image,
+            func=instinct_mdp.delayed_visualizable_image,
             params={
                 "sensor_cfg": SceneEntityCfg("camera"),
                 "data_type": "distance_to_image_plane_noised_history",
-                "history_skip_frames": 2,
+                "history_skip_frames": 5,
+                "num_output_frames": 8,
+                "delayed_frame_ranges": (0, 1),
+                "debug_vis": False,
             },
         )
 
@@ -376,9 +379,9 @@ class G1PerceptiveVaeEnvCfg(perceptual_cfg.PerceptiveShadowingEnvCfg):
             self.scene.terrain.terrain_generator = tg.replace(sub_terrains=new_sub)
 
         self.scene.camera.mesh_prim_paths.extend(get_link_prim_targets(G1_29DOF_LINKS))
-        self.scene.camera.data_histories["distance_to_image_plane_noised"] = 10
-        self.observations.policy.depth_image.params["history_skip_frames"] = 3
-        self.scene.robot.actuators = beyondmimic_g1_29dof_actuators
+        self.scene.camera.data_histories["distance_to_image_plane_noised"] = 37
+        self.observations.policy.depth_image.params["history_skip_frames"] = 5
+        self.scene.robot.actuators = beyondmimic_g1_29dof_delayed_actuators
         self.actions.joint_pos.scale = beyondmimic_action_scale
 
         self.run_name = "g1PerceptiveVaeWalk" + "".join(

@@ -24,7 +24,6 @@ from instinctlab.assets.unitree_g1 import (
     G1_29Dof_TorsoBase_symmetric_augmentation_joint_mapping,
     G1_29Dof_TorsoBase_symmetric_augmentation_joint_reverse_buf,
     beyondmimic_action_scale,
-    beyondmimic_g1_29dof_actuators,
     beyondmimic_g1_29dof_delayed_actuators,
 )
 from instinctlab.monitors import ActuatorMonitorTerm, MonitorTermCfg, ShadowingBasePosMonitorTerm
@@ -129,12 +128,15 @@ class ObservationsCfg:
 
         # below are vae prior observations, decoder exclude perception
         depth_image = ObsTermCfg(
-            func=instinct_mdp.visualizable_image,
+            func=instinct_mdp.delayed_visualizable_image,
             # params={"sensor_cfg": SceneEntityCfg("camera"), "data_type": "distance_to_image_plane"},
             params={
                 "sensor_cfg": SceneEntityCfg("camera"),
                 "data_type": "distance_to_image_plane_noised_history",
-                "history_skip_frames": 2,
+                "history_skip_frames": 5,
+                "num_output_frames": 8,
+                "delayed_frame_ranges": (0, 1),
+                "debug_vis": False,
             },
         )
         height_scan = ObsTermCfg(
@@ -259,9 +261,9 @@ class G1PerceptiveVaeEnvCfg(perceptual_cfg.PerceptiveShadowingEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        self.scene.camera.data_histories["distance_to_image_plane_noised"] = 10
-        self.observations.policy.depth_image.params["history_skip_frames"] = 3
-        self.scene.robot.actuators = beyondmimic_g1_29dof_actuators
+        self.scene.camera.data_histories["distance_to_image_plane_noised"] = 37
+        self.observations.policy.depth_image.params["history_skip_frames"] = 5
+        self.scene.robot.actuators = beyondmimic_g1_29dof_delayed_actuators
         self.actions.joint_pos.scale = beyondmimic_action_scale
 
         motion_buffer = list(self.scene.motion_reference.motion_buffers.values())[0]
