@@ -104,10 +104,10 @@ class MultiRewardManager(RewardManager):
         for key in self._episode_sums.keys():
             episodic_sum_avg = torch.mean(self._episode_sums[key][env_ids])
             extras["Episode_Reward/" + key + "/max_episode_len_s"] = episodic_sum_avg / self._env.max_episode_length_s
-            extras["Episode_Reward/" + key + "/sum"] = episodic_sum_avg
-            extras["Episode_Reward/" + key + "/timestep"] = torch.mean(
-                self._episode_sums[key][env_ids] / self._env.episode_length_buf[env_ids]
-            )
+            # extras["Episode_Reward/" + key + "/sum"] = episodic_sum_avg
+            # extras["Episode_Reward/" + key + "/timestep"] = torch.mean(
+            #     self._episode_sums[key][env_ids] / self._env.episode_length_buf[env_ids]
+            # )
             # reset episodic sum
             self._episode_sums[key][env_ids] = 0.0
         # reset all the reward terms
