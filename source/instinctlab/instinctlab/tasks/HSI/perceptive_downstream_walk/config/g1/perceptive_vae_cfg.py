@@ -41,11 +41,11 @@ class CommandsCfg:
         heading_control_stiffness=2.0,
         rel_standing_envs=0.05,
         ranges=parkour_mdp.PoseVelocityCommandCfg.Ranges(
-            lin_vel_x=(0.0, 0.0), lin_vel_y=(0.0, 0.0), ang_vel_z=(-1.0, 1.0)
+            lin_vel_x=(0.4, 0.8), lin_vel_y=(0.0, 0.0), ang_vel_z=(-1.0, 1.0)
         ),
         random_velocity_terrain=None,
         velocity_ranges={
-            "perlin_rough": {"lin_vel_x": (0.0, 0.0), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
+            "perlin_rough": {"lin_vel_x": (0.4, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
         },
         only_positive_lin_vel_x=True,
         lin_vel_threshold=0.0,
