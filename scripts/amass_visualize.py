@@ -148,6 +148,26 @@ class SceneCfg(InteractiveSceneCfg):
             v.motion_start_from_middle_range = (0.0, 0.0)
 
 
+_MOTION_CLIP_LOG_STRIDE = 10
+
+
+def _motion_npz_clip_frame_idx_env0(motion_reference: MotionReferenceManager) -> int | None:
+    """Same rounding as ``AmassMotion.fill_motion_data`` for the live reference timestep (matches ``[:, 0]`` horizon)."""
+    buf = motion_reference.motion_buffers.get("amass")
+    if buf is None:
+        return None
+    bd = buf.buffer_device
+    env_id0 = torch.zeros(1, dtype=torch.long, device=motion_reference.device)
+    assigned = buf.env_ids_to_assigned_ids(env_id0).to(bd)
+    start_s = buf._motion_buffer_start_time_s[assigned]
+    ts = motion_reference._timestamp[env_id0].to(bd)
+    fps = buf._all_motion_sequences.framerate[buf._assigned_env_motion_selection[assigned]]
+    clip_f = torch.round((start_s + ts) * fps).long()[0].item()
+    max_f = buf._all_motion_sequences.buffer_length[buf._assigned_env_motion_selection[assigned]][0].item() - 1
+    clip_f = int(max(0, min(clip_f, max_f)))
+    return clip_f
+
+
 def run_simulator(sim: SimulationContext, scene: InteractiveScene):
     """Runs the simulation loop."""
 
@@ -179,12 +199,24 @@ def run_simulator(sim: SimulationContext, scene: InteractiveScene):
         plotter = LivePlotter(keys=["1"] * 12)
         _plotter_counter = 0
 
+    _motion_log_last_bucket = -1
+
     # simulation loop
     while simulation_app.is_running():
         # Write data to sim
 
         # write robot data based on motion reference
         motion_reference_frame = motion_reference.reference_frame
+        clip_frame = _motion_npz_clip_frame_idx_env0(motion_reference)
+        if clip_frame is not None:
+            bucket = clip_frame // _MOTION_CLIP_LOG_STRIDE
+            if bucket > _motion_log_last_bucket:
+                print(
+                    f"[INFO] motion clip frame (env 0): {clip_frame} "
+                    f"(sim_time={motion_reference._timestamp[0].item():.4f}s)",
+                    flush=True,
+                )
+                _motion_log_last_bucket = bucket
         # robot.root_physx_view.set_dof_positions(
         #     motion_reference_frame.joint_pos[:, 0],
         #     indices=robot._ALL_INDICES,
@@ -224,6 +256,8 @@ def run_simulator(sim: SimulationContext, scene: InteractiveScene):
             reset_env_ids = torch.where(reset_mask)[0]
             motion_reference.reset(reset_env_ids)
             print("[INFO] current motion", motion_reference.get_current_motion_identifiers(reset_env_ids))
+            if (reset_env_ids == 0).any():
+                _motion_log_last_bucket = -1
 
         # Perform render not physics steps
         sim.render()
