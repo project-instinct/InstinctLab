@@ -17,13 +17,11 @@ import re
 import tempfile
 import warnings
 import xml.etree.ElementTree as ET
-from collections import deque
 from pathlib import Path
 
 import mujoco
 import numpy as np
 import onnxruntime as ort
-from scipy.ndimage import zoom
 from tqdm import tqdm
 
 try:
@@ -63,7 +61,7 @@ _ensure_mujoco_keep_visuals_in_urdf = _bm._ensure_mujoco_keep_visuals_in_urdf
 
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 _WBCHSI_ROOT = _SCRIPTS_DIR.parent
-_DEFAULT_LOG_ROOT = _WBCHSI_ROOT / "logs/instinct_rl/g1_hsidownstream_perceptive_vae"
+_DEFAULT_LOG_ROOT = _WBCHSI_ROOT / "logs/instinct_rl/g1_hsidownstream_walk_perceptive_vae"
 _DEFAULT_URDF = (
     _WBCHSI_ROOT
     / "source/instinctlab/instinctlab/assets/resources/unitree_g1/urdf/g1_29dof_torsobase_popsicle_spherehand.urdf"
@@ -117,12 +115,22 @@ def projected_gravity_b(quat_root_wxyz: np.ndarray) -> np.ndarray:
 
 
 class Hist:
-    def __init__(self, history_len: int, feat_dim: int):
+    def __init__(self, history_len: int, feat_dim: int, fill_on_first_push: bool = True):
         self.buf = np.zeros((history_len, feat_dim), dtype=np.float32)
+        self._initialized = False
+        self._fill_on_first_push = bool(fill_on_first_push)
 
     def push(self, row: np.ndarray) -> None:
+        row = np.asarray(row, dtype=np.float32).reshape(-1)
+        if not self._initialized:
+            if self._fill_on_first_push:
+                self.buf[:] = row
+            else:
+                self.buf[-1] = row
+            self._initialized = True
+            return
         self.buf = np.roll(self.buf, -1, axis=0)
-        self.buf[-1] = np.asarray(row, dtype=np.float32).reshape(-1)
+        self.buf[-1] = row
 
     def flat(self) -> np.ndarray:
         return self.buf.reshape(-1)
@@ -135,26 +143,65 @@ class DepthRing:
         frame_idxs: tuple[int, ...] = DEPTH_FRAME_IDXS,
         frame_shape: tuple[int, int] = (RESIZE_H, RESIZE_W),
     ):
-        self._dq: deque[np.ndarray] = deque(maxlen=maxlen)
+        self._buf = np.zeros((maxlen, *frame_shape), dtype=np.float32)
+        self._initialized = False
         self._frame_idxs = tuple(int(i) for i in frame_idxs)
         self._zeros = np.zeros(frame_shape, dtype=np.float32)
 
     def push(self, frame_hw: np.ndarray) -> None:
-        self._dq.append(np.asarray(frame_hw, dtype=np.float32).copy())
+        frame = np.asarray(frame_hw, dtype=np.float32).copy()
+        if not self._initialized:
+            self._buf[:] = frame
+            self._initialized = True
+            return
+        self._buf = np.roll(self._buf, -1, axis=0)
+        self._buf[-1] = frame
 
     def sampled_stack(self) -> np.ndarray:
-        if len(self._dq) == 0:
+        if not self._initialized:
             return np.stack([self._zeros for _ in self._frame_idxs], axis=0)
-        arr = np.stack(list(self._dq), axis=0)
         out = []
         for idx in self._frame_idxs:
             j = int(idx)
             if j < 0:
                 j = 0
-            if j >= arr.shape[0]:
-                j = arr.shape[0] - 1
-            out.append(arr[j])
+            if j >= self._buf.shape[0]:
+                j = self._buf.shape[0] - 1
+            out.append(self._buf[j])
         return np.stack(out, axis=0).astype(np.float32)
+
+
+def resize_bilinear_align_corners_false(image_hw: np.ndarray, out_h: int, out_w: int) -> np.ndarray:
+    """Numpy equivalent of torch.nn.functional.interpolate(..., align_corners=False) for one image."""
+    img = np.asarray(image_hw, dtype=np.float64)
+    in_h, in_w = img.shape
+    if (in_h, in_w) == (out_h, out_w):
+        return img.copy()
+
+    y = (np.arange(out_h, dtype=np.float64) + 0.5) * (in_h / float(out_h)) - 0.5
+    x = (np.arange(out_w, dtype=np.float64) + 0.5) * (in_w / float(out_w)) - 0.5
+
+    y0_raw = np.floor(y).astype(np.int64)
+    x0_raw = np.floor(x).astype(np.int64)
+    y1_raw = y0_raw + 1
+    x1_raw = x0_raw + 1
+
+    wy = y - y0_raw
+    wx = x - x0_raw
+
+    y0 = np.clip(y0_raw, 0, in_h - 1)
+    y1 = np.clip(y1_raw, 0, in_h - 1)
+    x0 = np.clip(x0_raw, 0, in_w - 1)
+    x1 = np.clip(x1_raw, 0, in_w - 1)
+
+    top_left = img[y0[:, None], x0[None, :]]
+    top_right = img[y0[:, None], x1[None, :]]
+    bot_left = img[y1[:, None], x0[None, :]]
+    bot_right = img[y1[:, None], x1[None, :]]
+
+    top = top_left * (1.0 - wx)[None, :] + top_right * wx[None, :]
+    bot = bot_left * (1.0 - wx)[None, :] + bot_right * wx[None, :]
+    return top * (1.0 - wy)[:, None] + bot * wy[:, None]
 
 
 def process_depth(depth_hw: np.ndarray) -> np.ndarray:
@@ -162,9 +209,7 @@ def process_depth(depth_hw: np.ndarray) -> np.ndarray:
     d = np.clip(d, DEPTH_MIN, DEPTH_MAX)
     d = (d - DEPTH_MIN) / (DEPTH_MAX - DEPTH_MIN + 1e-12)
     d = d[CROP_UP : d.shape[0] - CROP_DOWN, CROP_LEFT : d.shape[1] - CROP_RIGHT]
-    z_h = RESIZE_H / float(d.shape[0])
-    z_w = RESIZE_W / float(d.shape[1])
-    d = zoom(d, zoom=(z_h, z_w), order=1)
+    d = resize_bilinear_align_corners_false(d, RESIZE_H, RESIZE_W)
     return d.astype(np.float32)
 
 
@@ -527,6 +572,9 @@ def run_mujoco(args: argparse.Namespace) -> None:
     vae_in_dim = vae_sess.get_inputs()[0].shape[-1]
     if not isinstance(vae_in_dim, int):
         raise RuntimeError(f"vae_actor.onnx needs fixed last dim; got {vae_sess.get_inputs()[0].shape}")
+    # ParallelLayer appends encoder latents after the remaining observation terms,
+    # then removes the original depth_image term. The exported VAE actor therefore
+    # consumes proprio first and parallel_latent_0_depth_image last.
     expected_vae_in = PROPRIO_FEATURE_DIM + latent_dim
     if vae_in_dim != expected_vae_in:
         raise RuntimeError(f"vae_actor input dim {vae_in_dim} != expected {expected_vae_in}")
@@ -535,6 +583,8 @@ def run_mujoco(args: argparse.Namespace) -> None:
     model.opt.timestep = float(args.dt)
     hinge_ids, hinge_names = hinge_joint_metadata(model)
     _, _, _, action_scale_mj = build_gain_vectors_mj(hinge_names)
+    print(f"[sim2sim] Isaac joint/action order: {ISAAC_JOINT_ORDER}")
+    print(f"[sim2sim] MuJoCo hinge order: {hinge_names}")
 
     bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, args.root_body)
     if bid < 0:
@@ -581,7 +631,7 @@ def run_mujoco(args: argparse.Namespace) -> None:
     h_ang = Hist(PROPRIO_HISTORY, ANG_DIM)
     h_jp = Hist(PROPRIO_HISTORY, JOINT_DIM)
     h_jv = Hist(PROPRIO_HISTORY, JOINT_DIM)
-    h_act = Hist(PROPRIO_HISTORY, JOINT_DIM)
+    h_act = Hist(PROPRIO_HISTORY, JOINT_DIM, fill_on_first_push=False)
     depth_ring = DepthRing(maxlen=depth_history, frame_idxs=depth_frame_idxs, frame_shape=(d_h, d_w))
 
     target_q_mj = q_defaults_mj.copy()
@@ -603,9 +653,9 @@ def run_mujoco(args: argparse.Namespace) -> None:
         if step_i % dec == 0:
             h_gravity.push(projected_gravity_b(root_quat))
             h_cmd.push(cmd_vec)
-            h_ang.push((omega_body * 0.25).astype(np.float32))
+            h_ang.push(omega_body.astype(np.float32))
             h_jp.push((q_lab - default_lab).astype(np.float32))
-            h_jv.push((dq_lab * 0.05).astype(np.float32))
+            h_jv.push(dq_lab.astype(np.float32))
 
             if renderer is not None:
                 renderer.update_scene(data, camera=cam_mjv)
