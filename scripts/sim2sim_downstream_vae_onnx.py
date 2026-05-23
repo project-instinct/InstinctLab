@@ -51,6 +51,7 @@ lab_vec_to_mj_order = _bm.lab_vec_to_mj_order
 mj_vec_to_lab_order = _bm.mj_vec_to_lab_order
 quat_normalize = _bm.quat_normalize
 quat_conj = _bm.quat_conj
+quat_mul = _bm.quat_mul
 quat_apply = _bm.quat_apply
 apply_normalizer = _bm.apply_normalizer
 load_normalizer = _bm.load_normalizer
@@ -61,18 +62,23 @@ _ensure_mujoco_keep_visuals_in_urdf = _bm._ensure_mujoco_keep_visuals_in_urdf
 
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 _WBCHSI_ROOT = _SCRIPTS_DIR.parent
+_PROJECT_ROOT = _WBCHSI_ROOT.parent
 _DEFAULT_LOG_ROOT = _WBCHSI_ROOT / "logs/instinct_rl/g1_hsidownstream_walk_perceptive_vae"
 _DEFAULT_URDF = (
     _WBCHSI_ROOT
     / "source/instinctlab/instinctlab/assets/resources/unitree_g1/urdf/g1_29dof_torsobase_popsicle_spherehand.urdf"
 )
+_DEFAULT_XML = _PROJECT_ROOT / "sim2sim/unitree_mujoco/unitree_robots/g1/scene_29dof.xml"
 
-# downstream depth camera from params/env.yaml
+# Downstream depth camera from perceptive_downstream_walk/perceptive_env_cfg.py.
+# IsaacLab stores this offset in convention="world" (+X forward, +Z up). MuJoCo
+# cameras render with the OpenGL camera convention (-Z forward, +Y up), so the
+# MJCF camera quaternion must be converted before injection.
 CAMERA_BODY_NAME = "torso_link"
 CAMERA_NAME = "downstream_depth_cam"
 CAMERA_POS_BODY = np.array([0.0487988662332928, 0.015, 0.4378029937970051], dtype=np.float64)
-CAMERA_QUAT_WXYZ = np.array([0.9135367613482678, 0.004363309284746571, 0.4067366430758002, 0.0], dtype=np.float64)
-CAMERA_FOVY_DEG = 58.29
+CAMERA_QUAT_WORLD_WXYZ = np.array([0.9135367613482678, 0.004363309284746571, 0.4067366430758002, 0.0], dtype=np.float64)
+CAMERA_FOVY_DEG = 58.0
 RENDER_H, RENDER_W = 27, 48
 DEPTH_MIN, DEPTH_MAX = 0.0, 2.0
 CROP_UP, CROP_DOWN, CROP_LEFT, CROP_RIGHT = 2, 2, 2, 2
@@ -104,6 +110,113 @@ RAW_OBS_DIM = DEPTH_FEATURE_DIM + PROPRIO_FEATURE_DIM
 ENCODER_OBS_DIM = PROPRIO_FEATURE_DIM + LATENT_DIM_CFG
 
 
+def obs_segment_metadata(depth_frames: int, depth_h: int, depth_w: int) -> dict[str, np.ndarray]:
+    depth_feature_dim = int(depth_frames) * int(depth_h) * int(depth_w)
+    spec = [
+        ("depth_image", (int(depth_frames), int(depth_h), int(depth_w)), depth_feature_dim),
+        ("projected_gravity", (PROPRIO_HISTORY, ANG_DIM), PROPRIO_HISTORY * ANG_DIM),
+        ("velocity_commands", (CMD_HISTORY, CMD_DIM), CMD_HISTORY * CMD_DIM),
+        ("base_ang_vel", (PROPRIO_HISTORY, ANG_DIM), PROPRIO_HISTORY * ANG_DIM),
+        ("joint_pos", (PROPRIO_HISTORY, JOINT_DIM), PROPRIO_HISTORY * JOINT_DIM),
+        ("joint_vel", (PROPRIO_HISTORY, JOINT_DIM), PROPRIO_HISTORY * JOINT_DIM),
+        ("last_action", (PROPRIO_HISTORY, JOINT_DIM), PROPRIO_HISTORY * JOINT_DIM),
+    ]
+    names = []
+    starts = []
+    ends = []
+    widths = []
+    shapes = []
+    cursor = 0
+    for name, shape, width in spec:
+        names.append(name)
+        starts.append(cursor)
+        cursor += int(width)
+        ends.append(cursor)
+        widths.append(int(width))
+        shapes.append(str(tuple(shape)))
+    return {
+        "segment_names": np.asarray(names),
+        "segment_starts": np.asarray(starts, dtype=np.int64),
+        "segment_ends": np.asarray(ends, dtype=np.int64),
+        "segment_widths": np.asarray(widths, dtype=np.int64),
+        "segment_shapes": np.asarray(shapes),
+    }
+
+
+def _stack_debug_rows(rows: list[np.ndarray], trailing_shape: tuple[int, ...], dtype=np.float32) -> np.ndarray:
+    if rows:
+        return np.stack(rows, axis=0).astype(dtype, copy=False)
+    return np.empty((0, *trailing_shape), dtype=dtype)
+
+
+def _save_sim_obs_debug(path: str, debug: dict, segment_meta: dict[str, np.ndarray]) -> None:
+    payload = {
+        **segment_meta,
+        "timesteps": np.asarray(debug["timesteps"], dtype=np.int64),
+        "obs_raw": _stack_debug_rows(debug["obs_raw"], (debug["obs_dim"],)),
+        "obs_normalized": _stack_debug_rows(debug["obs_normalized"], (debug["obs_dim"],)),
+        "actions": _stack_debug_rows(debug["actions"], (NUM_ACTIONS,)),
+        "applied_actions": _stack_debug_rows(debug["applied_actions"], (NUM_ACTIONS,)),
+        "depth_latent": _stack_debug_rows(debug["depth_latent"], (debug["latent_dim"],)),
+        "root_pos_w": _stack_debug_rows(debug["root_pos_w"], (3,)),
+        "root_quat_w": _stack_debug_rows(debug["root_quat_w"], (4,)),
+        "projected_gravity_b": _stack_debug_rows(debug["projected_gravity_b"], (3,)),
+        "root_ang_vel_b": _stack_debug_rows(debug["root_ang_vel_b"], (3,)),
+        "joint_pos": _stack_debug_rows(debug["joint_pos"], (NUM_ACTIONS,)),
+        "joint_vel": _stack_debug_rows(debug["joint_vel"], (NUM_ACTIONS,)),
+        "command": _stack_debug_rows(debug["command"], (CMD_DIM,)),
+        "isaac_joint_order": np.asarray(ISAAC_JOINT_ORDER),
+        "mujoco_hinge_order": np.asarray(debug["hinge_names"]),
+        "normalizer_eps": np.asarray(debug["normalizer_eps"], dtype=np.float32),
+    }
+    if debug["normalizer_mean"] is not None:
+        payload["normalizer_mean"] = np.asarray(debug["normalizer_mean"], dtype=np.float32)
+        payload["normalizer_std"] = np.asarray(debug["normalizer_std"], dtype=np.float32)
+
+    out_path = Path(path).expanduser().resolve()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(out_path, **payload)
+    print(f"[obs_debug] saved {len(debug['timesteps'])} rows to {out_path}")
+
+
+def load_replay_actions(path: str, key: str, expected_dim: int = NUM_ACTIONS) -> np.ndarray:
+    z = np.load(Path(path).expanduser().resolve(), allow_pickle=True)
+    if key not in z:
+        available = ", ".join(z.files)
+        raise KeyError(f"Replay action key {key!r} not found in {path}. Available keys: {available}")
+    actions = np.asarray(z[key], dtype=np.float32)
+    if actions.ndim != 2 or actions.shape[1] != expected_dim:
+        raise RuntimeError(
+            f"Replay actions must have shape (N, {expected_dim}), got {actions.shape} from {path}:{key}"
+        )
+    if actions.shape[0] == 0:
+        raise RuntimeError(f"Replay action array {path}:{key} is empty.")
+    return actions
+
+
+def check_replay_default_pose(path: str, default_lab: np.ndarray, tol: float = 1e-4) -> None:
+    z = np.load(Path(path).expanduser().resolve(), allow_pickle=True)
+    if "joint_pos" not in z:
+        return
+    joint_pos = np.asarray(z["joint_pos"], dtype=np.float64)
+    if joint_pos.ndim != 2 or joint_pos.shape[0] == 0 or joint_pos.shape[1] != NUM_ACTIONS:
+        return
+    diff = joint_pos[0] - np.asarray(default_lab, dtype=np.float64)
+    max_i = int(np.argmax(np.abs(diff)))
+    max_abs = float(np.abs(diff[max_i]))
+    print(
+        "[replay] default pose check: "
+        f"max_abs={max_abs:.6g} at {ISAAC_JOINT_ORDER[max_i]} "
+        f"(dump={joint_pos[0, max_i]:.6g}, sim_default={default_lab[max_i]:.6g})"
+    )
+    if max_abs > tol:
+        warnings.warn(
+            "Replay dump first joint_pos does not match sim2sim default pose. "
+            "This usually means action targets are offset from different defaults.",
+            stacklevel=2,
+        )
+
+
 def quat_apply_inverse(q_wxyz: np.ndarray, v: np.ndarray) -> np.ndarray:
     return quat_apply(quat_conj(quat_normalize(q_wxyz)), np.asarray(v, dtype=np.float64))
 
@@ -112,6 +225,17 @@ def projected_gravity_b(quat_root_wxyz: np.ndarray) -> np.ndarray:
     g = np.array([0.0, 0.0, -1.0], dtype=np.float64)
     g = g / (np.linalg.norm(g) + 1e-12)
     return quat_apply_inverse(quat_root_wxyz, g).astype(np.float32)
+
+
+def camera_quat_world_to_mujoco_opengl(q_world_wxyz: np.ndarray) -> np.ndarray:
+    """Convert IsaacLab convention='world' camera quaternion to MuJoCo/OpenGL convention."""
+    # IsaacLab's convert_camera_frame_orientation_convention(..., "world", "opengl")
+    # right-multiplies the camera rotation by Rx(90deg) @ Ry(-90deg).
+    world_to_opengl = np.array([0.5, 0.5, -0.5, -0.5], dtype=np.float64)
+    q = quat_mul(quat_normalize(q_world_wxyz), world_to_opengl)
+    if q[0] < 0.0:
+        q = -q
+    return quat_normalize(q)
 
 
 class Hist:
@@ -422,7 +546,7 @@ def _inject_depth_camera_mjcf(root: ET.Element) -> None:
     body = _find_body_et(wb, CAMERA_BODY_NAME)
     if body is None:
         raise RuntimeError(f"Body {CAMERA_BODY_NAME!r} not found in MJCF.")
-    w, x, y, z = CAMERA_QUAT_WXYZ.tolist()
+    w, x, y, z = camera_quat_world_to_mujoco_opengl(CAMERA_QUAT_WORLD_WXYZ).tolist()
     ET.SubElement(
         body,
         "camera",
@@ -433,6 +557,39 @@ def _inject_depth_camera_mjcf(root: ET.Element) -> None:
             "fovy": f"{CAMERA_FOVY_DEG}",
         },
     )
+
+
+def _remove_named_camera(root: ET.Element, name: str) -> None:
+    wb = root.find("worldbody")
+    if wb is None:
+        return
+    for body in wb.iter("body"):
+        for camera in list(body.findall("camera")):
+            if camera.get("name") == name:
+                body.remove(camera)
+
+
+def _force_joint_passive_terms_zero(root: ET.Element) -> None:
+    for joint in root.iter("joint"):
+        if joint.get("type") in {"free", "floating"}:
+            continue
+        joint.set("damping", "0")
+        joint.set("frictionloss", "0")
+
+
+def _assign_world_geom_groups(root: ET.Element) -> None:
+    wb = root.find("worldbody")
+    if wb is None:
+        return
+    robot_body_names = {body.get("name") for body in wb.findall("body") if body.get("name")}
+    robot_roots = {"pelvis", "torso_link", "base_link"}
+    for geom in wb.findall("geom"):
+        geom.set("group", "2")
+    for body in wb.findall("body"):
+        if body.get("name") in robot_roots:
+            continue
+        for geom in body.iter("geom"):
+            geom.set("group", "2")
 
 
 def _materialize_urdf_as_mjcf(urdf_path: str) -> tuple[str, list[str]]:
@@ -482,8 +639,76 @@ def _materialize_urdf_as_mjcf(urdf_path: str) -> tuple[str, list[str]]:
     return robot_xml_path, [tmp_urdf.name]
 
 
+def _materialize_mjcf_backend(xml_path: str) -> tuple[str, list[str]]:
+    src = os.path.abspath(xml_path)
+    if not os.path.isfile(src):
+        raise FileNotFoundError(f"MJCF XML not found: {src}")
+
+    model_preview = mujoco.MjModel.from_xml_path(src)
+    robot_xml_fd = tempfile.NamedTemporaryFile(suffix=".xml", delete=False)
+    robot_xml_path = robot_xml_fd.name
+    robot_xml_fd.close()
+    mujoco.mj_saveLastXML(robot_xml_path, model_preview)
+
+    tree = ET.parse(robot_xml_path)
+    root = tree.getroot()
+    _make_absolute_meshdir(root, src)
+
+    body_joint_names: list[str] = []
+    for joint_id in range(model_preview.njnt):
+        if model_preview.jnt_type[joint_id] != mujoco.mjtJoint.mjJNT_HINGE:
+            continue
+        jname = mujoco.mj_id2name(model_preview, mujoco.mjtObj.mjOBJ_JOINT, joint_id)
+        if not jname:
+            raise RuntimeError(f"Expanded MJCF has unnamed hinge joint id {joint_id}.")
+        body_joint_names.append(str(jname))
+
+    _inject_position_actuators(root, body_joint_names)
+    _inject_joint_armature(root)
+    _force_joint_passive_terms_zero(root)
+    _assign_world_geom_groups(root)
+    _remove_named_camera(root, CAMERA_NAME)
+    _inject_depth_camera_mjcf(root)
+    tree.write(robot_xml_path, encoding="unicode")
+    return robot_xml_path, []
+
+
 def build_model_downstream(urdf_path: str) -> mujoco.MjModel:
     robot_xml_path, extra_cleanup = _materialize_urdf_as_mjcf(urdf_path)
+    return _build_scene_model_from_robot_xml(robot_xml_path, extra_cleanup)
+
+
+def build_model_official_xml(xml_path: str) -> mujoco.MjModel:
+    robot_xml_path, extra_cleanup = _materialize_mjcf_backend(xml_path)
+    try:
+        model = mujoco.MjModel.from_xml_path(robot_xml_path)
+        os.remove(robot_xml_path)
+    except Exception:
+        raise
+    if model.nu != NUM_ACTIONS:
+        raise RuntimeError(f"Expected nu={NUM_ACTIONS}, got {model.nu}")
+    return model
+
+
+def actuator_joint_names(model: mujoco.MjModel) -> list[str]:
+    names: list[str] = []
+    for actuator_id in range(model.nu):
+        joint_id = int(model.actuator_trnid[actuator_id, 0])
+        if joint_id < 0:
+            raise RuntimeError(f"Actuator id {actuator_id} is not bound to a joint.")
+        jname = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, joint_id)
+        if not jname:
+            raise RuntimeError(f"Actuator id {actuator_id} is bound to unnamed joint id {joint_id}.")
+        names.append(str(jname))
+    if len(names) != NUM_ACTIONS:
+        raise RuntimeError(f"Expected {NUM_ACTIONS} actuators, got {len(names)}.")
+    missing = [jn for jn in ISAAC_JOINT_ORDER if jn not in names]
+    if missing:
+        raise RuntimeError(f"Actuators missing expected joints: {missing}")
+    return names
+
+
+def _build_scene_model_from_robot_xml(robot_xml_path: str, extra_cleanup: list[str]) -> mujoco.MjModel:
     robot_xml_abs = os.path.abspath(robot_xml_path)
     scene_xml = f"""\
 <mujoco model="sim2sim_downstream_vae">
@@ -579,12 +804,19 @@ def run_mujoco(args: argparse.Namespace) -> None:
     if vae_in_dim != expected_vae_in:
         raise RuntimeError(f"vae_actor input dim {vae_in_dim} != expected {expected_vae_in}")
 
-    model = build_model_downstream(str(Path(args.mujoco_urdf).expanduser().resolve()))
+    if args.mujoco_xml:
+        model = build_model_official_xml(str(Path(args.mujoco_xml).expanduser().resolve()))
+        print(f"[sim2sim] MuJoCo backend: official pelvis-root MJCF {Path(args.mujoco_xml).expanduser().resolve()}")
+    else:
+        model = build_model_downstream(str(Path(args.mujoco_urdf).expanduser().resolve()))
+        print(f"[sim2sim] MuJoCo backend: torsobase URDF {Path(args.mujoco_urdf).expanduser().resolve()}")
     model.opt.timestep = float(args.dt)
     hinge_ids, hinge_names = hinge_joint_metadata(model)
-    _, _, _, action_scale_mj = build_gain_vectors_mj(hinge_names)
+    actuator_names = actuator_joint_names(model)
+    _, _, _, action_scale_act = build_gain_vectors_mj(actuator_names)
     print(f"[sim2sim] Isaac joint/action order: {ISAAC_JOINT_ORDER}")
     print(f"[sim2sim] MuJoCo hinge order: {hinge_names}")
+    print(f"[sim2sim] MuJoCo actuator joint order: {actuator_names}")
 
     bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, args.root_body)
     if bid < 0:
@@ -598,9 +830,15 @@ def run_mujoco(args: argparse.Namespace) -> None:
     data.qpos[0:3] = [0.0, 0.0, float(args.init_height)]
     data.qpos[3:7] = [1.0, 0.0, 0.0, 0.0]
     q_defaults_mj = lab_vec_to_mj_order(default_lab, hinge_names)
+    q_defaults_act = lab_vec_to_mj_order(default_lab, actuator_names)
     data.qpos[7 : 7 + NUM_ACTIONS] = q_defaults_mj
     mujoco.mj_forward(model, data)
-    data.ctrl[:] = q_defaults_mj
+    if args.mujoco_xml:
+        root_z = data.xpos[bid, 2].copy()
+        data.qpos[2] += float(args.init_height) - float(root_z)
+        mujoco.mj_forward(model, data)
+        print(f"[sim2sim] adjusted pelvis freejoint z so {args.root_body}.z={data.xpos[bid, 2]:.6g}")
+    data.ctrl[:] = q_defaults_act
 
     viewer = None
     if not args.no_viewer:
@@ -622,6 +860,12 @@ def run_mujoco(args: argparse.Namespace) -> None:
     cam_mjv.fixedcamid = cam_id
     if not skip_renderer:
         renderer = mujoco.Renderer(model, height=RENDER_H, width=RENDER_W)
+        scene_opt = getattr(renderer, "_scene_option", None)
+        if scene_opt is not None and not args.show_collision_geoms:
+            scene_opt.geomgroup[0] = 0
+            scene_opt.geomgroup[1] = 1
+            scene_opt.geomgroup[2] = 1
+            scene_opt.geomgroup[3:] = 0
         renderer.enable_depth_rendering()
         restore_viewer_context(viewer)
 
@@ -634,9 +878,47 @@ def run_mujoco(args: argparse.Namespace) -> None:
     h_act = Hist(PROPRIO_HISTORY, JOINT_DIM, fill_on_first_push=False)
     depth_ring = DepthRing(maxlen=depth_history, frame_idxs=depth_frame_idxs, frame_shape=(d_h, d_w))
 
-    target_q_mj = q_defaults_mj.copy()
+    obs_debug = None
+    obs_debug_limit = max(1, int(args.obs_debug_steps))
+    obs_segment_meta = obs_segment_metadata(d_f, d_h, d_w)
+    if args.obs_debug_dump:
+        obs_debug = {
+            "timesteps": [],
+            "obs_raw": [],
+            "obs_normalized": [],
+            "actions": [],
+            "applied_actions": [],
+            "depth_latent": [],
+            "root_pos_w": [],
+            "root_quat_w": [],
+            "projected_gravity_b": [],
+            "root_ang_vel_b": [],
+            "joint_pos": [],
+            "joint_vel": [],
+            "command": [],
+            "obs_dim": raw_obs_dim,
+            "latent_dim": latent_dim,
+            "hinge_names": hinge_names,
+            "normalizer_mean": mean_npz,
+            "normalizer_std": std_npz,
+            "normalizer_eps": eps_npz,
+        }
+        print(f"[obs_debug] recording {obs_debug_limit} policy steps to {args.obs_debug_dump}")
+
+    replay_actions = None
+    if args.replay_actions_npz:
+        replay_actions = load_replay_actions(args.replay_actions_npz, args.replay_actions_key)
+        print(
+            f"[replay] loaded {replay_actions.shape[0]} actions from "
+            f"{Path(args.replay_actions_npz).expanduser().resolve()}:{args.replay_actions_key}"
+        )
+        check_replay_default_pose(args.replay_actions_npz, default_lab)
+
+    target_q_act = q_defaults_act.copy()
     dec = int(args.decimation)
     n_steps = int(float(args.sim_duration) / float(args.dt))
+    policy_step_i = 0
+    replay_exhausted_warned = False
 
     for step_i in tqdm(range(n_steps), desc="Simulating..."):
         mujoco.mj_forward(model, data)
@@ -651,7 +933,8 @@ def run_mujoco(args: argparse.Namespace) -> None:
         dq_lab = mj_vec_to_lab_order(dq_mj, hinge_names)
 
         if step_i % dec == 0:
-            h_gravity.push(projected_gravity_b(root_quat))
+            gravity_b = projected_gravity_b(root_quat)
+            h_gravity.push(gravity_b)
             h_cmd.push(cmd_vec)
             h_ang.push(omega_body.astype(np.float32))
             h_jp.push((q_lab - default_lab).astype(np.float32))
@@ -686,30 +969,62 @@ def run_mujoco(args: argparse.Namespace) -> None:
             if latent.shape[1] != latent_dim:
                 raise RuntimeError(f"Depth encoder output dim {latent.shape[1]} != expected {latent_dim}")
 
-            vae_in = np.concatenate([proprio_flat.reshape(1, -1), latent], axis=1)
-            if vae_in.shape[1] != vae_in_dim:
-                raise RuntimeError(f"vae_actor input dim {vae_in.shape[1]} != ONNX {vae_in_dim}")
+            if replay_actions is not None:
+                replay_i = min(policy_step_i, replay_actions.shape[0] - 1)
+                if policy_step_i >= replay_actions.shape[0] and not replay_exhausted_warned:
+                    warnings.warn(
+                        f"Replay actions exhausted at policy step {policy_step_i}; reusing final action.",
+                        stacklevel=2,
+                    )
+                    replay_exhausted_warned = True
+                action_lab = np.asarray(replay_actions[replay_i], dtype=np.float32).reshape(-1)
+            else:
+                vae_in = np.concatenate([proprio_flat.reshape(1, -1), latent], axis=1)
+                if vae_in.shape[1] != vae_in_dim:
+                    raise RuntimeError(f"vae_actor input dim {vae_in.shape[1]} != ONNX {vae_in_dim}")
 
-            vae_outputs = vae_sess.run(None, {vae_in_name: vae_in})
-            action_lab = np.asarray(vae_outputs[0], dtype=np.float32).reshape(-1)
+                vae_outputs = vae_sess.run(None, {vae_in_name: vae_in})
+                action_lab = np.asarray(vae_outputs[0], dtype=np.float32).reshape(-1)
             if action_lab.shape[0] != NUM_ACTIONS:
                 raise RuntimeError(f"Action dim {action_lab.shape[0]} != {NUM_ACTIONS}")
             h_act.push(action_lab)
 
-            action_mj = lab_vec_to_mj_order(action_lab.astype(np.float64), hinge_names)
-            target_q_mj = action_mj * action_scale_mj + q_defaults_mj
+            action_act = lab_vec_to_mj_order(action_lab.astype(np.float64), actuator_names)
+            target_q_act = action_act * action_scale_act + q_defaults_act
 
-        data.ctrl[:] = target_q_mj
+            if obs_debug is not None and len(obs_debug["timesteps"]) < obs_debug_limit:
+                obs_debug["timesteps"].append(policy_step_i)
+                obs_debug["obs_raw"].append(raw_obs.copy())
+                obs_debug["obs_normalized"].append(obs_n.copy())
+                obs_debug["actions"].append(action_lab.copy())
+                obs_debug["applied_actions"].append(action_lab.copy())
+                obs_debug["depth_latent"].append(latent.reshape(-1).copy())
+                obs_debug["root_pos_w"].append(data.xpos[bid].astype(np.float32).copy())
+                obs_debug["root_quat_w"].append(root_quat.astype(np.float32).copy())
+                obs_debug["projected_gravity_b"].append(gravity_b.astype(np.float32).copy())
+                obs_debug["root_ang_vel_b"].append(omega_body.astype(np.float32).copy())
+                obs_debug["joint_pos"].append(q_lab.astype(np.float32).copy())
+                obs_debug["joint_vel"].append(dq_lab.astype(np.float32).copy())
+                obs_debug["command"].append(cmd_vec.copy())
+
+            policy_step_i += 1
+
+        data.ctrl[:] = target_q_act
         mujoco.mj_step(model, data)
         if viewer is not None:
             restore_viewer_context(viewer)
             viewer.render()
             viewer.cam.lookat[:2] = data.qpos[:2]
 
+        if obs_debug is not None and len(obs_debug["timesteps"]) >= obs_debug_limit:
+            break
+
     if renderer is not None:
         renderer.close()
     if viewer is not None:
         viewer.close()
+    if obs_debug is not None:
+        _save_sim_obs_debug(args.obs_debug_dump, obs_debug, obs_segment_meta)
 
 
 def parse_args() -> argparse.Namespace:
@@ -722,6 +1037,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--vae_actor", type=str, default=None, help="Path to vae_actor.onnx")
     p.add_argument("--policy_normalizer", type=str, default=None, help="Path to policy_normalizer.npz")
     p.add_argument("--mujoco_urdf", type=str, default=str(_DEFAULT_URDF))
+    p.add_argument(
+        "--mujoco_xml",
+        type=str,
+        default=None,
+        help=f"Official pelvis-root MuJoCo MJCF/scene XML backend. Example: {_DEFAULT_XML}",
+    )
     p.add_argument("--root_body", type=str, default="torso_link")
     p.add_argument("--init_height", type=float, default=0.82)
     p.add_argument("--cmd_lin_vel_x", type=float, default=0.0)
@@ -734,6 +1055,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--show_collision_geoms", action="store_true")
     p.add_argument("--dummy_depth", action="store_true", help="Use constant depth image instead of renderer output.")
     p.add_argument("--dummy_assets", action="store_true", help="Write temporary dummy ONNX+normalizer assets and run.")
+    p.add_argument("--replay_actions_npz", type=str, default=None, help="Replay actions from an obs debug NPZ instead of ONNX policy output.")
+    p.add_argument("--replay_actions_key", type=str, default="applied_actions", help="NPZ key to replay, usually applied_actions or actions.")
+    p.add_argument("--obs_debug_dump", type=str, default=None, help="Save sim2sim raw/normalized policy obs debug trace to NPZ.")
+    p.add_argument("--obs_debug_steps", type=int, default=64, help="Number of policy steps to save for --obs_debug_dump.")
     return p.parse_args()
 
 

@@ -158,7 +158,7 @@ _ARMATURE_PER_JOINT: dict[str, float] = {
 
 def _first_matching(patterns: Iterable[tuple[str, float]], name: str, default: float = 0.0) -> float:
     for pat, val in patterns:
-        if fnmatch.fnmatch(name, pat):
+        if fnmatch.fnmatch(name, pat) or re.fullmatch(pat, name):
             return float(val)
     return default
 
