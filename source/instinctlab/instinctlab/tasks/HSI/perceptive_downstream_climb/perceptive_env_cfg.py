@@ -69,8 +69,8 @@ class PerceptiveShadowingSceneCfg(InteractiveSceneCfg):
             size=(20, 20),
             border_width=0.0,
             border_height=0.0,
-            num_rows=4,
-            num_cols=4,
+            num_rows=2,
+            num_cols=2,
             # Use 0.1 so (size / horizontal_scale) stays representable; 0.05 + inner M=379 gives
             # int(M * 0.05 / 0.05) == 378 (float error) vs height buffer 379 — broadcast error.
             horizontal_scale=0.1,
@@ -79,14 +79,18 @@ class PerceptiveShadowingSceneCfg(InteractiveSceneCfg):
             use_cache=False,
             curriculum=False,
             sub_terrains={
-                "perlin_rough": terrain_gen.PerlinPlaneTerrainCfg(
+                "specified_box": terrain_gen.SpecifiedBoxTerrainCfg(
                     proportion=1.0,
-                    noise_scale=[0.0, 0.0],
-                    noise_frequency=20,
-                    fractal_octaves=2,
-                    fractal_lacunarity=2.0,
-                    fractal_gain=0.25,
-                    centering=True,
+                    box_width=1.0,
+                    box_length=5.0,
+                    box_height=0.6,
+                    # Offset from sub-tile geometric center (Isaac origin after -size/2); (0,0) = centered on tile.
+                    box_center_offset_xy=(1.0, 0.0),
+                    floating_height=0.0,
+                    perlin_cfg=None,
+                    horizontal_scale=0.1,
+                    vertical_scale=0.01,
+                    slope_threshold=1.0,
                     wall_prob=[0.0, 0.0, 0.0, 0.0],
                 ),
             },

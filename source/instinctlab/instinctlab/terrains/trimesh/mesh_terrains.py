@@ -244,6 +244,81 @@ def floating_box_terrain(
 
 
 @generate_wall
+def specified_box_terrain(
+    difficulty: float, cfg: mesh_terrains_cfg.SpecifiedBoxTerrainCfg
+) -> tuple[list[trimesh.Trimesh], np.ndarray]:
+    """Single box with optional Perlin ground; XY from ``box_center_offset_xy`` relative to sub-tile center."""
+
+    floating_height = float(cfg.floating_height)
+    box_length = float(cfg.box_length)
+    box_width = float(cfg.box_width)
+    box_height = float(cfg.box_height)
+    ox, oy = float(cfg.box_center_offset_xy[0]), float(cfg.box_center_offset_xy[1])
+    cx = cfg.size[0] * 0.5 + ox
+    cy = cfg.size[1] * 0.5 + oy
+
+    meshes_list: list[trimesh.Trimesh] = []
+    total_height = floating_height + box_height
+    terrain_height = 0.0
+
+    pos = (cx, cy, floating_height + box_height / 2)
+    dim = (box_width, box_length, box_height)
+    box_mesh = trimesh.creation.box(dim, trimesh.transformations.translation_matrix(pos))
+    meshes_list.append(box_mesh)
+
+    if cfg.perlin_cfg is None:
+        dim_g = (cfg.size[0], cfg.size[1], terrain_height)
+        pos_g = (0.5 * cfg.size[0], 0.5 * cfg.size[1], -terrain_height / 2)
+        ground_mesh = trimesh.creation.box(dim_g, trimesh.transformations.translation_matrix(pos_g))
+        meshes_list.append(ground_mesh)
+    else:
+        clean_ground_height_field = np.zeros(
+            (int(cfg.size[0] / cfg.horizontal_scale) + 1, int(cfg.size[1] / cfg.horizontal_scale) + 1),
+            dtype=np.int16,
+        )
+        perlin_cfg = cfg.perlin_cfg
+        perlin_cfg.size = cfg.size
+        perlin_cfg.horizontal_scale = cfg.horizontal_scale
+        perlin_cfg.vertical_scale = cfg.vertical_scale
+        perlin_cfg.slope_threshold = cfg.slope_threshold
+        perlin_noise = generate_perlin_noise(
+            difficulty,
+            perlin_cfg,  # type: ignore[arg-type]
+        )
+        h, w = perlin_noise.shape
+        ground_h, ground_w = clean_ground_height_field.shape
+        pad_h_left = max(0, (ground_h - h) // 2)
+        pad_h_right = max(0, ground_h - h - pad_h_left)
+        pad_w_left = max(0, (ground_w - w) // 2)
+        pad_w_right = max(0, ground_w - w - pad_w_left)
+        pad_width = ((pad_h_left, pad_h_right), (pad_w_left, pad_w_right))
+        perlin_noise = np.pad(perlin_noise, pad_width, mode="constant", constant_values=0)
+
+        if cfg.no_perlin_at_obstacle:
+            hs = cfg.horizontal_scale
+            box_width_px = max(1, int(np.ceil(box_width / hs)))
+            box_length_px = max(1, int(np.ceil(box_length / hs)))
+            box_width_start_px = int(np.floor((cx - box_width / 2) / hs))
+            box_length_start_px = int(np.floor((cy - box_length / 2) / hs))
+            box_width_start_px = int(np.clip(box_width_start_px, 0, ground_h - 1))
+            box_length_start_px = int(np.clip(box_length_start_px, 0, ground_w - 1))
+            w_end = min(box_width_start_px + box_width_px, ground_h)
+            l_end = min(box_length_start_px + box_length_px, ground_w)
+            perlin_noise[box_width_start_px:w_end, box_length_start_px:l_end] = 0
+
+        ground_height_field = clean_ground_height_field + perlin_noise
+        vertices, triangles = convert_height_field_to_mesh(
+            ground_height_field, cfg.horizontal_scale, cfg.vertical_scale, cfg.slope_threshold
+        )
+        ground_mesh = trimesh.Trimesh(vertices=vertices, faces=triangles)
+        meshes_list.append(ground_mesh)
+
+    # Sub-tile spawn / flat_patch anchor: tile center, not box center (see random_multi_box_terrain).
+    origin = np.array([0.5 * cfg.size[0], 0.5 * cfg.size[1], 0.0])
+    return meshes_list, origin
+
+
+@generate_wall
 def random_multi_box_terrain(
     difficulty: float, cfg: mesh_terrains_cfg.PerlinMeshRandomMultiBoxTerrainCfg
 ) -> tuple[list[trimesh.Trimesh], np.ndarray]:

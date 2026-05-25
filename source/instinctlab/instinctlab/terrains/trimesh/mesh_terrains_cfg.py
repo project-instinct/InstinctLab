@@ -101,6 +101,48 @@ class PerlinMeshFloatingBoxTerrainCfg(SubTerrainBaseCfg, WallTerrainCfgMixin):
 
 
 @configclass
+class SpecifiedBoxTerrainCfg(SubTerrainBaseCfg, WallTerrainCfgMixin):
+    """Single axis-aligned box with fixed size and horizontal placement.
+
+    - ``box_center_offset_xy``: horizontal offset ``(dx, dy)`` of the **box center** from the sub-tile geometric
+      center. After IsaacLab's per-tile ``-size/2`` recenter, that is the offset you see relative to env spawn
+      (which uses the sub-tile ``origin``, not the box position).
+    - The generator returns ``origin = (size[0]/2, size[1]/2, 0)`` (tile center on the ground plane), matching
+      ``random_multi_box_terrain``. Do **not** set origin to the box center or ``env_origins`` will follow the box
+      and the offset will appear cancelled when the viewer tracks the robot.
+    - Mesh construction uses corner-frame center ``(size[0]/2 + dx, size[1]/2 + dy)`` before recentering.
+
+    - ``box_width`` / ``box_length`` / ``box_height``: extents along patch x / y / z in the generator mesh frame.
+    - ``floating_height``: clearance from nominal ground plane (``z = 0``) to the bottom face of the box.
+    """
+
+    function = mesh_terrains.specified_box_terrain
+
+    box_width: float = MISSING
+    """Extent along patch x."""
+
+    box_length: float = MISSING
+    """Extent along patch y."""
+
+    box_height: float = MISSING
+    """Extent along patch z (up)."""
+
+    box_center_offset_xy: tuple[float, float] = (0.0, 0.0)
+    """Box center offset from sub-tile center (meters). Env spawn stays at tile center via fixed ``origin``."""
+
+    floating_height: float = 0.0
+    """Vertical gap from ground plane to the bottom of the box."""
+
+    perlin_cfg: PerlinPlaneTerrainCfg | None = None
+
+    horizontal_scale: float = 0.1
+    vertical_scale: float = 0.005
+    slope_threshold: float | None = None
+    no_perlin_at_obstacle: bool = True
+    """If True, zero perlin under the box footprint (axis-aligned bounding square in UV)."""
+
+
+@configclass
 class PerlinMeshRandomMultiBoxTerrainCfg(SubTerrainBaseCfg, WallTerrainCfgMixin):
     """Configuration for a sub terrain with multiple random boxes with perlin noise."""
 

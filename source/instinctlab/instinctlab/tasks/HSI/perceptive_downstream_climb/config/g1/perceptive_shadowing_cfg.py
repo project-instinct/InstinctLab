@@ -86,8 +86,8 @@ class G1PerceptiveShadowingEnvCfg_PLAY(G1PerceptiveShadowingEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        self.scene.terrain.terrain_generator.num_rows = 13
-        self.scene.terrain.terrain_generator.num_cols = 13
+        self.scene.terrain.terrain_generator.num_rows = 2
+        self.scene.terrain.terrain_generator.num_cols = 2
 
         self.scene.camera.debug_vis = True
         self.observations.policy.depth_image.params["debug_vis"] = True

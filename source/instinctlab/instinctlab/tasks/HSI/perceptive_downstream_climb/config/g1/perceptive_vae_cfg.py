@@ -45,7 +45,7 @@ class CommandsCfg:
         ),
         random_velocity_terrain=None,
         velocity_ranges={
-            "perlin_rough": {"lin_vel_x": (0.4, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
+            "specified_box": {"lin_vel_x": (0.4, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
         },
         only_positive_lin_vel_x=True,
         lin_vel_threshold=0.0,
@@ -192,105 +192,17 @@ class G1PerceptiveVaeRewardsCfg:
     )
     heading_error = RewTermCfg(func=parkour_mdp.heading_error, weight=-1.0, params={"command_name": "base_velocity"})
     dont_wait = RewTermCfg(func=parkour_mdp.dont_wait, weight=-0.5, params={"command_name": "base_velocity"})
-    is_alive = RewTermCfg(func=parkour_mdp.is_alive, weight=3.0)
+    # is_alive = RewTermCfg(func=parkour_mdp.is_alive, weight=3.0)
     stand_still = RewTermCfg(
         func=parkour_mdp.stand_still, weight=-0.3, params={"command_name": "base_velocity", "offset": 4.0}
     )
-
-    volume_points_penetration = RewTermCfg(
-        func=parkour_mdp.volume_points_penetration,
-        weight=-4.0,
-        params={
-            "sensor_cfg": SceneEntityCfg("leg_volume_points"),
-        },
-    )
-    feet_air_time = RewTermCfg(
-        func=parkour_mdp.feet_air_time,
-        weight=0.5,
-        params={
-            "command_name": "base_velocity",
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_ankle_roll_link"),
-            "vel_threshold": 0.15,
-        },
-    )
-    feet_slide = RewTermCfg(
-        func=parkour_mdp.contact_slide,
-        weight=-0.4,
-        params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_ankle_roll_link"),
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*_ankle_roll_link"),
-            "threshold": 1.0,
-        },
-    )
-    joint_deviation_hip = RewTermCfg(
-        func=parkour_mdp.joint_deviation_square,
-        weight=-0.5,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_yaw_joint", ".*_hip_roll_joint"])},
-    )
-    ang_vel_xy_l2 = RewTermCfg(func=parkour_mdp.ang_vel_xy_l2, weight=-0.05)
-    dof_torques_l2 = RewTermCfg(
-        func=parkour_mdp.joint_torques_l2,
-        weight=-1.5e-7,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_knee_joint", ".*_ankle_.*"])},
-    )
-    dof_acc_l2 = RewTermCfg(
-        func=parkour_mdp.joint_acc_l2,
-        weight=-1.25e-7,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
-    )
-    dof_vel_l2 = RewTermCfg(
-        func=parkour_mdp.joint_vel_l2,
-        weight=-1e-4,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
-    )
     action_rate_l2 = RewTermCfg(func=parkour_mdp.action_rate_l2, weight=-0.005)
-    flat_orientation_l2 = RewTermCfg(func=parkour_mdp.flat_orientation_l2, weight=-3.0)
-    pelvis_orientation_l2 = RewTermCfg(
-        func=parkour_mdp.link_orientation, weight=-3.0, params={"asset_cfg": SceneEntityCfg("robot", body_names="pelvis")}
-    )
-    feet_flat_ori = RewTermCfg(
-        func=parkour_mdp.feet_orientation_contact,
-        weight=-0.4,
-        params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_ankle_roll_link"),
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*_ankle_roll_link"),
-        },
-    )
-    feet_at_plane = RewTermCfg(
-        func=parkour_mdp.feet_at_plane,
-        weight=-0.1,
-        params={
-            "contact_sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_ankle_roll_link"),
-            "left_height_scanner_cfg": SceneEntityCfg("left_height_scanner"),
-            "right_height_scanner_cfg": SceneEntityCfg("right_height_scanner"),
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*_ankle_roll_link"),
-            "height_offset": 0.035,
-        },
-    )
-    feet_close_xy = RewTermCfg(
-        func=parkour_mdp.feet_close_xy_gauss,
-        weight=0.4,
-        params={
-            "threshold": 0.12,
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*_ankle_roll_link"),
-            "std": math.sqrt(0.05),
-        },
-    )
     energy = RewTermCfg(
         func=parkour_mdp.motors_power_square,
         weight=-5e-5,
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_knee_joint", ".*_ankle_.*"]),
             "normalize_by_stiffness": True,
-        },
-    )
-    freeze_upper_body = RewTermCfg(
-        func=parkour_mdp.joint_deviation_l1,
-        weight=-0.004,
-        params={
-            "asset_cfg": SceneEntityCfg(
-                "robot", joint_names=[".*_shoulder_.*", ".*_elbow_.*", ".*_wrist.*", "waist_.*"]
-            ),
         },
     )
 
@@ -323,7 +235,7 @@ class G1PerceptiveVaeTerminationsCfg(perceptual_cfg.TerminationsCfg):
     """Extra safety terminations aligned with parkour MDP."""
     time_out = DoneTermCfg(func=mdp.time_out, time_out=True)
 
-    bad_orientation = DoneTermCfg(func=parkour_mdp.bad_orientation, params={"limit_angle": 1.0})
+    bad_orientation = DoneTermCfg(func=parkour_mdp.bad_orientation, params={"limit_angle": 1.5})
     # body_pos_default = DoneTermCfg(
     #     func=instinct_mdp.bad_global_body_pos_from_default,
     #     time_out=False,
@@ -411,8 +323,8 @@ class G1PerceptiveVaeEnvCfg_PLAY(G1PerceptiveVaeEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        self.scene.terrain.terrain_generator.num_rows = 4
-        self.scene.terrain.terrain_generator.num_cols = 4
+        self.scene.terrain.terrain_generator.num_rows = 2
+        self.scene.terrain.terrain_generator.num_cols = 2
 
         self.scene.camera.debug_vis = True
         self.observations.policy.depth_image.params["debug_vis"] = True
