@@ -103,14 +103,14 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
 class AlgorithmCfg(InstinctRlPpoAlgorithmCfg):
     class_name = "VaeDistill"
     kl_loss_func = "kl_divergence"
-    kl_loss_coef = 0.03
-    mu_temporal_loss_coef = 0.0
+    kl_loss_coef = 0.02
+    mu_temporal_loss_coef = 0.005
     mu_temporal_phi = 0.99
     mu_temporal_skip_start_steps = 2
     using_ppo = False
     num_learning_epochs = 5
     num_mini_batches = 4
-    learning_rate = 3e-4
+    learning_rate = 2e-4
     # PPO parameters should not affect anything.
     schedule = "adaptive"
     gamma = 0.99
