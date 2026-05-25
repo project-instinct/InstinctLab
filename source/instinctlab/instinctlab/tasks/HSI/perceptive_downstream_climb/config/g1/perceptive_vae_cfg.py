@@ -47,6 +47,8 @@ class CommandsCfg:
         velocity_ranges={
             "specified_box": {"lin_vel_x": (0.4, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
         },
+        target_mode="fixed_goal",
+        relative_target_pos=(10.0, 0.0, 0.0),
         only_positive_lin_vel_x=True,
         lin_vel_threshold=0.0,
         ang_vel_threshold=0.0,

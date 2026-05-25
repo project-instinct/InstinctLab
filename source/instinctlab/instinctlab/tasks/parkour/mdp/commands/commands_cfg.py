@@ -27,6 +27,17 @@ class PoseVelocityCommandCfg(CommandTermCfg):
     only_positive_lin_vel_x: bool = False
     """Whether to only sample positive linear x velocity commands. Defaults to False."""
 
+    target_mode: str = "flat_patch"
+    """Target sampling mode. Use ``flat_patch`` for terrain flat-patch sampling or ``fixed_goal`` for a fixed
+    target offset from each environment origin."""
+
+    relative_target_pos: tuple[float, float, float] = (10.0, 0.0, 0.0)
+    """Target position offset from each environment origin when ``target_mode`` is ``fixed_goal``.
+
+    The z component is accepted for configuration completeness, but the command target z is pinned to the current
+    robot root z when resampling in ``fixed_goal`` mode.
+    """
+
     @configclass
     class Ranges:
         """Uniform distribution ranges for the velocity commands."""

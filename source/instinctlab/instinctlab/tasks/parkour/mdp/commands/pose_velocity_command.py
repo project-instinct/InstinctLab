@@ -114,14 +114,22 @@ class PoseVelocityCommand(CommandTerm):
         self.random_ang_vel_z_range[:, 0] = self.cfg.ranges.ang_vel_z[0]
         self.random_ang_vel_z_range[:, 1] = self.cfg.ranges.ang_vel_z[1]
 
-        # obtain the valid targets from the terrain
-        if "target" not in self.terrain.flat_patches:
-            raise RuntimeError(
-                "The terrain-based command generator requires a valid flat patch under 'target' in the terrain."
-                f" Found: {list(self.terrain.flat_patches.keys())}"
+        if self.cfg.target_mode == "flat_patch":
+            # obtain the valid targets from the terrain
+            if "target" not in self.terrain.flat_patches:
+                raise RuntimeError(
+                    "The terrain-based command generator requires a valid flat patch under 'target' in the terrain."
+                    f" Found: {list(self.terrain.flat_patches.keys())}"
+                )
+            # valid targets: (terrain_level, terrain_type, num_patches, 3)
+            self.valid_targets: torch.Tensor = self.terrain.flat_patches["target"]
+        elif self.cfg.target_mode == "fixed_goal":
+            self.valid_targets = None
+            self.relative_target_pos = torch.tensor(self.cfg.relative_target_pos, dtype=torch.float32, device=self.device)
+        else:
+            raise ValueError(
+                f"Unsupported target_mode '{self.cfg.target_mode}'. Expected 'flat_patch' or 'fixed_goal'."
             )
-        # valid targets: (terrain_level, terrain_type, num_patches, 3)
-        self.valid_targets: torch.Tensor = self.terrain.flat_patches["target"]
 
     def __str__(self) -> str:
         msg = "PositionCommand:\n"
@@ -172,10 +180,14 @@ class PoseVelocityCommand(CommandTerm):
 
     def _resample_command(self, env_ids: Sequence[int]):
         # sample new position targets from the terrain
-        ids = torch.randint(0, self.valid_targets.shape[2], size=(len(env_ids),), device=self.device)
-        self.pos_command_w[env_ids] = self.valid_targets[
-            self.terrain.terrain_levels[env_ids], self.terrain.terrain_types[env_ids], ids
-        ]
+        if self.cfg.target_mode == "flat_patch":
+            ids = torch.randint(0, self.valid_targets.shape[2], size=(len(env_ids),), device=self.device)
+            self.pos_command_w[env_ids] = self.valid_targets[
+                self.terrain.terrain_levels[env_ids], self.terrain.terrain_types[env_ids], ids
+            ]
+        elif self.cfg.target_mode == "fixed_goal":
+            self.pos_command_w[env_ids] = self._env.scene.env_origins[env_ids] + self.relative_target_pos
+            self.pos_command_w[env_ids, 2] = self.robot.data.root_pos_w[env_ids, 2]
 
         # sample velocity commands
         r = torch.empty(len(env_ids), device=self.device)
@@ -319,7 +331,7 @@ class PoseVelocityCommand(CommandTerm):
     def _debug_vis_callback(self, event):
         if not self.robot.is_initialized:
             return
-        if getattr(self.cfg, "patch_vis", True):
+        if getattr(self.cfg, "patch_vis", True) and self.valid_targets is not None:
             flat_patches = self.valid_targets.reshape(-1, 3)
             poses = torch.cat([self.pos_command_w, flat_patches], dim=0)
             marker_indices = torch.cat(
