@@ -45,3 +45,23 @@ gym.register(
         "instinct_rl_cfg_entry_point": f"{agents.__name__}.instinct_rl_vae_cfg:G1PerceptiveVaePPORunnerCfg",
     },
 )
+
+gym.register(
+    id="Instinct-HSIDownstreamClimb-Perceptive-Vae-Amp-G1-v0",
+    entry_point="instinctlab.envs:InstinctRlEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{task_entry}.perceptive_vae_amp_cfg:G1PerceptiveVaeAmpEnvCfg",
+        "instinct_rl_cfg_entry_point": f"{agents.__name__}.instinct_rl_vae_amp_cfg:G1PerceptiveVaeAmpPPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="Instinct-HSIDownstreamClimb-Perceptive-Vae-Amp-G1-Play-v0",
+    entry_point="instinctlab.envs:InstinctRlEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{task_entry}.perceptive_vae_amp_cfg:G1PerceptiveVaeAmpEnvCfg_PLAY",
+        "instinct_rl_cfg_entry_point": f"{agents.__name__}.instinct_rl_vae_amp_cfg:G1PerceptiveVaeAmpPPORunnerCfg",
+    },
+)
