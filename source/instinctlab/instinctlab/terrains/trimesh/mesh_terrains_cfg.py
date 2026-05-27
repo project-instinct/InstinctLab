@@ -64,8 +64,8 @@ class MotionMatchedTerrainCfg(SubTerrainBaseCfg):
     randomize_boxes: bool = False
     """If True, apply per-component size randomization (absolute meter deltas on each axis)."""
 
-    box_size_delta_range_x: tuple[float, float] = (-0.2, 0.2)
-    box_size_delta_range_y: tuple[float, float] = (-0.2, 0.2)
+    box_size_delta_range_x: tuple[float, float] = (-0.0, 0.0)
+    box_size_delta_range_y: tuple[float, float] = (-0.0, 0.0)
     box_size_delta_range_z: tuple[float, float] = (-0.0, 0.0)
     """Absolute size perturbation range (meters) along x/y/z per mesh component.
 
