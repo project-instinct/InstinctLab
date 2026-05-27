@@ -1,7 +1,10 @@
 import math
+from collections.abc import Sequence
 
 import isaaclab.envs.mdp as mdp
+import torch
 from isaaclab.envs import ViewerCfg
+from isaaclab.managers import ManagerTermBase
 from isaaclab.managers import ObservationGroupCfg as ObsGroupCfg
 from isaaclab.managers import ObservationTermCfg as ObsTermCfg
 from isaaclab.managers import RewardTermCfg as RewTermCfg
@@ -27,6 +30,64 @@ G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_SPHEREHAND_CFG
 # Must match frozen VAE bundle (dagger run name uses propHistory4_depthHist10Skip3).
 PROPRIO_HISTORY_LENGTH = 4
 TEACHER_PROPRIO_HISTORY_LENGTH = 8
+
+
+class root_pos_termination(ManagerTermBase):
+    """Terminate when root XY drifts too far from the reset-root speed-integrated reference."""
+
+    def __init__(self, cfg, env):
+        super().__init__(cfg, env)
+        self._start_root_xy = torch.zeros(env.num_envs, 2, device=env.device)
+        self._goal_root_xy = torch.zeros(env.num_envs, 2, device=env.device)
+        self._lin_vel_x = torch.zeros(env.num_envs, device=env.device)
+        self._initialized = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+
+    def reset(self, env_ids: Sequence[int] | slice | None = None) -> None:
+        if env_ids is None:
+            env_ids = slice(None)
+        self._capture_reference(env_ids)
+
+    def __call__(
+        self,
+        env,
+        command_name: str = "base_velocity",
+        asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+        max_xy_error: float = 1.0,
+        print_reason: bool = False,
+    ) -> torch.Tensor:
+        missing_env_ids = torch.logical_not(self._initialized).nonzero(as_tuple=False).flatten()
+        if len(missing_env_ids) > 0:
+            self._capture_reference(missing_env_ids)
+
+        asset = env.scene[asset_cfg.name]
+        goal_vec_xy = self._goal_root_xy - self._start_root_xy
+        goal_dist = torch.norm(goal_vec_xy, dim=-1)
+        goal_dir_xy = goal_vec_xy / torch.clamp(goal_dist, min=1.0e-6).unsqueeze(-1)
+        elapsed_s = env.episode_length_buf.to(dtype=torch.float32) * env.step_dt
+        progress = torch.minimum(torch.clamp(self._lin_vel_x, min=0.0) * elapsed_s, goal_dist)
+        target_root_xy = self._start_root_xy + goal_dir_xy * progress.unsqueeze(-1)
+
+        error = torch.norm(asset.data.root_pos_w[:, :2] - target_root_xy, dim=-1)
+        return_ = error > max_xy_error
+        if print_reason and return_.any():
+            print(f"root_pos_termination: {return_.sum()} envs")
+        return return_
+
+    def _capture_reference(self, env_ids: Sequence[int] | slice) -> None:
+        asset = self._env.scene[self.cfg.params.get("asset_cfg", SceneEntityCfg("robot")).name]
+        command_name = self.cfg.params.get("command_name", "base_velocity")
+        command_term = self._env.command_manager.get_term(command_name)
+
+        self._start_root_xy[env_ids] = asset.data.root_pos_w[env_ids, :2]
+        self._goal_root_xy[env_ids] = command_term.pos_command_w[env_ids, :2]
+
+        lin_vel_x = command_term.max_command_b[:, 0]
+        if hasattr(command_term, "random_velocity_indices"):
+            lin_vel_x = torch.where(command_term.random_velocity_indices, command_term.random_lin_vel_x, lin_vel_x)
+        if hasattr(command_term, "is_standing_env"):
+            lin_vel_x = torch.where(command_term.is_standing_env, torch.zeros_like(lin_vel_x), lin_vel_x)
+        self._lin_vel_x[env_ids] = lin_vel_x[env_ids]
+        self._initialized[env_ids] = True
 
 
 @configclass
@@ -194,7 +255,7 @@ class G1PerceptiveVaeRewardsCfg:
     )
     heading_error = RewTermCfg(func=parkour_mdp.heading_error, weight=-1.0, params={"command_name": "base_velocity"})
     dont_wait = RewTermCfg(func=parkour_mdp.dont_wait, weight=-0.5, params={"command_name": "base_velocity"})
-    # is_alive = RewTermCfg(func=parkour_mdp.is_alive, weight=3.0)
+    is_alive = RewTermCfg(func=parkour_mdp.is_alive, weight=3.0)
     stand_still = RewTermCfg(
         func=parkour_mdp.stand_still, weight=-0.3, params={"command_name": "base_velocity", "offset": 4.0}
     )
@@ -251,7 +312,16 @@ class G1PerceptiveVaeTerminationsCfg(perceptual_cfg.TerminationsCfg):
         func=parkour_mdp.root_height_below_env_origin_minimum,
         params={"minimum_height": 0.5},
     )
-
+    root_pos_termination = DoneTermCfg(
+        func=root_pos_termination,
+        time_out=False,
+        params={
+            "command_name": "base_velocity",
+            "asset_cfg": SceneEntityCfg("robot"),
+            "max_xy_error": 0.5,
+            "print_reason": False,
+        },
+    )
     out_of_border = DoneTermCfg(
         func=instinct_mdp.terrain_out_of_bounds,
         time_out=True,
