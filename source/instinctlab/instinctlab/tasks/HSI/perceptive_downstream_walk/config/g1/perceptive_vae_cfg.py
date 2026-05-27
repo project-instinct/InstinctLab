@@ -25,7 +25,7 @@ from instinctlab.sensors import get_link_prim_targets
 
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_SPHEREHAND_CFG
 # Must match frozen VAE bundle (dagger run name uses propHistory4_depthHist10Skip3).
-PROPRIO_HISTORY_LENGTH = 4
+PROPRIO_HISTORY_LENGTH = 5
 TEACHER_PROPRIO_HISTORY_LENGTH = 8
 
 

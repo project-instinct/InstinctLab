@@ -28,7 +28,7 @@ from instinctlab.sensors import get_link_prim_targets
 
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_SPHEREHAND_CFG
 # Must match frozen VAE bundle (dagger run name uses propHistory4_depthHist10Skip3).
-PROPRIO_HISTORY_LENGTH = 4
+PROPRIO_HISTORY_LENGTH = 5
 TEACHER_PROPRIO_HISTORY_LENGTH = 8
 
 
@@ -312,16 +312,16 @@ class G1PerceptiveVaeTerminationsCfg(perceptual_cfg.TerminationsCfg):
         func=parkour_mdp.root_height_below_env_origin_minimum,
         params={"minimum_height": 0.5},
     )
-    root_pos_termination = DoneTermCfg(
-        func=root_pos_termination,
-        time_out=False,
-        params={
-            "command_name": "base_velocity",
-            "asset_cfg": SceneEntityCfg("robot"),
-            "max_xy_error": 0.5,
-            "print_reason": False,
-        },
-    )
+    # root_pos_termination = DoneTermCfg(
+    #     func=root_pos_termination,
+    #     time_out=False,
+    #     params={
+    #         "command_name": "base_velocity",
+    #         "asset_cfg": SceneEntityCfg("robot"),
+    #         "max_xy_error": 0.5,
+    #         "print_reason": False,
+    #     },
+    # )
     out_of_border = DoneTermCfg(
         func=instinct_mdp.terrain_out_of_bounds,
         time_out=True,
