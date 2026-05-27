@@ -74,7 +74,7 @@ class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
         # "joint_vel_ref",
         # "position_ref",
         # "rotation_ref",
-        "parallel_latent_0_depth_image",  # based on the encoder_configs in Conv2dHeadEncoderCfg
+        # "parallel_latent_0_depth_image",  # based on the encoder_configs in Conv2dHeadEncoderCfg
         "projected_gravity",
         "base_ang_vel",
         "joint_pos",
