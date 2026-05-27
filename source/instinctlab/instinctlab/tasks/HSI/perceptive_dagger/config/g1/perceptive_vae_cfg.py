@@ -36,7 +36,7 @@ from instinctlab.motion_reference.utils import motion_interpolate_bilinear
 from .perceptive_shadowing_cfg import MOTION_FOLDER
 
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_SPHEREHAND_CFG
-PROPRIO_HISTORY_LENGTH = 4
+PROPRIO_HISTORY_LENGTH = 5
 TEACHER_PROPRIO_HISTORY_LENGTH = 8
 ACTOR_GLOBAL_TRACKING_HISTORY_LEN = 3
 CRITIC_GLOBAL_TRACKING_HISTORY_LEN = 3
@@ -143,7 +143,6 @@ class ObservationsCfg:
             func=mdp.height_scan,
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
             clip=[-20.0, 20.0],
-            history_length=PROPRIO_HISTORY_LENGTH,
         )
 
         # proprioception
