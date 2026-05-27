@@ -654,7 +654,7 @@ def _write_interactive_sphere_html(
         x: width * 0.5 + p3.x * scale * persp,
         y: height * 0.5 - p3.y * scale * persp,
         z: p3.z,
-        size: 2.0 + 2.4 * (0.3 + Math.max(0, p3.z + 1.0) * 0.5),
+        size: 1.0 + 1.2 * (0.3 + Math.max(0, p3.z + 1.0) * 0.5),
       }};
     }}
 
@@ -943,7 +943,7 @@ def save_latent_visualization(
                 sphere3[mask, 2],
                 color=c,
                 alpha=0.9,
-                s=12,
+                s=6,
                 label=lab,
             )
 
@@ -955,7 +955,7 @@ def save_latent_visualization(
             sphere3[other3, 2],
             color=gray,
             alpha=0.9,
-            s=12,
+            s=6,
             label="other",
         )
 
