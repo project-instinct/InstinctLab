@@ -419,3 +419,17 @@ class G1PerceptiveVaeEnvCfg_PLAY(G1PerceptiveVaeEnvCfg):
 
         # see the reference robot
         # self.scene.camera.mesh_prim_paths.append("/World/envs/env_.*/RobotReference/.*")
+    def _decode_with_encoder_mean(self, observations):
+        ctx = self._gather_vae_inputs(observations)
+        if ctx["use_full_obs"]:
+            z_mean, _, _, _ = self.actor.encode(observations, prior_cond=ctx["prior_cond"])
+        else:
+            z_mean, _, _, _ = self.actor.encode(ctx["vae_input"], prior_cond=ctx["prior_cond"])
+        prior_mean = None
+        if self.actor.decode_add_prior_mean and self.actor.prior_net is not None and ctx["prior_cond"] is not None:
+            prior_mean, _ = self.actor.prior_net(ctx["prior_cond"]).chunk(2, dim=-1)
+        return self.actor.decode_latent(
+            z_mean,
+            decoder_aux_input=ctx["decoder_aux_input"],
+            prior_mean=prior_mean,
+        )
