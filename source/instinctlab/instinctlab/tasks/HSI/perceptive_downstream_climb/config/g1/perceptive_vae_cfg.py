@@ -32,8 +32,8 @@ PROPRIO_HISTORY_LENGTH = 5
 TEACHER_PROPRIO_HISTORY_LENGTH = 8
 
 
-class root_pos_termination(ManagerTermBase):
-    """Terminate when root XY drifts too far from the reset-root speed-integrated reference."""
+class _RootPosReferenceManager(ManagerTermBase):
+    """Speed-integrated root XY reference from reset pose toward ``PoseVelocityCommand`` goal."""
 
     def __init__(self, cfg, env):
         super().__init__(cfg, env)
@@ -47,31 +47,24 @@ class root_pos_termination(ManagerTermBase):
             env_ids = slice(None)
         self._capture_reference(env_ids)
 
-    def __call__(
-        self,
-        env,
-        command_name: str = "base_velocity",
-        asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
-        max_xy_error: float = 1.0,
-        print_reason: bool = False,
-    ) -> torch.Tensor:
+    def _ensure_reference(self) -> None:
         missing_env_ids = torch.logical_not(self._initialized).nonzero(as_tuple=False).flatten()
         if len(missing_env_ids) > 0:
             self._capture_reference(missing_env_ids)
 
-        asset = env.scene[asset_cfg.name]
+    def _target_root_xy(self, env) -> torch.Tensor:
+        self._ensure_reference()
         goal_vec_xy = self._goal_root_xy - self._start_root_xy
         goal_dist = torch.norm(goal_vec_xy, dim=-1)
         goal_dir_xy = goal_vec_xy / torch.clamp(goal_dist, min=1.0e-6).unsqueeze(-1)
         elapsed_s = env.episode_length_buf.to(dtype=torch.float32) * env.step_dt
         progress = torch.minimum(torch.clamp(self._lin_vel_x, min=0.0) * elapsed_s, goal_dist)
-        target_root_xy = self._start_root_xy + goal_dir_xy * progress.unsqueeze(-1)
+        return self._start_root_xy + goal_dir_xy * progress.unsqueeze(-1)
 
-        error = torch.norm(asset.data.root_pos_w[:, :2] - target_root_xy, dim=-1)
-        return_ = error > max_xy_error
-        if print_reason and return_.any():
-            print(f"root_pos_termination: {return_.sum()} envs")
-        return return_
+    def _xy_tracking_error(self, env, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+        asset = env.scene[asset_cfg.name]
+        target_root_xy = self._target_root_xy(env)
+        return torch.norm(asset.data.root_pos_w[:, :2] - target_root_xy, dim=-1)
 
     def _capture_reference(self, env_ids: Sequence[int] | slice) -> None:
         asset = self._env.scene[self.cfg.params.get("asset_cfg", SceneEntityCfg("robot")).name]
@@ -90,6 +83,38 @@ class root_pos_termination(ManagerTermBase):
         self._initialized[env_ids] = True
 
 
+class root_pos_termination(_RootPosReferenceManager):
+    """Terminate when root XY drifts too far from the reset-root speed-integrated reference."""
+
+    def __call__(
+        self,
+        env,
+        command_name: str = "base_velocity",
+        asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+        max_xy_error: float = 1.0,
+        print_reason: bool = False,
+    ) -> torch.Tensor:
+        error = self._xy_tracking_error(env, asset_cfg)
+        return_ = error > max_xy_error
+        if print_reason and return_.any():
+            print(f"root_pos_termination: {return_.sum()} envs")
+        return return_
+
+
+class root_pos_track_xy_exp(_RootPosReferenceManager):
+    """Reward tracking the speed-integrated root XY reference; closer root yields higher reward."""
+
+    def __call__(
+        self,
+        env,
+        command_name: str = "base_velocity",
+        asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+        std: float = 0.25,
+    ) -> torch.Tensor:
+        error = self._xy_tracking_error(env, asset_cfg)
+        return torch.exp(-torch.square(error) / std**2)
+
+
 @configclass
 class CommandsCfg:
     """Velocity / pose-style commands (same family as parkour ``base_velocity``)."""
@@ -102,11 +127,11 @@ class CommandsCfg:
         heading_control_stiffness=2.0,
         rel_standing_envs=0.05,
         ranges=parkour_mdp.PoseVelocityCommandCfg.Ranges(
-            lin_vel_x=(0.4, 0.8), lin_vel_y=(0.0, 0.0), ang_vel_z=(-1.0, 1.0)
+            lin_vel_x=(0.1, 0.1), lin_vel_y=(0.0, 0.0), ang_vel_z=(-1.0, 1.0)
         ),
         random_velocity_terrain=None,
         velocity_ranges={
-            "specified_box": {"lin_vel_x": (0.4, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
+            "specified_box": {"lin_vel_x": (0.1, 0.1), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
         },
         target_mode="fixed_goal",
         relative_target_pos=(10.0, 0.0, 0.0),
@@ -243,50 +268,60 @@ class G1PerceptiveVaePlayMonitorCfg:
 class G1PerceptiveVaeRewardsCfg:
     """Reward terms copied from ``parkour_env_cfg.G1Rewards`` (parkour locomotion MDP)."""
 
-    track_lin_vel_xy_exp = RewTermCfg(
-        func=parkour_mdp.track_lin_vel_xy_exp,
+    track_root_pos_xy_exp = RewTermCfg(
+        func=root_pos_track_xy_exp,
         weight=2.0,
-        params={"command_name": "base_velocity", "std": 0.5},
-    )
-    track_ang_vel_z_exp = RewTermCfg(
-        func=parkour_mdp.track_ang_vel_z_exp,
-        weight=2.0,
-        params={"command_name": "base_velocity", "std": 0.5},
-    )
-    heading_error = RewTermCfg(func=parkour_mdp.heading_error, weight=-1.0, params={"command_name": "base_velocity"})
-    dont_wait = RewTermCfg(func=parkour_mdp.dont_wait, weight=-0.5, params={"command_name": "base_velocity"})
-    is_alive = RewTermCfg(func=parkour_mdp.is_alive, weight=3.0)
-    stand_still = RewTermCfg(
-        func=parkour_mdp.stand_still, weight=-0.3, params={"command_name": "base_velocity", "offset": 4.0}
-    )
-    action_rate_l2 = RewTermCfg(func=parkour_mdp.action_rate_l2, weight=-0.005)
-    energy = RewTermCfg(
-        func=parkour_mdp.motors_power_square,
-        weight=-5e-5,
         params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_knee_joint", ".*_ankle_.*"]),
-            "normalize_by_stiffness": True,
+            "command_name": "base_velocity",
+            "asset_cfg": SceneEntityCfg("robot"),
+            "std": 0.25,
         },
     )
 
-    dof_pos_limits = RewTermCfg(
-        func=parkour_mdp.joint_pos_limits,
-        weight=-1.0,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
-    )
-    dof_vel_limits = RewTermCfg(
-        func=parkour_mdp.joint_vel_limits,
-        weight=-1.0,
-        params={"soft_ratio": 0.9, "asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
-    )
-    torque_limits = RewTermCfg(
-        func=parkour_mdp.applied_torque_limits_by_ratio,
-        weight=-0.01,
-        params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=[".*"]),
-            "limit_ratio": 0.8,
-        },
-    )
+    # track_lin_vel_xy_exp = RewTermCfg(
+    #     func=parkour_mdp.track_lin_vel_xy_exp,
+    #     weight=2.0,
+    #     params={"command_name": "base_velocity", "std": 0.5},
+    # )
+    # track_ang_vel_z_exp = RewTermCfg(
+    #     func=parkour_mdp.track_ang_vel_z_exp,
+    #     weight=2.0,
+    #     params={"command_name": "base_velocity", "std": 0.5},
+    # )
+    # heading_error = RewTermCfg(func=parkour_mdp.heading_error, weight=-1.0, params={"command_name": "base_velocity"})
+    # dont_wait = RewTermCfg(func=parkour_mdp.dont_wait, weight=-0.5, params={"command_name": "base_velocity"})
+    # is_alive = RewTermCfg(func=parkour_mdp.is_alive, weight=3.0)
+    # stand_still = RewTermCfg(
+    #     func=parkour_mdp.stand_still, weight=-0.3, params={"command_name": "base_velocity", "offset": 4.0}
+    # )
+    # action_rate_l2 = RewTermCfg(func=parkour_mdp.action_rate_l2, weight=-0.005)
+    # energy = RewTermCfg(
+    #     func=parkour_mdp.motors_power_square,
+    #     weight=-5e-5,
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_knee_joint", ".*_ankle_.*"]),
+    #         "normalize_by_stiffness": True,
+    #     },
+    # )
+
+    # dof_pos_limits = RewTermCfg(
+    #     func=parkour_mdp.joint_pos_limits,
+    #     weight=-1.0,
+    #     params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
+    # )
+    # dof_vel_limits = RewTermCfg(
+    #     func=parkour_mdp.joint_vel_limits,
+    #     weight=-1.0,
+    #     params={"soft_ratio": 0.9, "asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
+    # )
+    # torque_limits = RewTermCfg(
+    #     func=parkour_mdp.applied_torque_limits_by_ratio,
+    #     weight=-0.01,
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", joint_names=[".*"]),
+    #         "limit_ratio": 0.8,
+    #     },
+    # )
 
 @configclass
 class G1PerceptiveVaeRewardGroupsCfg(perceptual_cfg.RewardGroupsCfg):
@@ -298,7 +333,7 @@ class G1PerceptiveVaeTerminationsCfg(perceptual_cfg.TerminationsCfg):
     """Extra safety terminations aligned with parkour MDP."""
     time_out = DoneTermCfg(func=mdp.time_out, time_out=True)
 
-    bad_orientation = DoneTermCfg(func=parkour_mdp.bad_orientation, params={"limit_angle": 1.5})
+    # bad_orientation = DoneTermCfg(func=parkour_mdp.bad_orientation, params={"limit_angle": 1.5})
     # body_pos_default = DoneTermCfg(
     #     func=instinct_mdp.bad_global_body_pos_from_default,
     #     time_out=False,
@@ -310,18 +345,18 @@ class G1PerceptiveVaeTerminationsCfg(perceptual_cfg.TerminationsCfg):
     # )
     root_height = DoneTermCfg(
         func=parkour_mdp.root_height_below_env_origin_minimum,
-        params={"minimum_height": 0.5},
+        params={"minimum_height": 0.6},
     )
-    # root_pos_termination = DoneTermCfg(
-    #     func=root_pos_termination,
-    #     time_out=False,
-    #     params={
-    #         "command_name": "base_velocity",
-    #         "asset_cfg": SceneEntityCfg("robot"),
-    #         "max_xy_error": 0.5,
-    #         "print_reason": False,
-    #     },
-    # )
+    root_pos_termination = DoneTermCfg(
+        func=root_pos_termination,
+        time_out=False,
+        params={
+            "command_name": "base_velocity",
+            "asset_cfg": SceneEntityCfg("robot"),
+            "max_xy_error": 1.0,
+            "print_reason": False,
+        },
+    )
     out_of_border = DoneTermCfg(
         func=instinct_mdp.terrain_out_of_bounds,
         time_out=True,
