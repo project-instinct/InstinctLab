@@ -1,7 +1,10 @@
 import math
+import os
 from collections.abc import Sequence
 
 import isaaclab.envs.mdp as mdp
+import isaaclab.utils.math as math_utils
+import numpy as np
 import torch
 from isaaclab.envs import ViewerCfg
 from isaaclab.managers import ManagerTermBase
@@ -30,6 +33,140 @@ G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_SPHEREHAND_CFG
 # Must match frozen VAE bundle (dagger run name uses propHistory4_depthHist10Skip3).
 PROPRIO_HISTORY_LENGTH = 5
 TEACHER_PROPRIO_HISTORY_LENGTH = 8
+_WBCHSI_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../../../../.."))
+_MANUAL_ROOT_TRAJECTORY_ENV = "INSTINCTLAB_MANUAL_ROOT_TRAJECTORY"
+_DEFAULT_MANUAL_ROOT_TRAJECTORY_PATH = os.path.join(
+    _WBCHSI_ROOT,
+    "data",
+    "root_pose_trajs",
+    "Instinct-HSIDownstreamClimb-Perceptive-Vae-G1-Play-v0_20260528_140950",
+    "trajectory.npz",
+)
+
+
+def _resolve_manual_root_trajectory_path(path: str | None = None) -> str:
+    path = os.environ.get(_MANUAL_ROOT_TRAJECTORY_ENV, path or _DEFAULT_MANUAL_ROOT_TRAJECTORY_PATH)
+    path = os.path.expanduser(os.path.expandvars(path))
+    if not os.path.isabs(path):
+        cwd_path = os.path.abspath(path)
+        wbchsi_path = os.path.abspath(os.path.join(_WBCHSI_ROOT, path))
+        path = cwd_path if os.path.exists(cwd_path) else wbchsi_path
+    return path
+
+
+def _manual_root_trajectory_duration_s(path: str | None = None) -> float | None:
+    path = _resolve_manual_root_trajectory_path(path)
+    if not os.path.exists(path):
+        return None
+    with np.load(path) as data:
+        dt = float(np.asarray(data["dt"]).item()) if "dt" in data.files else 0.02
+        return int(data["root_pos_w"].shape[0]) * dt
+
+
+def _wrap_to_pi(value: torch.Tensor) -> torch.Tensor:
+    return torch.atan2(torch.sin(value), torch.cos(value))
+
+
+class _ManualRootTrajectoryReferenceManager(ManagerTermBase):
+    """Root pose reference loaded from an interactively collected ``trajectory.npz``."""
+
+    def __init__(self, cfg, env):
+        super().__init__(cfg, env)
+
+        self._trajectory_path = _resolve_manual_root_trajectory_path(cfg.params.get("trajectory_path"))
+        if not os.path.exists(self._trajectory_path):
+            raise FileNotFoundError(
+                f"Manual root trajectory not found: {self._trajectory_path}. "
+                f"Set {_MANUAL_ROOT_TRAJECTORY_ENV}=/path/to/trajectory.npz to override."
+            )
+
+        with np.load(self._trajectory_path) as data:
+            root_pos_w = np.asarray(data["root_pos_w"], dtype=np.float32)
+            if "root_yaw_w" in data.files:
+                root_yaw_w = np.asarray(data["root_yaw_w"], dtype=np.float32)
+            else:
+                root_quat_w = torch.as_tensor(np.asarray(data["root_quat_w"], dtype=np.float32))
+                root_yaw_w = math_utils.euler_xyz_from_quat(root_quat_w)[2].cpu().numpy().astype(np.float32)
+            env_origin_w = (
+                np.asarray(data["env_origin_w"], dtype=np.float32)
+                if "env_origin_w" in data.files
+                else np.zeros(3, dtype=np.float32)
+            )
+            dt = float(np.asarray(data["dt"]).item()) if "dt" in data.files else float(env.step_dt)
+
+        if root_pos_w.ndim != 2 or root_pos_w.shape[1] != 3:
+            raise ValueError(f"Expected root_pos_w with shape [N, 3], got {root_pos_w.shape}.")
+        if root_pos_w.shape[0] < 2:
+            raise ValueError("Manual root trajectory must contain at least two frames.")
+
+        self._local_root_pos = torch.as_tensor(root_pos_w - env_origin_w.reshape(1, 3), device=env.device)
+        self._root_yaw = torch.as_tensor(root_yaw_w, device=env.device)
+        self._dt = max(dt, 1.0e-6)
+        self._num_frames = self._local_root_pos.shape[0]
+
+    def reset(self, env_ids: Sequence[int] | slice | None = None) -> None:
+        pass
+
+    def _sample_indices(self, env, lookahead_s: float = 0.0) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        elapsed_s = env.episode_length_buf.to(dtype=torch.float32) * env.step_dt + lookahead_s
+        frame_f = torch.clamp(elapsed_s / self._dt, min=0.0, max=float(self._num_frames - 1))
+        idx0 = torch.floor(frame_f).to(dtype=torch.long)
+        idx1 = torch.clamp(idx0 + 1, max=self._num_frames - 1)
+        alpha = (frame_f - idx0.to(dtype=torch.float32)).unsqueeze(-1)
+        return idx0, idx1, alpha
+
+    def _target_root_state(self, env, lookahead_s: float = 0.0) -> tuple[torch.Tensor, torch.Tensor]:
+        idx0, idx1, alpha = self._sample_indices(env, lookahead_s)
+        local_pos = self._local_root_pos[idx0] * (1.0 - alpha) + self._local_root_pos[idx1] * alpha
+
+        yaw0 = self._root_yaw[idx0]
+        yaw1 = self._root_yaw[idx1]
+        yaw = _wrap_to_pi(yaw0 + alpha.squeeze(-1) * _wrap_to_pi(yaw1 - yaw0))
+
+        env_origins = getattr(env.scene, "env_origins", None)
+        if env_origins is None:
+            env_origins = torch.zeros_like(local_pos)
+        return env_origins + local_pos, yaw
+
+    def _root_pose_error(
+        self,
+        env,
+        asset_cfg: SceneEntityCfg,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        asset = env.scene[asset_cfg.name]
+        target_pos_w, target_yaw_w = self._target_root_state(env)
+        pos_error = asset.data.root_pos_w[:, :3] - target_pos_w
+        if hasattr(asset.data, "heading_w"):
+            yaw_w = asset.data.heading_w
+        else:
+            yaw_w = math_utils.euler_xyz_from_quat(asset.data.root_quat_w)[2]
+        yaw_error = _wrap_to_pi(yaw_w - target_yaw_w)
+        return pos_error, yaw_error, target_pos_w
+
+    def _update_pose_velocity_command(
+        self,
+        env,
+        command_name: str | None,
+        command_lookahead_s: float,
+        command_max_speed: float,
+    ) -> None:
+        if not command_name or not hasattr(env, "command_manager"):
+            return
+        try:
+            command_term = env.command_manager.get_term(command_name)
+        except Exception:
+            return
+        target_pos_w, _ = self._target_root_state(env, lookahead_s=command_lookahead_s)
+        if hasattr(command_term, "pos_command_w"):
+            command_term.pos_command_w[:] = target_pos_w
+        if hasattr(command_term, "max_command_b"):
+            command_term.max_command_b[:, 0] = command_max_speed
+            command_term.max_command_b[:, 1] = command_max_speed
+        if hasattr(command_term, "is_standing_env"):
+            command_term.is_standing_env[:] = False
+
+    def _trajectory_finished(self, env) -> torch.Tensor:
+        return env.episode_length_buf >= (self._num_frames - 1)
 
 
 class _RootPosReferenceManager(ManagerTermBase):
@@ -115,6 +252,87 @@ class root_pos_track_xy_exp(_RootPosReferenceManager):
         return torch.exp(-torch.square(error) / std**2)
 
 
+class manual_root_trajectory_track_xyz_yaw_exp(_ManualRootTrajectoryReferenceManager):
+    """Reward tracking an interactively collected root XYZ+yaw trajectory."""
+
+    def __call__(
+        self,
+        env,
+        trajectory_path: str | None = None,
+        asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+        xy_std: float = 0.30,
+        z_std: float = 0.12,
+        yaw_std: float = 0.50,
+        pos_weight: float = 0.7,
+        yaw_weight: float = 0.3,
+        command_name: str | None = "base_velocity",
+        command_lookahead_s: float = 0.30,
+        command_max_speed: float = 0.8,
+    ) -> torch.Tensor:
+        self._update_pose_velocity_command(env, command_name, command_lookahead_s, command_max_speed)
+        pos_error, yaw_error, _ = self._root_pose_error(env, asset_cfg)
+        xy_error_sq = torch.sum(torch.square(pos_error[:, :2]), dim=-1)
+        z_error_sq = torch.square(pos_error[:, 2])
+        pos_reward = torch.exp(-xy_error_sq / xy_std**2 - z_error_sq / z_std**2)
+        yaw_reward = torch.exp(-torch.square(yaw_error) / yaw_std**2)
+        return pos_weight * pos_reward + yaw_weight * yaw_reward
+
+
+class manual_root_trajectory_termination(_ManualRootTrajectoryReferenceManager):
+    """Terminate on trajectory completion or excessive root pose tracking error."""
+
+    def __call__(
+        self,
+        env,
+        trajectory_path: str | None = None,
+        asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+        max_xy_error: float = 1.0,
+        max_z_error: float = 0.4,
+        max_yaw_error: float = math.pi,
+        terminate_on_end: bool = True,
+        print_reason: bool = False,
+    ) -> torch.Tensor:
+        pos_error, yaw_error, _ = self._root_pose_error(env, asset_cfg)
+        return_ = torch.norm(pos_error[:, :2], dim=-1) > max_xy_error
+        return_ |= torch.abs(pos_error[:, 2]) > max_z_error
+        return_ |= torch.abs(yaw_error) > max_yaw_error
+        if terminate_on_end:
+            return_ |= self._trajectory_finished(env)
+        if print_reason and return_.any():
+            print(f"manual_root_trajectory_termination: {return_.sum()} envs")
+        return return_
+
+
+class manual_root_trajectory_commands(_ManualRootTrajectoryReferenceManager):
+    """Command-like observation derived from the manual root trajectory.
+
+    The output shape intentionally stays ``[num_envs, 3]`` to remain compatible with the existing
+    ``velocity_commands`` observation slot: desired XY velocity in robot base frame plus yaw error.
+    """
+
+    def __call__(
+        self,
+        env,
+        trajectory_path: str | None = None,
+        asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+        lookahead_s: float = 0.30,
+        max_speed: float = 0.8,
+    ) -> torch.Tensor:
+        asset = env.scene[asset_cfg.name]
+        target_pos_w, target_yaw_w = self._target_root_state(env, lookahead_s=lookahead_s)
+        target_vec_w = target_pos_w - asset.data.root_pos_w[:, :3]
+        target_vec_b = math_utils.quat_apply_inverse(math_utils.yaw_quat(asset.data.root_quat_w), target_vec_w)
+        desired_xy_b = target_vec_b[:, :2] / max(lookahead_s, 1.0e-6)
+        speed = torch.norm(desired_xy_b, dim=-1, keepdim=True)
+        desired_xy_b = desired_xy_b * torch.clamp(max_speed / torch.clamp(speed, min=1.0e-6), max=1.0)
+        if hasattr(asset.data, "heading_w"):
+            yaw_w = asset.data.heading_w
+        else:
+            yaw_w = math_utils.euler_xyz_from_quat(asset.data.root_quat_w)[2]
+        yaw_error = _wrap_to_pi(target_yaw_w - yaw_w).unsqueeze(-1)
+        return torch.cat([desired_xy_b, yaw_error], dim=-1)
+
+
 @configclass
 class CommandsCfg:
     """Velocity / pose-style commands (same family as parkour ``base_velocity``)."""
@@ -164,10 +382,15 @@ class ObservationsCfg:
             history_length=PROPRIO_HISTORY_LENGTH,
         )
         velocity_commands = ObsTermCfg(
-            func=mdp.generated_commands,
+            func=manual_root_trajectory_commands,
             history_length=8,
             flatten_history_dim=True,
-            params={"command_name": "base_velocity"},
+            params={
+                "trajectory_path": None,
+                "asset_cfg": SceneEntityCfg("robot"),
+                "lookahead_s": 0.30,
+                "max_speed": 0.8,
+            },
             noise=None,
         )
         base_ang_vel = ObsTermCfg(
@@ -205,10 +428,15 @@ class ObservationsCfg:
             history_length=TEACHER_PROPRIO_HISTORY_LENGTH,
         )
         velocity_commands = ObsTermCfg(
-            func=mdp.generated_commands,
+            func=manual_root_trajectory_commands,
             history_length=8,
             flatten_history_dim=True,
-            params={"command_name": "base_velocity"},
+            params={
+                "trajectory_path": None,
+                "asset_cfg": SceneEntityCfg("robot"),
+                "lookahead_s": 0.30,
+                "max_speed": 0.8,
+            },
             noise=None,
         )
         base_ang_vel = ObsTermCfg(
@@ -268,13 +496,20 @@ class G1PerceptiveVaePlayMonitorCfg:
 class G1PerceptiveVaeRewardsCfg:
     """Reward terms copied from ``parkour_env_cfg.G1Rewards`` (parkour locomotion MDP)."""
 
-    track_root_pos_xy_exp = RewTermCfg(
-        func=root_pos_track_xy_exp,
+    track_manual_root_trajectory = RewTermCfg(
+        func=manual_root_trajectory_track_xyz_yaw_exp,
         weight=2.0,
         params={
-            "command_name": "base_velocity",
+            "trajectory_path": None,
             "asset_cfg": SceneEntityCfg("robot"),
-            "std": 0.25,
+            "xy_std": 0.20,
+            "z_std": 0.10,
+            "yaw_std": 0.50,
+            "pos_weight": 0.7,
+            "yaw_weight": 0.3,
+            "command_name": "base_velocity",
+            "command_lookahead_s": 0.30,
+            "command_max_speed": 0.8,
         },
     )
 
@@ -347,13 +582,16 @@ class G1PerceptiveVaeTerminationsCfg(perceptual_cfg.TerminationsCfg):
         func=parkour_mdp.root_height_below_env_origin_minimum,
         params={"minimum_height": 0.6},
     )
-    root_pos_termination = DoneTermCfg(
-        func=root_pos_termination,
+    manual_root_trajectory_termination = DoneTermCfg(
+        func=manual_root_trajectory_termination,
         time_out=False,
         params={
-            "command_name": "base_velocity",
+            "trajectory_path": None,
             "asset_cfg": SceneEntityCfg("robot"),
-            "max_xy_error": 1.0,
+            "max_xy_error": 0.3,
+            "max_z_error": 0.2,
+            "max_yaw_error": math.pi,
+            "terminate_on_end": True,
             "print_reason": False,
         },
     )
@@ -402,6 +640,9 @@ class G1PerceptiveVaeEnvCfg(perceptual_cfg.PerceptiveShadowingEnvCfg):
         self.observations.policy.depth_image.params["history_skip_frames"] = 5
         self.scene.robot.actuators = beyondmimic_g1_29dof_delayed_actuators
         self.actions.joint_pos.scale = beyondmimic_action_scale
+        manual_traj_duration_s = _manual_root_trajectory_duration_s()
+        if manual_traj_duration_s is not None:
+            self.episode_length_s = manual_traj_duration_s
 
         self.run_name = "g1PerceptiveVaeClimb" + "".join(
             [
