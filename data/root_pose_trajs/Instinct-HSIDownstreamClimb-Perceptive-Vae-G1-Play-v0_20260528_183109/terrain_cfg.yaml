@@ -1,0 +1,90 @@
+class_type: instinctlab.terrains.terrain_importer:TerrainImporter
+collision_group: -1
+prim_path: /World/ground
+num_envs: 1
+terrain_type: plane
+terrain_generator:
+  class_type: instinctlab.terrains.terrain_generator:FiledTerrainGenerator
+  seed: 0
+  curriculum: false
+  size: !!python/tuple
+  - 20
+  - 20
+  border_width: 0.0
+  border_height: 0.0
+  num_rows: 2
+  num_cols: 2
+  color_scheme: none
+  horizontal_scale: 0.1
+  vertical_scale: 0.01
+  slope_threshold: 1.0
+  sub_terrains:
+    specified_box:
+      function: instinctlab.terrains.trimesh.mesh_terrains:specified_box_terrain
+      proportion: 1.0
+      size: !!python/tuple
+      - 20
+      - 20
+      flat_patch_sampling:
+        target:
+          num_patches: 5
+          patch_radius:
+          - 0.05
+          - 0.1
+          - 0.15
+          - 0.2
+          x_range: !!python/tuple
+          - -1000000.0
+          - 1000000.0
+          y_range: !!python/tuple
+          - -1000000.0
+          - 1000000.0
+          z_range: !!python/tuple
+          - -1000000.0
+          - 1000000.0
+          max_height_diff: 0.05
+      wall_prob:
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      wall_height: 5.0
+      wall_thickness: 0.05
+      box_width: 1.0
+      box_length: 5.0
+      box_height: 0.6
+      box_center_offset_xy: !!python/tuple
+      - 1.0
+      - 0.0
+      floating_height: 0.0
+      perlin_cfg: null
+      horizontal_scale: 0.1
+      vertical_scale: 0.01
+      slope_threshold: 1.0
+      no_perlin_at_obstacle: true
+  difficulty_range: !!python/tuple
+  - 0.0
+  - 1.0
+  use_cache: false
+  cache_dir: /tmp/isaaclab/terrains
+usd_path: null
+env_spacing: 10
+use_terrain_origins: true
+visual_material:
+  func: isaaclab.sim.spawners.materials.visual_materials:spawn_from_mdl_file
+  mdl_path: '{NVIDIA_NUCLEUS_DIR}/Materials/Base/Architecture/Shingles_01.mdl'
+  project_uvw: true
+  albedo_brightness: null
+  texture_scale: null
+physics_material:
+  func: isaaclab.sim.spawners.materials.physics_materials:spawn_rigid_body_material
+  static_friction: 1.0
+  dynamic_friction: 1.0
+  restitution: 0.0
+  friction_combine_mode: multiply
+  restitution_combine_mode: multiply
+  compliant_contact_stiffness: 0.0
+  compliant_contact_damping: 0.0
+max_init_terrain_level: null
+debug_vis: false
+virtual_obstacles: {}

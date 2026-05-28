@@ -1,0 +1,58 @@
+task: Instinct-HSIDownstreamClimb-Perceptive-Vae-G1-Play-v0
+step_dt: 0.02
+num_samples: 529
+env_origin_w:
+- -10.0
+- -10.0
+- 0.0
+terrain_levels:
+- 0
+terrain_types:
+- 0
+terrain_origins_shape:
+- 2
+- 2
+- 3
+terrain_generator_class: FiledTerrainGenerator
+terrain_generator_seed: 0
+controls:
+  wasd: move horizontally in active viewport camera frame
+  qe: yaw left/right unless --auto_face_motion is set
+  zx: move z up/down
+  space: pause/resume recording
+  enter: save and exit
+  escape: exit without saving
+args:
+  task: Instinct-HSIDownstreamClimb-Perceptive-Vae-G1-Play-v0
+  output_dir: data/root_pose_trajs
+  name: null
+  num_envs: 1
+  disable_fabric: false
+  speed: 0.4
+  z_speed: 0.25
+  yaw_speed: 1.0
+  history_stride: 5
+  max_vis_points: 1000
+  auto_face_motion: false
+  follow_robot: true
+  disable_camera_frame: false
+  keep_terminations: false
+  save_mesh: true
+  debug: false
+  enable_cameras: false
+  xr: false
+  device: cuda:0
+  cpu: false
+  verbose: false
+  info: false
+  rendering_mode: null
+  kit_args: ''
+  anim_recording_enabled: false
+  anim_recording_start_time: 0
+  anim_recording_stop_time: 10
+  headless: false
+  hide_ui: false
+  create_new_stage: false
+  physics_gpu: 0
+  active_gpu: 0
+terrain_mesh_file: terrain_mesh.ply
