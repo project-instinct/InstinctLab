@@ -7,15 +7,11 @@ import os
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import DelayedPDActuatorCfg, ImplicitActuatorCfg
 from isaaclab.assets import AssetBaseCfg
-from isaaclab.assets.articulation import ArticulationCfg
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sim.schemas import CollisionBaseCfg, JointDriveBaseCfg
 from isaaclab_assets import G1_CFG
 
-from instinctlab.sim import UrdfFileCfg, UsdFileCfg
-
-from .g1_popsicle_asset import G1_POPSICLE_ASSET_DIGEST, G1_POPSICLE_USD_PATH
-from .g1_popsicle_asset import SOURCE_URDF_PATH as G1_POPSICLE_SOURCE_URDF_PATH
+from instinctlab.sim import UrdfFileCfg
 
 __file_dir__ = os.path.dirname(os.path.realpath(__file__))
 
@@ -89,7 +85,7 @@ def configure_g1_29dof_policy_io(env_cfg) -> None:
 G1_29DOF_TORSOBASE_CFG = G1_CFG.copy()
 G1_29DOF_TORSOBASE_CFG.spawn = UrdfFileCfg(
     asset_path=os.path.join(__file_dir__, "resources/unitree_g1/urdf/g1_29dof_torsobase_simplified.urdf"),
-    merge_fixed_joints=False,
+    merge_fixed_joints=True,
     fix_base=False,
     self_collision=True,
     activate_contact_sensors=True,
@@ -210,7 +206,7 @@ G1_29DOF_TORSOBASE_CFG.init_state.joint_pos = {
 G1_29DOF_TORSOBASE_CLOG_CFG = G1_29DOF_TORSOBASE_CFG.copy()
 G1_29DOF_TORSOBASE_CLOG_CFG.spawn = UrdfFileCfg(
     asset_path=os.path.join(__file_dir__, "resources/unitree_g1/urdf/g1_29dof_torsobase_clog.urdf"),
-    merge_fixed_joints=False,
+    merge_fixed_joints=True,
     fix_base=False,
     self_collision=True,
     activate_contact_sensors=True,
@@ -569,49 +565,50 @@ for a in beyondmimic_g1_29dof_actuators.values():
         if n in e and n in s and s[n]:
             beyondmimic_action_scale[n] = 0.25 * e[n] / s[n]
 
-G1_29DOF_TORSOBASE_POPSICLE_CFG = ArticulationCfg(
-    spawn=UsdFileCfg(
-        usd_path=G1_POPSICLE_USD_PATH,
-        source_urdf_path=str(G1_POPSICLE_SOURCE_URDF_PATH),
-        required_asset_digest=G1_POPSICLE_ASSET_DIGEST,
-        build_command="python scripts/assets/build_g1_popsicle.py --viz none",
-        activate_contact_sensors=True,
-        rigid_props=sim_utils.RigidBodyPropertiesCfg(
-            disable_gravity=False,
-            retain_accelerations=False,
-            linear_damping=0.0,
-            angular_damping=0.0,
-            max_linear_velocity=1000.0,
-            max_angular_velocity=1000.0,
-            max_depenetration_velocity=1.0,
-        ),
-        articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-            enabled_self_collisions=True, solver_position_iteration_count=8, solver_velocity_iteration_count=4
-        ),
+G1_SOURCE_URDF_PATH = os.path.join(__file_dir__, "resources/unitree_g1/urdf/g1_29dof_torsobase_popsicle.urdf")
+
+G1_29DOF_TORSOBASE_POPSICLE_CFG = G1_29DOF_TORSOBASE_CFG.copy()
+G1_29DOF_TORSOBASE_POPSICLE_CFG.spawn = UrdfFileCfg(
+    asset_path=G1_SOURCE_URDF_PATH,
+    merge_fixed_joints=True,
+    fix_base=False,
+    self_collision=True,
+    activate_contact_sensors=True,
+    rigid_props=sim_utils.RigidBodyPropertiesCfg(
+        disable_gravity=False,
+        retain_accelerations=False,
+        linear_damping=0.0,
+        angular_damping=0.0,
+        max_linear_velocity=1000.0,
+        max_angular_velocity=1000.0,
+        max_depenetration_velocity=1.0,
     ),
-    init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 0.82),
-        joint_pos={
-            ".*_hip_pitch_joint": -0.312,
-            ".*_knee_joint": 0.669,
-            ".*_ankle_pitch_joint": -0.363,
-            ".*_elbow_joint": 0.6,
-            "left_shoulder_roll_joint": 0.2,
-            "left_shoulder_pitch_joint": 0.2,
-            "right_shoulder_roll_joint": -0.2,
-            "right_shoulder_pitch_joint": 0.2,
-        },
-        joint_vel={".*": 0.0},
+    articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+        enabled_self_collisions=True, solver_position_iteration_count=8, solver_velocity_iteration_count=4
     ),
-    soft_joint_pos_limit_factor=0.9,
-    actuators=beyondmimic_g1_29dof_actuators,
 )
+G1_29DOF_TORSOBASE_POPSICLE_CFG.spawn.activate_contact_sensors = True
+G1_29DOF_TORSOBASE_POPSICLE_CFG.soft_joint_pos_limit_factor = 0.9
+G1_29DOF_TORSOBASE_POPSICLE_CFG.init_state = G1_29DOF_TORSOBASE_CFG.init_state.copy()
+G1_29DOF_TORSOBASE_POPSICLE_CFG.init_state.pos = (0.0, 0.0, 0.82)
+G1_29DOF_TORSOBASE_POPSICLE_CFG.init_state.joint_pos = {
+    ".*_hip_pitch_joint": -0.312,
+    ".*_knee_joint": 0.669,
+    ".*_ankle_pitch_joint": -0.363,
+    ".*_elbow_joint": 0.6,
+    "left_shoulder_roll_joint": 0.2,
+    "left_shoulder_pitch_joint": 0.2,
+    "right_shoulder_roll_joint": -0.2,
+    "right_shoulder_pitch_joint": 0.2,
+}
+G1_29DOF_TORSOBASE_POPSICLE_CFG.init_state.joint_vel = {".*": 0.0}
+G1_29DOF_TORSOBASE_POPSICLE_CFG.actuators = beyondmimic_g1_29dof_actuators
 
 _G1_REFERENCE_SPAWN_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG.spawn.copy()
 _G1_REFERENCE_SPAWN_CFG.activate_contact_sensors = False
-_G1_REFERENCE_SPAWN_CFG.rigid_props = _G1_REFERENCE_SPAWN_CFG.rigid_props.replace(disable_gravity=True)
+_G1_REFERENCE_SPAWN_CFG.rigid_props = sim_utils.RigidBodyPropertiesCfg(disable_gravity=True)
 _G1_REFERENCE_SPAWN_CFG.collision_props = CollisionBaseCfg(collision_enabled=False)
-_G1_REFERENCE_SPAWN_CFG.joint_drive_props = JointDriveBaseCfg(stiffness=0.0, damping=0.0, max_force=0.0)
+_G1_REFERENCE_SPAWN_CFG.joint_drive_props = JointDriveBaseCfg(stiffness=0.0, damping=0.0, max_force=1.0e6)
 G1_REFERENCE_CFG = AssetBaseCfg(
     spawn=_G1_REFERENCE_SPAWN_CFG,
     init_state=AssetBaseCfg.InitialStateCfg(

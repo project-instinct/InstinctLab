@@ -10,45 +10,25 @@ from collections.abc import Callable
 from isaaclab.sim import converters
 from isaaclab.sim.spawners.from_files.from_files_cfg import FileCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import UrdfFileCfg as IsaacLabUrdfFileCfg
-from isaaclab.sim.spawners.from_files.from_files_cfg import UsdFileCfg as IsaacLabUsdFileCfg
 from isaaclab.utils.configclass import configclass
 
 
 @configclass
-class UsdFileCfg(IsaacLabUsdFileCfg):
-    """Prebuilt USD asset with Importer 3.0 hierarchical-link support."""
-
-    func: Callable | str = "{DIR}.from_files:spawn_from_usd"
-
-    strict_tensor_leaf_pattern_matching: bool = True
-    """Use exact final path components in PhysX tensor views."""
-
-    required_asset_digest: str | None = None
-    """Digest recorded in experiment configuration for immutable generated assets."""
-
-    build_command: str | None = None
-    """Command shown when a required generated asset is absent."""
-
-    source_urdf_path: str | None = None
-    """Versioned URDF used for kinematics, path resolution, and asset provenance."""
-
-
-@configclass
 class UrdfFileCfg(IsaacLabUrdfFileCfg):
-    """URDF asset with Importer 3.0 hierarchical-link contact activation."""
+    """URDF file to spawn a flattened InstinctLab articulation from.
+
+    Isaac Sim's URDF importer 3.0 wraps the rigid-link tree in a ``Geometry``
+    scope.  Isaac Lab's built-in contact and ray-caster sensors address rigid
+    bodies directly below the articulation prim, so InstinctLab post-processes
+    the generated USD and moves that link tree one level up.
+    """
 
     func: Callable | str = "{DIR}.from_files:spawn_from_urdf"
 
-    strict_tensor_leaf_pattern_matching: bool = True
-    """Use exact final path components in PhysX tensor views.
-
-    Importer 3.0 nests rigid links and same-name instanceable visual prims.
-    Isaac Sim 6.0 otherwise treats named tensor-view leaves as recursive
-    matches, which makes an explicit rigid-link path also select its visual
-    child. Enabling this policy sets the documented
-    ``/physics/tensors/recursiveLeafPatternMatch`` setting to ``False`` before
-    physics views are created.
-    """
+    # Disable the importer's layered asset transformation.  The transformed
+    # output duplicates every link as ``Geometry/<link>/<link>``; the raw
+    # importer output is a single kinematic tree and is what we flatten below.
+    run_asset_transformer: bool = False
 
 
 @configclass

@@ -3,6 +3,6 @@
 
 """InstinctLab extensions to Isaac Lab spawners."""
 
-from .from_files import MeshFileCfg, UrdfFileCfg, UsdFileCfg
+from .from_files import MeshFileCfg, UrdfFileCfg
 
-__all__ = ["MeshFileCfg", "UrdfFileCfg", "UsdFileCfg"]
+__all__ = ["MeshFileCfg", "UrdfFileCfg"]
