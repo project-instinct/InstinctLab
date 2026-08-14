@@ -12,6 +12,7 @@ import isaaclab.utils.string as string_utils
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.scene import InteractiveScene
 from isaaclab.sensors import SensorBase
+from isaaclab.sim import SimulationContext
 from isaaclab.utils.buffers import TimestampedBuffer
 
 from instinctlab.utils.prims import get_articulation_view
@@ -623,16 +624,27 @@ class MotionReferenceManager(SensorBase):
 
     def _initialize_data(self):
         """Initialize _data for the 'sensor' output"""
-        import omni.physics.tensors.api as physx
+        sim = SimulationContext.instance()
 
-        self._physics_sim_view = physx.create_simulation_view(self._backend)
-        self._physics_sim_view.set_subspace_roots("/")
-        self._view: physx.ArticulationView = get_articulation_view(
-            self.cfg.prim_path,
-            self._physics_sim_view,
-        )
+        manager = sim.physics_manager if sim is not None else None
+        manager_name = manager.__name__ if isinstance(manager, type) else str(manager)
+        if manager is not None and "newton" in manager_name.lower():
+            self._physics_sim_view = None
+            self._view = get_articulation_view(self.cfg.prim_path)
+        else:
+            import omni.physics.tensors.api as physx
+
+            self._physics_sim_view = physx.create_simulation_view(self._backend)
+            self._physics_sim_view.set_subspace_roots("/")
+            self._view = get_articulation_view(
+                self.cfg.prim_path,
+                self._physics_sim_view,
+            )
         self._ALL_INDICES = torch.arange(self._view.count, device=self.device)
-        self.isaac_joint_names = self._view.shared_metatype.dof_names
+        if hasattr(self._view, "shared_metatype"):
+            self.isaac_joint_names = self._view.shared_metatype.dof_names
+        else:
+            self.isaac_joint_names = self._view.joint_dof_names
         self._initialize_symmetric_joint_mapping()
 
         make_empty_data_kwargs = self._prepare_data_class_kwargs()
@@ -1038,14 +1050,8 @@ class MotionReferenceManager(SensorBase):
 
     def _find_reference_view(self):
         """Find the ArticulationView to serve as a motion reference visualization."""
-        if (
-            hasattr(self, "_backend")
-            and hasattr(self, "_physics_sim_view")
-            and (not self.cfg.reference_prim_path is None)
-        ):
-            self._reference_view: physx.ArticulationView = get_articulation_view(
-                self.cfg.reference_prim_path, self._physics_sim_view
-            )
+        if hasattr(self, "_backend") and (not self.cfg.reference_prim_path is None):
+            self._reference_view = get_articulation_view(self.cfg.reference_prim_path)
             if self._reference_view._backend is None:
                 delattr(self, "_reference_view")
                 raise RuntimeError("Failed to find the reference view.")
@@ -1159,7 +1165,9 @@ class MotionReferenceManager(SensorBase):
         # call parent
         super()._invalidate_initialize_callback(event)
         # set all existing views to None to invalidate them
-        delattr(self, "_physics_sim_view")
-        delattr(self, "_view")
+        if hasattr(self, "_physics_sim_view"):
+            delattr(self, "_physics_sim_view")
+        if hasattr(self, "_view"):
+            delattr(self, "_view")
         if hasattr(self, "_reference_view"):
             delattr(self, "_reference_view")
