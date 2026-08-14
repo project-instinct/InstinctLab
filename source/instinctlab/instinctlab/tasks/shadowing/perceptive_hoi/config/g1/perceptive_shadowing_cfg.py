@@ -67,7 +67,7 @@ class OmomoMotionCfg(OmomoMotionCfgBase):
 
 motion_reference_cfg = MotionReferenceManagerCfg(
     prim_path="{ENV_REGEX_NS}/Robot",
-    robot_model_path=G1_CFG.spawn.source_urdf_path,
+    robot_model_path=G1_CFG.spawn.asset_path,
     reference_prim_path="/World/envs/env_.*/RobotReference",
     data_class_type="instinctlab.motion_reference.motion_reference_hoi_data:HoiMotionReferenceData",
     state_class_type="instinctlab.motion_reference.motion_reference_hoi_data:HoiMotionReferenceState",
@@ -137,9 +137,9 @@ class G1PerceptiveHoiShadowingEnvCfg(perceptual_cfg.PerceptiveHoiShadowingEnvCfg
                 ),
             )
 
-        self.scene.height_scanner.prim_path = urdf_importer_link_prim_path(G1_CFG.spawn.source_urdf_path, "torso_link")
-        self.scene.camera.prim_path = urdf_importer_link_prim_path(G1_CFG.spawn.source_urdf_path, "torso_link")
-        self.scene.camera.mesh_prim_paths.extend(get_link_prim_targets(G1_29DOF_LINKS, G1_CFG.spawn.source_urdf_path))
+        self.scene.height_scanner.prim_path = urdf_importer_link_prim_path(G1_CFG.spawn.asset_path, "torso_link")
+        self.scene.camera.prim_path = urdf_importer_link_prim_path(G1_CFG.spawn.asset_path, "torso_link")
+        self.scene.camera.mesh_prim_paths.extend(get_link_prim_targets(G1_29DOF_LINKS, G1_CFG.spawn.asset_path))
         for object_name in list(MESH_FILE_PATHS.keys()):
             self.scene.camera.mesh_prim_paths.append(
                 MultiMeshRayCasterCfg.RaycastTargetCfg(prim_expr=f"/World/envs/env_.*/{object_name}")

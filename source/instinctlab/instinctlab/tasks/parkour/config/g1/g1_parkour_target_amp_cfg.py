@@ -5,11 +5,6 @@ from isaaclab.envs import ViewerCfg
 from isaaclab.utils.configclass import configclass
 
 import instinctlab.tasks.parkour.mdp as mdp
-from instinctlab.assets.g1_popsicle_asset import (
-    G1_POPSICLE_SHOE_ASSET_DIGEST,
-    G1_POPSICLE_SHOE_USD_PATH,
-    SHOE_SOURCE_URDF_PATH,
-)
 from instinctlab.assets.unitree_g1 import (
     G1_29DOF_LINKS,
     G1_29DOF_TORSOBASE_POPSICLE_CFG,
@@ -30,9 +25,9 @@ __file_dir__ = os.path.dirname(os.path.realpath(__file__))
 G1_CFG = copy.deepcopy(G1_29DOF_TORSOBASE_POPSICLE_CFG)
 G1_CFG.init_state.pos = (0.0, 0.0, 0.9)
 G1_with_shoe_CFG = copy.deepcopy(G1_CFG)
-G1_with_shoe_CFG.spawn.usd_path = G1_POPSICLE_SHOE_USD_PATH
-G1_with_shoe_CFG.spawn.source_urdf_path = str(SHOE_SOURCE_URDF_PATH)
-G1_with_shoe_CFG.spawn.required_asset_digest = G1_POPSICLE_SHOE_ASSET_DIGEST
+G1_with_shoe_CFG.spawn.asset_path = os.path.abspath(
+    f"{__file_dir__}/../../urdf/g1_29dof_torsoBase_popsicle_with_shoe.urdf"
+)
 
 
 @configclass
@@ -52,7 +47,7 @@ class AmassMotionCfg(AmassMotionCfgBase):
 
 motion_reference_cfg = MotionReferenceManagerCfg(
     prim_path="{ENV_REGEX_NS}/Robot",
-    robot_model_path=G1_CFG.spawn.source_urdf_path,
+    robot_model_path=G1_CFG.spawn.asset_path,
     reference_prim_path="/World/envs/env_.*/RobotReference",
     symmetric_augmentation_link_mapping=[0, 1, 3, 2, 5, 4, 7, 6, 9, 8, 11, 10, 13, 12],
     symmetric_augmentation_joint_mapping=G1_29Dof_TorsoBase_symmetric_augmentation_joint_mapping,
@@ -98,13 +93,13 @@ class G1ParkourRoughEnvCfg(ParkourEnvCfg):
         self.scene.robot = G1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.robot.actuators = beyondmimic_g1_29dof_delayed_actuators
         self.scene.left_height_scanner.prim_path = urdf_importer_link_prim_path(
-            G1_CFG.spawn.source_urdf_path, "left_ankle_roll_link"
+            G1_CFG.spawn.asset_path, "left_ankle_roll_link"
         )
         self.scene.right_height_scanner.prim_path = urdf_importer_link_prim_path(
-            G1_CFG.spawn.source_urdf_path, "right_ankle_roll_link"
+            G1_CFG.spawn.asset_path, "right_ankle_roll_link"
         )
-        self.scene.camera.prim_path = urdf_importer_link_prim_path(G1_CFG.spawn.source_urdf_path, "torso_link")
-        self.scene.camera.mesh_prim_paths.extend(get_link_prim_targets(G1_29DOF_LINKS, G1_CFG.spawn.source_urdf_path))
+        self.scene.camera.prim_path = urdf_importer_link_prim_path(G1_CFG.spawn.asset_path, "torso_link")
+        self.scene.camera.mesh_prim_paths.extend(get_link_prim_targets(G1_29DOF_LINKS, G1_CFG.spawn.asset_path))
         self.scene.motion_reference = motion_reference_cfg
         configure_g1_29dof_policy_io(self)
 

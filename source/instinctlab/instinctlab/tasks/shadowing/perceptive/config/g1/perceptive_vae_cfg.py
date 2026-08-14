@@ -66,7 +66,7 @@ class TerrainMotionCfg(TerrainMotionCfgBase):
 
 motion_reference_cfg = MotionReferenceManagerCfg(
     prim_path="{ENV_REGEX_NS}/Robot",
-    robot_model_path=G1_CFG.spawn.source_urdf_path,
+    robot_model_path=G1_CFG.spawn.asset_path,
     reference_prim_path="/World/envs/env_.*/RobotReference",
     link_of_interests=[
         "pelvis",
@@ -215,8 +215,8 @@ class G1PerceptiveVaeEnvCfg(perceptual_cfg.PerceptiveShadowingEnvCfg):
         configure_g1_29dof_policy_io(self)
 
         self.scene.height_scanner = None
-        self.scene.camera.prim_path = urdf_importer_link_prim_path(G1_CFG.spawn.source_urdf_path, "torso_link")
-        self.scene.camera.mesh_prim_paths.extend(get_link_prim_targets(G1_29DOF_LINKS, G1_CFG.spawn.source_urdf_path))
+        self.scene.camera.prim_path = urdf_importer_link_prim_path(G1_CFG.spawn.asset_path, "torso_link")
+        self.scene.camera.mesh_prim_paths.extend(get_link_prim_targets(G1_29DOF_LINKS, G1_CFG.spawn.asset_path))
 
         self.scene.camera.data_histories["distance_to_image_plane_noised"] = 10
         self.observations.policy.depth_image.params["history_skip_frames"] = 3

@@ -63,7 +63,7 @@ class AMASSMotionCfg(AmassMotionCfgBase):
 
 motion_reference_cfg = MotionReferenceManagerCfg(
     prim_path="{ENV_REGEX_NS}/Robot",
-    robot_model_path=G1_CFG.spawn.source_urdf_path,
+    robot_model_path=G1_CFG.spawn.asset_path,
     reference_prim_path="/World/envs/env_.*/RobotReference",
     link_of_interests=[
         "pelvis",
@@ -112,9 +112,9 @@ class G1PerceptiveShadowingEnvCfg(perceptual_cfg.PerceptiveShadowingEnvCfg):
         super().__post_init__()
         configure_g1_29dof_policy_io(self)
 
-        self.scene.height_scanner.prim_path = urdf_importer_link_prim_path(G1_CFG.spawn.source_urdf_path, "torso_link")
-        self.scene.camera.prim_path = urdf_importer_link_prim_path(G1_CFG.spawn.source_urdf_path, "torso_link")
-        self.scene.camera.mesh_prim_paths.extend(get_link_prim_targets(G1_29DOF_LINKS, G1_CFG.spawn.source_urdf_path))
+        self.scene.height_scanner.prim_path = urdf_importer_link_prim_path(G1_CFG.spawn.asset_path, "torso_link")
+        self.scene.camera.prim_path = urdf_importer_link_prim_path(G1_CFG.spawn.asset_path, "torso_link")
+        self.scene.camera.mesh_prim_paths.extend(get_link_prim_targets(G1_29DOF_LINKS, G1_CFG.spawn.asset_path))
 
         self.scene.robot.actuators = beyondmimic_g1_29dof_actuators
         # self.scene.robot.spawn.rigid_props.max_depenetration_velocity = 0.3

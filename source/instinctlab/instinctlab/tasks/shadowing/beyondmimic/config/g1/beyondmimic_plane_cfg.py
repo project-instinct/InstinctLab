@@ -63,7 +63,7 @@ class AmassMotionCfg(AmassMotionCfgBase):
 
 motion_reference_cfg = MotionReferenceManagerCfg(
     prim_path="{ENV_REGEX_NS}/Robot",
-    robot_model_path=G1_CFG.spawn.source_urdf_path,
+    robot_model_path=G1_CFG.spawn.asset_path,
     reference_prim_path="/World/envs/env_.*/RobotReference",
     link_of_interests=[
         "pelvis",
