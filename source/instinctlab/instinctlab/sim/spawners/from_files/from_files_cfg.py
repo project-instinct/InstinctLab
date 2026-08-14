@@ -30,6 +30,12 @@ class UrdfFileCfg(IsaacLabUrdfFileCfg):
     # importer output is a single kinematic tree and is what we flatten below.
     run_asset_transformer: bool = False
 
+    # The multi-physics pass adds MuJoCo actuator prims targeted at the
+    # importer's original ``/g1/Physics/<joint>`` paths.  We already relocate
+    # those joints while flattening the articulation, so avoid creating the
+    # extra target bookkeeping unless a task explicitly opts in.
+    run_multi_physics_conversion: bool = False
+
 
 @configclass
 class MeshFileCfg(converters.MeshConverterCfg, FileCfg):

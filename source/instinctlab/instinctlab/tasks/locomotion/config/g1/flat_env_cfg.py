@@ -3,7 +3,7 @@ from dataclasses import MISSING
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
-from isaaclab.envs import ManagerBasedRLEnvCfg, ViewerCfg, mdp
+from isaaclab.envs import ViewerCfg, mdp
 from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.managers import EventTermCfg as Event
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
@@ -19,11 +19,13 @@ from isaaclab.utils.noise import UniformNoiseCfg as Unoise
 
 import instinctlab.envs.mdp as instinct_mdp
 import instinctlab.tasks.locomotion.mdp as locomotion_mdp
+from instinctlab.envs.manager_based_rl_env_cfg import InstinctLabRLEnvCfg
 from instinctlab.assets.unitree_g1 import (
     G1_29DOF_TORSOBASE_POPSICLE_CFG,
     beyondmimic_action_scale,
     configure_g1_29dof_policy_io,
 )
+from instinctlab.monitors import MonitorTermCfg
 from instinctlab.sensors import HierarchicalContactSensorCfg
 
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
@@ -337,7 +339,15 @@ class G1FlatCurriculumCfg:
 
 @configclass
 class G1FlatMonitorCfg:
-    pass
+    actuator = MonitorTermCfg(
+        func="instinctlab.monitors.monitors:ActuatorMonitorTerm",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
+            "torque_plot_scale": 1.0,
+            "joint_vel_plot_scale": 1.0e-1,
+            "joint_power_plot_scale": 1.0e-1,
+        },
+    )
 
 
 # ============================================================================
@@ -346,7 +356,7 @@ class G1FlatMonitorCfg:
 
 
 @configclass
-class G1FlatEnvCfg(ManagerBasedRLEnvCfg):
+class G1FlatEnvCfg(InstinctLabRLEnvCfg):
     scene: G1FlatSceneCfg = G1FlatSceneCfg(num_envs=4096, env_spacing=2.5)
     actions: G1FlatActionsCfg = G1FlatActionsCfg()
     commands: G1FlatCommandsCfg = G1FlatCommandsCfg()

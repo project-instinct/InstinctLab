@@ -90,7 +90,6 @@ G1_29DOF_TORSOBASE_CFG.spawn = UrdfFileCfg(
     self_collision=True,
     activate_contact_sensors=True,
 )
-G1_29DOF_TORSOBASE_CFG.spawn.joint_drive.gains.stiffness = None  # use value from the URDF file
 G1_29DOF_TORSOBASE_CFG.soft_joint_pos_limit_factor = 0.95
 G1_29DOF_TORSOBASE_CFG.actuators = {
     # NOTE: checked, delayed PD actuator has same time-lag when computing torques; and no lag when
@@ -212,7 +211,6 @@ G1_29DOF_TORSOBASE_CLOG_CFG.spawn = UrdfFileCfg(
     activate_contact_sensors=True,
     collision_type="Convex Decomposition",
 )
-G1_29DOF_TORSOBASE_CLOG_CFG.spawn.joint_drive.gains.stiffness = None  # use value from the URDF file
 
 G1_29Dof_TorsoBase_symmetric_augmentation_joint_mapping = [
     1,
@@ -574,6 +572,7 @@ G1_29DOF_TORSOBASE_POPSICLE_CFG.spawn = UrdfFileCfg(
     fix_base=False,
     self_collision=True,
     activate_contact_sensors=True,
+    joint_drive_props=JointDriveBaseCfg(ensure_drives_exist=True),
     rigid_props=sim_utils.RigidBodyPropertiesCfg(
         disable_gravity=False,
         retain_accelerations=False,

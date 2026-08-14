@@ -45,6 +45,8 @@ def _flatten_urdf_geometry(usd_path: str) -> str:
     if not rigid_prims:
         raise RuntimeError(f"No rigid bodies found below '{geometry_path}'")
 
+    joint_prims = [prim for prim in stage.Traverse() if prim.IsA(UsdPhysics.Joint)]
+
     # Record each rigid body's world transform before changing parents.  The
     # importer writes link transforms as parent-relative xformOps, so moving a
     # link to the asset root requires baking that accumulated transform into
@@ -81,17 +83,34 @@ def _flatten_urdf_geometry(usd_path: str) -> str:
         prim.GetAttribute("xformOp:orient").Set(Gf.Quatf(transform.GetRotation().GetQuat()))
         prim.GetAttribute("xformOp:scale").Set(Gf.Vec3f(*transform.GetScale()))
 
+    # The importer also keeps every joint in a separate Physics scope.  Move
+    # each joint below its flattened body0 link, matching the official Newton
+    # USD layout, and record the old-to-new joint path for relationship remaps.
+    joint_path_map: dict[str, str] = {}
+    for prim in joint_prims:
+        old_joint_path = str(prim.GetPath())
+        body0_relationship = prim.GetRelationship("physics:body0")
+        body0_targets = [str(target) for target in body0_relationship.GetTargets()]
+        if len(body0_targets) != 1:
+            raise RuntimeError(f"Joint '{old_joint_path}' must have exactly one physics:body0 target.")
+        body0_target = body0_targets[0]
+        body0_target = path_map.get(body0_target, body0_target)
+        new_parent = Sdf.Path(body0_target)
+        new_joint_path = str(new_parent.AppendChild(Sdf.Path(old_joint_path).name))
+        joint_path_map[old_joint_path] = new_joint_path
+
     # Sdf namespace edits do not rewrite relationship targets in the same
-    # layer.  Joints still point at the original nested link paths, so remap
-    # every target using the old-to-new rigid-body path table.
-    ordered_old_paths = sorted(path_map, key=len, reverse=True)
+    # layer.  Remap both rigid-body and joint targets in every relationship,
+    # including ``isaac:physics:robotJoints`` and any actuator target.
+    target_path_map = {**path_map, **joint_path_map}
+    ordered_old_paths = sorted(target_path_map, key=len, reverse=True)
 
     def remap_target(target: str) -> Sdf.Path:
         for old_path in ordered_old_paths:
             if target == old_path:
-                return Sdf.Path(path_map[old_path])
+                return Sdf.Path(target_path_map[old_path])
             if target.startswith(f"{old_path}/"):
-                return Sdf.Path(f"{path_map[old_path]}{target[len(old_path):]}")
+                return Sdf.Path(f"{target_path_map[old_path]}{target[len(old_path):]}")
         return Sdf.Path(target)
 
     for prim in stage.Traverse():
@@ -103,6 +122,25 @@ def _flatten_urdf_geometry(usd_path: str) -> str:
             ):
                 continue
             relationship.SetTargets([remap_target(target) for target in targets])
+
+    # Reparent deepest joints first, in case the converter ever nests joints.
+    for old_joint_path, new_joint_path in sorted(
+        joint_path_map.items(), key=lambda item: len(item[0]), reverse=True
+    ):
+        edit = Sdf.BatchNamespaceEdit()
+        edit.Add(
+            Sdf.NamespaceEdit.Reparent(
+                Sdf.Path(old_joint_path),
+                Sdf.Path(new_joint_path).GetParentPath(),
+                0,
+            )
+        )
+        if not layer.Apply(edit):
+            raise RuntimeError(f"Failed to reparent joint '{old_joint_path}' to '{new_joint_path}'")
+
+    physics_prim = stage.GetPrimAtPath(root_path.AppendChild("Physics"))
+    if physics_prim and not physics_prim.GetChildren():
+        stage.RemovePrim(physics_prim.GetPath())
 
     flat_dir = os.path.join(os.path.dirname(usd_path), "flattened")
     os.makedirs(flat_dir, exist_ok=True)
