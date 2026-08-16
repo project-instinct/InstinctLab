@@ -88,6 +88,9 @@ def main(
     agent_cfg: InstinctRlOnPolicyRunnerCfg,
 ):
     """Launch the configured simulator and play an Instinct-RL policy."""
+    from instinctlab.sim.spawners.from_files.asset_cache import ensure_asset_cache_kit_args
+
+    ensure_asset_cache_kit_args(env_cfg, args_cli)
     agent_cfg = cli_args.update_instinct_rl_cfg(agent_cfg, args_cli)
     env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
     env_cfg.seed = agent_cfg.seed

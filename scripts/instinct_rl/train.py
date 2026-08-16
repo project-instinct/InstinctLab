@@ -97,6 +97,9 @@ def main(
     agent_cfg: InstinctRlOnPolicyRunnerCfg,
 ):
     """Launch the configured simulator and train with Instinct-RL."""
+    from instinctlab.sim.spawners.from_files.asset_cache import ensure_asset_cache_kit_args
+
+    ensure_asset_cache_kit_args(env_cfg, args_cli)
     with launch_simulation(env_cfg, args_cli):
         # Import the simulator-dependent wrapper only after SimulationApp starts.
         from instinctlab.utils.wrappers.instinct_rl.vecenv_wrapper import InstinctRlVecEnvWrapper

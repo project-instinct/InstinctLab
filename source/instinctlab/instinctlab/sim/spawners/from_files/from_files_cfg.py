@@ -36,6 +36,13 @@ class UrdfFileCfg(IsaacLabUrdfFileCfg):
     # extra target bookkeeping unless a task explicitly opts in.
     run_multi_physics_conversion: bool = False
 
+    asset_cache_enabled: bool = True
+    """Cache the flattened USD keyed by the URDF, meshes, converter config, and postprocessor code.
+
+    This makes generated USD a derived immutable artifact while ``UrdfFileCfg`` remains the public
+    source interface for task configs.
+    """
+
 
 @configclass
 class MeshFileCfg(converters.MeshConverterCfg, FileCfg):

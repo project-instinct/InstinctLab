@@ -14,11 +14,53 @@ from isaaclab.sim import converters
 from isaaclab.sim.spawners.from_files.from_files import _spawn_from_usd_file
 from isaaclab.sim.utils import clone
 
+from . import asset_cache
+
 if TYPE_CHECKING:
     from . import from_files_cfg
 
 
-def _flatten_urdf_geometry(usd_path: str) -> str:
+def _capsule_extent(radius: float, height: float, axis: str) -> list[Gf.Vec3f]:
+    """Return the USD extent for a capsule whose cylinder section has the given length."""
+    half_length = 0.5 * height + radius
+    half_extents = {
+        "X": (half_length, radius, radius),
+        "Y": (radius, half_length, radius),
+        "Z": (radius, radius, half_length),
+    }
+    try:
+        x, y, z = half_extents[axis]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported capsule axis: {axis}") from exc
+    return [Gf.Vec3f(-x, -y, -z), Gf.Vec3f(x, y, z)]
+
+
+def _replace_collision_cylinders_with_capsules(stage: Usd.Stage) -> int:
+    """Convert importer-generated collision cylinders to capsules in-place."""
+    cylinders = [
+        prim for prim in stage.Traverse() if prim.IsA(UsdGeom.Cylinder) and prim.HasAPI(UsdPhysics.CollisionAPI)
+    ]
+    for prim in cylinders:
+        cylinder = UsdGeom.Cylinder(prim)
+        radius = float(cylinder.GetRadiusAttr().Get())
+        height = float(cylinder.GetHeightAttr().Get())
+        axis = str(cylinder.GetAxisAttr().Get())
+
+        # Retyping keeps applied schemas and authored relationships on the
+        # prim while changing only the concrete geometry schema.
+        if not prim.SetTypeName("Capsule"):
+            raise RuntimeError(f"Failed to change cylinder type at '{prim.GetPath()}'.")
+
+        capsule = UsdGeom.Capsule(prim)
+        capsule.GetRadiusAttr().Set(radius)
+        capsule.GetHeightAttr().Set(height)
+        capsule.GetAxisAttr().Set(axis)
+        capsule.GetExtentAttr().Set(_capsule_extent(radius, height, axis))
+
+    return len(cylinders)
+
+
+def _flatten_urdf_geometry(usd_path: str, replace_cylinders_with_capsules: bool = False) -> str:
     """Flatten the raw URDF importer's rigid-link tree.
 
     The flattened USD is exported beside the converter output so the original
@@ -124,9 +166,7 @@ def _flatten_urdf_geometry(usd_path: str) -> str:
             relationship.SetTargets([remap_target(target) for target in targets])
 
     # Reparent deepest joints first, in case the converter ever nests joints.
-    for old_joint_path, new_joint_path in sorted(
-        joint_path_map.items(), key=lambda item: len(item[0]), reverse=True
-    ):
+    for old_joint_path, new_joint_path in sorted(joint_path_map.items(), key=lambda item: len(item[0]), reverse=True):
         edit = Sdf.BatchNamespaceEdit()
         edit.Add(
             Sdf.NamespaceEdit.Reparent(
@@ -141,6 +181,9 @@ def _flatten_urdf_geometry(usd_path: str) -> str:
     physics_prim = stage.GetPrimAtPath(root_path.AppendChild("Physics"))
     if physics_prim and not physics_prim.GetChildren():
         stage.RemovePrim(physics_prim.GetPath())
+
+    if replace_cylinders_with_capsules:
+        _replace_collision_cylinders_with_capsules(stage)
 
     flat_dir = os.path.join(os.path.dirname(usd_path), "flattened")
     os.makedirs(flat_dir, exist_ok=True)
@@ -158,8 +201,18 @@ def spawn_from_urdf(
     **kwargs,
 ) -> Usd.Prim:
     """Spawn an articulation from a URDF with a flattened rigid-link tree."""
-    urdf_loader = converters.UrdfConverter(cfg)
-    flat_usd_path = _flatten_urdf_geometry(urdf_loader.usd_path)
+    if getattr(cfg, "asset_cache_enabled", True) and asset_cache.has_valid_asset_cache(cfg):
+        cached_usd_path = asset_cache.asset_cached_usd_path(cfg)
+        return _spawn_from_usd_file(prim_path, str(cached_usd_path), cfg, translation, orientation, **kwargs)
+
+    # Isaac Sim's importer 3.0 removed this option. Keep the upstream converter
+    # cache and warning path clean, then apply the legacy geometry mapping in
+    # our post-processing step.
+    converter_cfg = cfg.replace(replace_cylinders_with_capsules=False)
+    urdf_loader = converters.UrdfConverter(converter_cfg)
+    flat_usd_path = _flatten_urdf_geometry(urdf_loader.usd_path, cfg.replace_cylinders_with_capsules)
+    if getattr(cfg, "asset_cache_enabled", True):
+        flat_usd_path = str(asset_cache.publish_asset_cache(cfg, flat_usd_path))
     return _spawn_from_usd_file(prim_path, flat_usd_path, cfg, translation, orientation, **kwargs)
 
 

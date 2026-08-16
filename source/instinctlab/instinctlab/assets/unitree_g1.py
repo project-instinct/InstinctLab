@@ -568,6 +568,7 @@ G1_SOURCE_URDF_PATH = os.path.join(__file_dir__, "resources/unitree_g1/urdf/g1_2
 G1_29DOF_TORSOBASE_POPSICLE_CFG = G1_29DOF_TORSOBASE_CFG.copy()
 G1_29DOF_TORSOBASE_POPSICLE_CFG.spawn = UrdfFileCfg(
     asset_path=G1_SOURCE_URDF_PATH,
+    replace_cylinders_with_capsules=True,
     merge_fixed_joints=True,
     fix_base=False,
     self_collision=True,
