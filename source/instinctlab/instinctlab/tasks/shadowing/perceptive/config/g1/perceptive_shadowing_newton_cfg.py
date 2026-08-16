@@ -1,7 +1,6 @@
 from isaaclab.sim import SimulationCfg
 from isaaclab.utils.configclass import configclass
 from isaaclab_newton.sensors import ContactSensorCfg as NewtonContactSensorCfg
-
 from instinctlab.assets.unitree_g1 import G1_REFERENCE_CFG
 from instinctlab.tasks.shadowing.perceptive.config.g1.perceptive_shadowing_cfg import (
     G1_CFG,
@@ -11,6 +10,7 @@ from instinctlab.tasks.shadowing.perceptive.config.g1.perceptive_shadowing_cfg i
 )
 from instinctlab.tasks.shadowing.perceptive.perceptive_env_cfg import PerceptiveShadowingSceneCfg
 from instinctlab.tasks.utils.newton import (
+    InstinctNewtonVisualizerCfg,
     apply_newton_robot_cfg,
     newton_material_cfg,
     newton_sim_cfg,
@@ -72,3 +72,8 @@ class G1PerceptiveNewtonEnvCfg_PLAY(G1PerceptiveShadowingEnvCfg_PLAY):
             njmax=256, nconmax=128, margin=0.01, gap=0.01, use_mujoco_contacts=False
         ).physics
         self.sim.use_newton_actuators = True
+        self.sim.visualizer_cfgs = [
+            InstinctNewtonVisualizerCfg(
+                show_collision=True, show_contacts=True, show_visual=False, follow_body=True
+            )
+        ]
