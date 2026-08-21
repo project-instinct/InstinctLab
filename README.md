@@ -78,21 +78,6 @@ Use the full source SHAs rather than the floating branch heads when reproducing 
     python -m pip install -e source/instinctlab
     ```
 
-- Build the two immutable G1 popsicle USD assets before running a task that uses them:
-
-    ```bash
-    python scripts/assets/build_g1_popsicle.py --viz none
-    ```
-
-    This is an offline asset build, not part of training. It runs the standard Isaac Lab 3.0 URDF
-    converter, replaces the 28 manifest-selected collision cylinders with analytic capsules, and
-    validates the result before publishing it under
-    `~/.cache/instinctlab/assets/<variant>/<asset-digest>/`. Set `INSTINCTLAB_ASSET_CACHE` to use a
-    shared cache. Training loads the digest-scoped final USD and records its path and required
-    digest in the experiment config; it never creates or versions intermediate USD files. Rebuild
-    only when a hashed source URDF, mesh, manifest, converter configuration, or builder version
-    changes. Use `--variant base` or `--variant shoe` to build only one variant.
-
 - To run with `instinct-rl`, you can use the following command after installing [instinct-rl](https://github.com/project-instinct/instinct_rl):
 
     ```bash
