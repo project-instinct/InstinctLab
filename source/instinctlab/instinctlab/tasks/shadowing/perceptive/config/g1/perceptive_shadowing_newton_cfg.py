@@ -27,7 +27,7 @@ class G1PerceptiveNewtonSceneCfg(PerceptiveShadowingSceneCfg):
         super().__post_init__()
         self.terrain.physics_material = newton_material_cfg()
         self.camera.class_type = (
-            "instinctlab.sensors.noisy_camera.noisy_grouped_raycaster_camera:NewtonNoisyGroupedRayCasterCamera"
+            "instinctlab.sensors.noisy_camera.newton_noisy_grouped_raycaster_camera:NewtonNoisyGroupedRayCasterCamera"
         )
 
 

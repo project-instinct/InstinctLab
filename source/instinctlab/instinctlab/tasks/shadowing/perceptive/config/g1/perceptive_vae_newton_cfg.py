@@ -22,7 +22,7 @@ class G1PerceptiveVaeNewtonSceneCfg(G1PerceptiveNewtonSceneCfg):
     def __post_init__(self):
         super().__post_init__()
         self.camera.class_type = (
-            "instinctlab.sensors.noisy_camera.noisy_grouped_raycaster_camera:NewtonNoisyGroupedRayCasterCamera"
+            "instinctlab.sensors.noisy_camera.newton_noisy_grouped_raycaster_camera:NewtonNoisyGroupedRayCasterCamera"
         )
 
 
