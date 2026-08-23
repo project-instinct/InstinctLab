@@ -4,6 +4,10 @@ import torch
 from collections.abc import Sequence
 from dataclasses import dataclass, fields
 
+import warp as wp
+
+from isaaclab.utils.warp import ProxyArray
+
 import instinctlab.utils.torch as torch_utils
 
 
@@ -372,30 +376,30 @@ class MotionReferenceData:
         **kwargs,
     ) -> MotionReferenceData:
         return_ = MotionReferenceData(
-            joint_pos=torch.zeros(num_envs, num_frames, num_joints, device=device),
-            joint_vel=torch.zeros(num_envs, num_frames, num_joints, device=device),
-            joint_pos_mask=torch.ones(num_envs, num_frames, num_joints, device=device, dtype=torch.bool),
-            joint_vel_mask=torch.ones(num_envs, num_frames, num_joints, device=device, dtype=torch.bool),
-            base_pos_w=torch.zeros(num_envs, num_frames, 3, device=device),
-            base_lin_vel_w=torch.zeros(num_envs, num_frames, 3, device=device),
-            base_quat_w=torch.zeros(num_envs, num_frames, 4, device=device),
-            base_ang_vel_w=torch.zeros(num_envs, num_frames, 3, device=device),
-            base_pos_plane_mask=torch.ones(num_envs, num_frames, device=device, dtype=torch.bool),
-            base_pos_height_mask=torch.ones(num_envs, num_frames, device=device, dtype=torch.bool),
-            base_orientation_mask=torch.ones(num_envs, num_frames, device=device, dtype=torch.bool),
-            base_heading_mask=torch.ones(num_envs, num_frames, device=device, dtype=torch.bool),
-            link_pos_b=torch.zeros(num_envs, num_frames, num_links, 3, device=device),
-            link_quat_b=torch.zeros(num_envs, num_frames, num_links, 4, device=device),
-            link_pos_w=torch.zeros(num_envs, num_frames, num_links, 3, device=device),
-            link_quat_w=torch.zeros(num_envs, num_frames, num_links, 4, device=device),
-            link_lin_vel_b=torch.zeros(num_envs, num_frames, num_links, 3, device=device),
-            link_ang_vel_b=torch.zeros(num_envs, num_frames, num_links, 3, device=device),
-            link_lin_vel_w=torch.zeros(num_envs, num_frames, num_links, 3, device=device),
-            link_ang_vel_w=torch.zeros(num_envs, num_frames, num_links, 3, device=device),
-            link_pos_mask=torch.ones(num_envs, num_frames, num_links, device=device, dtype=torch.bool),
-            link_rot_mask=torch.ones(num_envs, num_frames, num_links, device=device, dtype=torch.bool),
-            time_to_target_frame=torch.zeros(num_envs, num_frames, device=device),
-            validity=torch.zeros(num_envs, num_frames, dtype=torch.bool, device=device),
+            joint_pos=ProxyArray(wp.zeros((num_envs, num_frames, num_joints), device=str(device))),
+            joint_vel=ProxyArray(wp.zeros((num_envs, num_frames, num_joints), device=str(device))),
+            joint_pos_mask=ProxyArray(wp.ones((num_envs, num_frames, num_joints), dtype=wp.bool, device=str(device))),
+            joint_vel_mask=ProxyArray(wp.ones((num_envs, num_frames, num_joints), dtype=wp.bool, device=str(device))),
+            base_pos_w=ProxyArray(wp.zeros((num_envs, num_frames, 3), device=str(device))),
+            base_lin_vel_w=ProxyArray(wp.zeros((num_envs, num_frames, 3), device=str(device))),
+            base_quat_w=ProxyArray(wp.zeros((num_envs, num_frames, 4), device=str(device))),
+            base_ang_vel_w=ProxyArray(wp.zeros((num_envs, num_frames, 3), device=str(device))),
+            base_pos_plane_mask=ProxyArray(wp.ones((num_envs, num_frames), dtype=wp.bool, device=str(device))),
+            base_pos_height_mask=ProxyArray(wp.ones((num_envs, num_frames), dtype=wp.bool, device=str(device))),
+            base_orientation_mask=ProxyArray(wp.ones((num_envs, num_frames), dtype=wp.bool, device=str(device))),
+            base_heading_mask=ProxyArray(wp.ones((num_envs, num_frames), dtype=wp.bool, device=str(device))),
+            link_pos_b=ProxyArray(wp.zeros((num_envs, num_frames, num_links, 3), device=str(device))),
+            link_quat_b=ProxyArray(wp.zeros((num_envs, num_frames, num_links, 4), device=str(device))),
+            link_pos_w=ProxyArray(wp.zeros((num_envs, num_frames, num_links, 3), device=str(device))),
+            link_quat_w=ProxyArray(wp.zeros((num_envs, num_frames, num_links, 4), device=str(device))),
+            link_lin_vel_b=ProxyArray(wp.zeros((num_envs, num_frames, num_links, 3), device=str(device))),
+            link_ang_vel_b=ProxyArray(wp.zeros((num_envs, num_frames, num_links, 3), device=str(device))),
+            link_lin_vel_w=ProxyArray(wp.zeros((num_envs, num_frames, num_links, 3), device=str(device))),
+            link_ang_vel_w=ProxyArray(wp.zeros((num_envs, num_frames, num_links, 3), device=str(device))),
+            link_pos_mask=ProxyArray(wp.ones((num_envs, num_frames, num_links), dtype=wp.bool, device=str(device))),
+            link_rot_mask=ProxyArray(wp.ones((num_envs, num_frames, num_links), dtype=wp.bool, device=str(device))),
+            time_to_target_frame=ProxyArray(wp.zeros((num_envs, num_frames), device=str(device))),
+            validity=ProxyArray(wp.zeros((num_envs, num_frames), dtype=wp.bool, device=str(device))),
         )
         return_.base_quat_w[:, :, 3] = 1.0
         return_.link_quat_b[:, :, :, 3] = 1.0
@@ -404,10 +408,10 @@ class MotionReferenceData:
 
     def reset(self, env_ids: Sequence[int] | torch.Tensor) -> None:
         """Reset the motion reference data for the given env_ids. Zeros tensors and marks as invalid."""
-        env_ids = torch.as_tensor(env_ids, device=self.validity.device)
+        env_ids = torch.as_tensor(env_ids, device=self.validity.torch.device)
         for field in fields(self):
             tensor = getattr(self, field.name)
-            if not isinstance(tensor, torch.Tensor) or tensor.shape[0] != self.validity.shape[0]:
+            if not isinstance(tensor, ProxyArray) or tensor.shape[0] != self.validity.shape[0]:
                 continue
             if field.name == "validity":
                 tensor[env_ids] = False
@@ -460,12 +464,12 @@ class MotionReferenceState:
         **kwargs,
     ) -> MotionReferenceState:
         return_ = MotionReferenceState(
-            joint_pos=torch.zeros(num_envs, num_joints, device=device),
-            joint_vel=torch.zeros(num_envs, num_joints, device=device),
-            base_pos_w=torch.zeros(num_envs, 3, device=device),
-            base_quat_w=torch.zeros(num_envs, 4, device=device),
-            base_lin_vel_w=torch.zeros(num_envs, 3, device=device),
-            base_ang_vel_w=torch.zeros(num_envs, 3, device=device),
+            joint_pos=ProxyArray(wp.zeros((num_envs, num_joints), device=str(device))),
+            joint_vel=ProxyArray(wp.zeros((num_envs, num_joints), device=str(device))),
+            base_pos_w=ProxyArray(wp.zeros((num_envs, 3), device=str(device))),
+            base_quat_w=ProxyArray(wp.zeros((num_envs, 4), device=str(device))),
+            base_lin_vel_w=ProxyArray(wp.zeros((num_envs, 3), device=str(device))),
+            base_ang_vel_w=ProxyArray(wp.zeros((num_envs, 3), device=str(device))),
         )
         return_.base_quat_w[:, 3] = 1.0
         return return_
