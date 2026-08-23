@@ -33,6 +33,8 @@ INSTALL_REQUIRES = [
     "debugpy",
     "snakeviz",
     "trimesh",
+    # trimesh soft dependency for vector path / polygon handling in the trimesh terrain utilities
+    "shapely>=2.0",
     "scikit-learn",
     "opencv-python",
     "onnxruntime>=1.20,<2",
