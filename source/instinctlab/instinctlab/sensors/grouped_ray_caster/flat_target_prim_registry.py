@@ -94,21 +94,6 @@ class FlatTargetPrimRegistryMixin:
         mesh_id, position, orientation = record
         return int(mesh_id), tuple(float(value) for value in position), tuple(float(value) for value in orientation)
 
-    @staticmethod
-    def _view_world_ids(view) -> list[int] | None:
-        """Extract concrete world IDs from a tracked view when paths are available."""
-        prim_paths = getattr(view, "prim_paths", None)
-        if prim_paths is None or len(prim_paths) != view.count:
-            return None
-
-        world_ids = []
-        for prim_path in prim_paths:
-            match = re.search(r"/env_(\d+)(?:/|$)", str(prim_path))
-            if match is None:
-                return None
-            world_ids.append(int(match.group(1)))
-        return world_ids
-
     def _initialize_warp_meshes(self) -> None:
         """Build flat entity records and fixed world-to-entity membership.
 
@@ -177,7 +162,7 @@ class FlatTargetPrimRegistryMixin:
             if view is None:
                 raise RuntimeError(f"Tracked ray-cast target '{target_cfg.prim_expr}' did not create a physics view.")
 
-            view_count = view.shape[0] if isinstance(view, wp.array) else int(view.count)
+            view_count = self._tracked_target_count(view)
             populated_worlds = [world_id for world_id, count in enumerate(record_counts) if count > 0]
             if view_count == 1:
                 if any(record_counts[world_id] != 1 for world_id in populated_worlds):
@@ -210,7 +195,7 @@ class FlatTargetPrimRegistryMixin:
                         target_entities_per_world[world_id].append(entity_index)
                         add_world_membership(world_id, entity_index)
 
-                concrete_view_world_ids = self._view_world_ids(view)
+                concrete_view_world_ids = self._tracked_target_world_ids(view)
                 if concrete_view_world_ids is None:
                     if len(set(record_counts)) != 1:
                         raise RuntimeError(
@@ -310,29 +295,14 @@ class FlatTargetPrimRegistryMixin:
                 if entity_indices is not None:
                     raise RuntimeError("Static ray-cast target unexpectedly has tracked entity indices.")
                 continue
-            is_newton_view = isinstance(view, wp.array)
-            view_count = view.shape[0] if is_newton_view else int(view.count)
+            view_count = self._tracked_target_count(view)
             if entity_indices is None or entity_indices.shape[0] != view_count:
                 raise RuntimeError(
                     f"Tracked ray-cast view has {view_count} transforms but "
                     f"{0 if entity_indices is None else entity_indices.shape[0]} flat entity indices."
                 )
 
-            if is_newton_view:
-                transforms_wp = wp.empty(view_count, dtype=wp.transformf, device=self._device)
-                self._update_newton_site_transforms(
-                    view,
-                    transforms_wp,
-                    wp.empty(view_count, dtype=wp.vec3f, device=self._device),
-                    wp.empty(view_count, dtype=wp.quatf, device=self._device),
-                )
-            else:
-                transforms = view.get_transforms()
-                transforms_wp = (
-                    transforms.view(wp.transformf)
-                    if isinstance(transforms, wp.array)
-                    else wp.from_torch(transforms.contiguous()).view(wp.transformf)
-                )
+            transforms_wp = self._tracked_target_transforms_wp(view)
             wp.launch(
                 copy_flat_mesh_transforms_kernel,
                 dim=view_count,

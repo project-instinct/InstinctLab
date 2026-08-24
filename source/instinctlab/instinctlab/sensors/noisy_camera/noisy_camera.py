@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import copy
 import inspect
 import torch
+from collections.abc import Sequence
 from prettytable import PrettyTable
-from typing import Sequence
 
 import warp as wp
 
@@ -14,21 +15,19 @@ from instinctlab.utils.buffers import AsyncCircularBuffer
 from instinctlab.utils.noise import ImageNoiseCfg
 
 
-class NoisyCameraMixin:  # as a subclass of SensorBase
-    """
-    This mixin class adds noise to the camera data.
-    """
+class NoisyCameraMixin:
+    """Add configurable noise and output history to a camera sensor."""
 
     def __str__(self) -> str:
         return_ = super().__str__()
         noise_info_table = PrettyTable()
         noise_info_table.field_names = ["Noise Name", "Noise Cfg Name"]
-        for noise_name, noise_cfg in self.cfg.noise_pipeline:  # type: ignore
-            noise_info_table.add_row([noise_name, noise_cfg.__name__])
+        for noise_name, noise_cfg in self.cfg.noise_pipeline.items():
+            noise_info_table.add_row([noise_name, type(noise_cfg).__name__])
         return_ += "\n" + str(noise_info_table)
         history_info_table = PrettyTable()
         history_info_table.field_names = ["History Name", "History Length"]
-        for history_name, history_length in self.cfg.data_histories.items():  # type: ignore
+        for history_name, history_length in self.cfg.data_histories.items():
             history_info_table.add_row([history_name, history_length])
         return_ += "\n" + str(history_info_table)
         return return_
@@ -53,30 +52,28 @@ class NoisyCameraMixin:  # as a subclass of SensorBase
         self.apply_noise_pipeline_to_all_data_types(env_ids)
         self.update_history_buffers(env_ids)
 
-    """
-    Noise Pipeline
-    """
+    # Noise pipeline.
 
-    def build_noise_pipeline(self):
-        self.noise_pipeline: Sequence[ImageNoiseCfg] | list[ImageNoiseCfg] = []
+    def build_noise_pipeline(self) -> None:
         """Build the noise pipeline based on the configuration."""
+        self.noise_pipeline: list[ImageNoiseCfg] = []
 
-        for noise_name, noise_cfg in self.cfg.noise_pipeline.items():  # type: ignore
-            # Check if the noise configuration is valid
-            if not isinstance(noise_cfg, ImageNoiseCfg):
-                raise ValueError(f"Invalid noise configuration for {noise_name}: {noise_cfg}")
+        for noise_name, configured_noise_cfg in self.cfg.noise_pipeline.items():
+            if not isinstance(configured_noise_cfg, ImageNoiseCfg):
+                raise ValueError(f"Invalid noise configuration for {noise_name}: {configured_noise_cfg}")
+
+            # Runtime noise models carry mutable state. Keep that state out of the
+            # declarative config so one config can safely be reused by another sensor.
+            noise_cfg = copy.deepcopy(configured_noise_cfg)
 
             noise_cfg.device = self.device
-            # Ensure the device is set correctly if the function is not a class
 
             if isinstance(noise_cfg.func, str):
                 noise_cfg.func = string_to_callable(noise_cfg.func)
 
             if inspect.isclass(noise_cfg.func):
-                # If the function is a class, instantiate it
                 noise_cfg.func = noise_cfg.func(noise_cfg, num_envs=self.num_instances, device=self.device)
 
-            # Add the noise configuration to the pipeline
             self.noise_pipeline.append(noise_cfg)
 
         # apply the noise pipeline to the initialized output buffers for noised output
@@ -90,16 +87,12 @@ class NoisyCameraMixin:  # as a subclass of SensorBase
         return self._data.output[data_type].torch
 
     def apply_noise_pipeline(self, data: torch.Tensor, env_ids: torch.Tensor | Sequence[int]) -> torch.Tensor:
-        """Apply noise to the data(image).
-        ## NOTE: The input data is only for selected envs (by env_ids).
-        Args:
-            data: The data to which noise will be applied. if Image, the shape should be (N_, H, W, C) for all environments.
-        """
-        # Check if the noise sequence is built
-        if self.noise_pipeline is None:
-            raise RuntimeError("Noise sequence not built. Call build_noise_pipeline() first.")
+        """Apply the configured noise pipeline to data selected by ``env_ids``.
 
-        # Apply noise to the image by calling the noise pipeline one by one.
+        Args:
+            data: Selected camera data. Images have shape ``(len(env_ids), H, W, C)``.
+            env_ids: Environment IDs corresponding to the first data dimension.
+        """
         data = data.clone()
         for noise_cfg in self.noise_pipeline:
             data = noise_cfg.func(data, noise_cfg, env_ids)  # type: ignore
@@ -115,20 +108,15 @@ class NoisyCameraMixin:  # as a subclass of SensorBase
 
     def reset_noise_pipeline(self, env_ids: Sequence[int] | None = None):
         """Reset the noise pipeline for the specified environment IDs."""
-        if self.noise_pipeline is None:
-            raise RuntimeError("Noise sequence not built. Call build_noise_pipeline() first.")
-
         for noise_cfg in self.noise_pipeline:
             if hasattr(noise_cfg.func, "reset"):
                 noise_cfg.func.reset(env_ids)
 
-    """
-    History Buffers
-    """
+    # History buffers.
 
     def build_history_buffers(self):
         """Build the history buffers for the specified data types."""
-        self.output_history_buffers: dict[str, AsyncCircularBuffer] = dict()
+        self.output_history_buffers: dict[str, AsyncCircularBuffer] = {}
 
         for data_type, history_length in self.cfg.data_histories.items():
             self.output_history_buffers[data_type] = AsyncCircularBuffer(
@@ -148,13 +136,13 @@ class NoisyCameraMixin:  # as a subclass of SensorBase
         Only configured data types will be appended, so only env_ids are needed. Please call this function after all
         outputs are computed.
         """
-        for data_type in self.cfg.data_histories.keys():
+        for data_type in self.cfg.data_histories:
             self.output_history_buffers[data_type].append(self._output_as_torch(data_type)[env_ids], env_ids)
-            self._output_as_torch(f"{data_type}_history")[env_ids] = self.output_history_buffers[data_type].__getitem__(
-                batch_ids=env_ids
-            )
+            self._output_as_torch(f"{data_type}_history")[env_ids] = self.output_history_buffers[
+                data_type
+            ].get_by_batch_ids(env_ids)
 
-    def reset_history_buffers(self, env_ids: torch.Tensor | Sequence[int]):
+    def reset_history_buffers(self, env_ids: torch.Tensor | Sequence[int] | None):
         """Reset the history buffers for the specified data types."""
-        for data_type in self.cfg.data_histories.keys():
+        for data_type in self.cfg.data_histories:
             self.output_history_buffers[data_type].reset(env_ids)

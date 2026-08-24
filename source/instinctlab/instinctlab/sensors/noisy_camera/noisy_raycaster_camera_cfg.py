@@ -1,7 +1,7 @@
 from isaaclab.sensors.ray_caster import RayCasterCameraCfg
 from isaaclab.utils.configclass import configclass
 
-from .noisy_camera_cfg import NoisyCameraCfgMixin
+from instinctlab.sensors.noisy_camera.noisy_camera_cfg import NoisyCameraCfgMixin
 
 
 @configclass

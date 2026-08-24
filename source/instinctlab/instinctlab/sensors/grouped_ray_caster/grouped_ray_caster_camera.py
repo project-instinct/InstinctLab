@@ -3,20 +3,18 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import warp as wp
-from isaaclab_physx.sensors.ray_caster import MultiMeshRayCasterCamera
 
 from isaaclab.sensors.ray_caster import kernels as ray_caster_kernels
 
+from instinctlab.utils.backend_dispatch import create_backend_component
 from instinctlab.utils.warp.kernels import raycast_flat_mesh_groups_min_distance_kernel
 
-from .flat_target_prim_registry import FlatTargetPrimRegistryMixin
-
 if TYPE_CHECKING:
-    from .grouped_ray_caster_camera_cfg import GroupedRayCasterCameraCfg
+    from instinctlab.sensors.grouped_ray_caster.grouped_ray_caster_camera_cfg import GroupedRayCasterCameraCfg
 
 
-class GroupedRayCasterCamera(FlatTargetPrimRegistryMixin, MultiMeshRayCasterCamera):
-    """PhysX multi-mesh ray-caster camera with an ignored near-hit interval."""
+class GroupedRayCasterCameraKernelMixin:
+    """Backend-neutral grouped ray-cast camera update."""
 
     cfg: GroupedRayCasterCameraCfg
 
@@ -114,3 +112,16 @@ class GroupedRayCasterCamera(FlatTargetPrimRegistryMixin, MultiMeshRayCasterCame
                 inputs=[env_mask, self._ray_mesh_id_wp, int(self.image_shape[1]), self._data.image_mesh_ids.warp],
                 device=self._device,
             )
+
+
+class GroupedRayCasterCamera:
+    """Construct the grouped ray-caster camera for the active physics backend."""
+
+    def __new__(cls, cfg: GroupedRayCasterCameraCfg):
+        return create_backend_component(
+            cfg,
+            {
+                "physx": "instinctlab.sensors.grouped_ray_caster.physx:PhysxGroupedRayCasterCamera",
+                "newton": "instinctlab.sensors.grouped_ray_caster.newton:NewtonGroupedRayCasterCamera",
+            },
+        )

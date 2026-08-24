@@ -2,13 +2,20 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from isaaclab_physx.sensors.ray_caster import RayCasterCamera
-
-from .noisy_camera import NoisyCameraMixin
+from instinctlab.utils.backend_dispatch import create_backend_component
 
 if TYPE_CHECKING:
-    from .noisy_raycaster_camera_cfg import NoisyRayCasterCameraCfg
+    from instinctlab.sensors.noisy_camera.noisy_raycaster_camera_cfg import NoisyRayCasterCameraCfg
 
 
-class NoisyRayCasterCamera(NoisyCameraMixin, RayCasterCamera):
-    cfg: NoisyRayCasterCameraCfg
+class NoisyRayCasterCamera:
+    """Construct the noisy ray-caster camera for the active physics backend."""
+
+    def __new__(cls, cfg: NoisyRayCasterCameraCfg):
+        return create_backend_component(
+            cfg,
+            {
+                "physx": "instinctlab.sensors.noisy_camera.physx_ray_caster_cameras:PhysxNoisyRayCasterCamera",
+                "newton": "instinctlab.sensors.noisy_camera.newton_ray_caster_cameras:NewtonNoisyRayCasterCamera",
+            },
+        )

@@ -1,7 +1,7 @@
 from isaaclab.utils.configclass import configclass
 
-from ..grouped_ray_caster import GroupedRayCasterCameraCfg
-from .noisy_camera_cfg import NoisyCameraCfgMixin
+from instinctlab.sensors.grouped_ray_caster import GroupedRayCasterCameraCfg
+from instinctlab.sensors.noisy_camera.noisy_camera_cfg import NoisyCameraCfgMixin
 
 
 @configclass

@@ -1,5 +1,6 @@
 from isaaclab.utils.configclass import configclass
-from isaaclab.utils.noise import NoiseCfg
+
+from instinctlab.utils.noise import ImageNoiseCfg
 
 
 @configclass
@@ -8,7 +9,7 @@ class NoisyCameraCfgMixin:
     Configuration class for the NoisyCamera sensor and manages image transforms and their parameters.
     """
 
-    noise_pipeline: dict[str, NoiseCfg] = {}
+    noise_pipeline: dict[str, ImageNoiseCfg] = {}
     """Configurations for the noise pipeline. The keys can be self-defined names.
     NOTE: All enabled items in cfg.data_types will be applied with the noise pipeline.
     NOTE: If you want to add history to the noised output, you need to specify the data_type as the one with _noised postfix.

@@ -1,6 +1,3 @@
 from .noisy_grouped_raycaster_camera_cfg import NoisyGroupedRayCasterCameraCfg
 from .noisy_multi_mesh_ray_caster_camera_cfg import NoisyMultiMeshRayCasterCameraCfg
 from .noisy_raycaster_camera_cfg import NoisyRayCasterCameraCfg
-
-# from .noisy_tiled_camera import NoisyTiledCamera
-# from .noisy_tiled_camera_cfg import NoisyTiledCameraCfg

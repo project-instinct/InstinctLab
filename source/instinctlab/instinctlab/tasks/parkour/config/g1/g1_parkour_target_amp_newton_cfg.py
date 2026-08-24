@@ -1,31 +1,20 @@
-from isaaclab.sim import SimulationCfg
-from isaaclab.utils.configclass import configclass
 from isaaclab_newton.sensors import ContactSensorCfg as NewtonContactSensorCfg
 
-from instinctlab.tasks.parkour.config.g1.g1_parkour_target_amp_cfg import (
-    G1ParkourEnvCfg,
-    G1ParkourEnvCfg_PLAY,
-)
+from isaaclab.sim import SimulationCfg
+from isaaclab.utils.configclass import configclass
+
+from instinctlab.tasks.parkour.config.g1.g1_parkour_target_amp_cfg import G1ParkourEnvCfg, G1ParkourEnvCfg_PLAY
 from instinctlab.tasks.parkour.config.parkour_env_cfg import SceneCfg
-from instinctlab.tasks.utils.newton import (
-    apply_newton_robot_cfg,
-    newton_material_cfg,
-    newton_sim_cfg,
-)
+from instinctlab.tasks.utils.newton import apply_newton_robot_cfg, newton_material_cfg, newton_sim_cfg
 
 
 @configclass
 class G1ParkourNewtonSceneCfg(SceneCfg):
-    contact_forces = NewtonContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True
-    )
+    contact_forces = NewtonContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True)
 
     def __post_init__(self):
         super().__post_init__()
         self.terrain.physics_material = newton_material_cfg()
-        self.camera.class_type = (
-            "instinctlab.sensors.noisy_camera.newton_noisy_grouped_raycaster_camera:NewtonNoisyGroupedRayCasterCamera"
-        )
 
 
 @configclass
