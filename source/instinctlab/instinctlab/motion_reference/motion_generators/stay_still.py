@@ -34,7 +34,7 @@ class StayStillMotion(MotionBuffer):
         super().__init__(cfg, *args, **kwargs)
 
         # (num_envs, num_joints)
-        joint_pos = self.articulation_view.get_dof_positions()
+        joint_pos = self.articulation_access.get_dof_positions()
         self.rest_joint_pos = torch.zeros_like(joint_pos)
         self.rest_base_pose = torch.zeros(self.rest_joint_pos.shape[0], 7, device=self.device)
 
@@ -72,10 +72,10 @@ class StayStillMotion(MotionBuffer):
     ) -> None:
         """Fill the motion data buffer with the stay still motion."""
 
-        joint_pos = self.articulation_view.get_dof_positions().clone()  # (num_envs, num_dofs)
+        joint_pos = self.articulation_access.get_dof_positions().clone()  # (num_envs, num_dofs)
         joint_pos = joint_pos[env_ids]
 
-        base_pose_w = self.articulation_view.get_root_transforms().clone()[:, :7]
+        base_pose_w = self.articulation_access.get_root_transforms().clone()[:, :7]
         _base_pos_w = base_pose_w[env_ids][:, :3]
         _base_quat_w = base_pose_w[env_ids][:, 3:7]
         base_pose_w = torch.cat((_base_pos_w, _base_quat_w), dim=-1)

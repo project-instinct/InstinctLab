@@ -4,19 +4,30 @@ import os
 import yaml
 from collections.abc import Sequence
 from copy import copy
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Callable, Protocol
 
 import isaaclab.utils.math as math_utils
 
-from .motion_reference_data import MotionReferenceData, MotionReferenceState
+from instinctlab.motion_reference.motion_reference_data import MotionReferenceData, MotionReferenceState
 
 if TYPE_CHECKING:
-    import omni.physics.tensors.api as physx
-
     from isaaclab.scene import InteractiveScene
-    from .motion_reference_cfg import MotionBufferCfg
+    from instinctlab.motion_reference.motion_reference_cfg import MotionBufferCfg
 
 import torch
+
+
+class MotionReferenceArticulationAccess(Protocol):
+    """Backend articulation state surface required by motion buffers."""
+
+    max_dofs: int
+    joint_dof_names: list[str]
+
+    def get_dof_limits(self) -> torch.Tensor: ...
+
+    def get_dof_positions(self) -> torch.Tensor: ...
+
+    def get_root_transforms(self) -> torch.Tensor: ...
 
 
 class MotionBuffer:
@@ -29,18 +40,15 @@ class MotionBuffer:
     def __init__(
         self,
         cfg: MotionBufferCfg,
-        articulation_view: physx.ArticulationView,
+        articulation_access: MotionReferenceArticulationAccess,
         link_of_interests: Sequence[str],
         forward_kinematics_func: Callable[..., torch.Tensor],
         device: torch.device,
     ) -> None:
         self.cfg = cfg
-        self.articulation_view = articulation_view
-        """The articulation view to access the robot's state, ie. robot root pose."""
-        if hasattr(self.articulation_view, "shared_metatype"):
-            self.isaac_joint_names = self.articulation_view.shared_metatype.dof_names
-        else:
-            self.isaac_joint_names = self.articulation_view.joint_dof_names
+        self.articulation_access = articulation_access
+        """The active backend manager used to access robot articulation state."""
+        self.isaac_joint_names = self.articulation_access.joint_dof_names
         """The joint names in the Isaac Sim physics simulation view."""
         self.link_of_interests = link_of_interests
         self.forward_kinematics_func = forward_kinematics_func
@@ -50,7 +58,7 @@ class MotionBuffer:
         """
         self.device = device
 
-        _joint_limits = self.articulation_view.get_dof_limits()[0]  # remove the env dimension
+        _joint_limits = self.articulation_access.get_dof_limits()[0]  # remove the env dimension
         self._joint_limits = _joint_limits.to(self.device)
 
     """

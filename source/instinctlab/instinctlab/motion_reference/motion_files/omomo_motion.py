@@ -231,7 +231,7 @@ class OmomoMotion(AmassMotion):
 
         self._all_motion_sequences = HoiMotionSequence.make_emtpy_concat_batch(
             buffer_lengths=[int(motion.buffer_length) for motion in all_motion_sequences],
-            num_joints=self.articulation_view.max_dofs,
+            num_joints=self.articulation_access.max_dofs,
             num_links=self.num_link_to_ref,
             num_objects=max_num_objects,
             device=self.buffer_device,

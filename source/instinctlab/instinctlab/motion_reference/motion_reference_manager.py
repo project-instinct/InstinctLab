@@ -12,18 +12,14 @@ import isaaclab.utils.string as string_utils
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.scene import InteractiveScene
 from isaaclab.sensors import SensorBase
-from isaaclab.sim import SimulationContext
 from isaaclab.utils.buffers import TimestampedBuffer
 
-from instinctlab.utils.prims import get_articulation_view
-
-from .motion_reference_data import MotionReferenceData, MotionReferenceState
+from instinctlab.motion_reference.motion_reference_data import MotionReferenceData, MotionReferenceState
+from instinctlab.utils.backend_dispatch import create_backend_component
 
 if TYPE_CHECKING:
-    import omni.physics.tensors.api as physx
-
-    from .motion_reference_cfg import MotionReferenceManagerCfg
-    from .motion_buffer import MotionBuffer
+    from instinctlab.motion_reference.motion_buffer import MotionBuffer
+    from instinctlab.motion_reference.motion_reference_cfg import MotionReferenceManagerCfg
 
 import numpy as np
 import torch
@@ -33,7 +29,7 @@ import pytorch_kinematics as pk
 import warp as wp
 
 
-class MotionReferenceManager(SensorBase):
+class MotionReferenceManagerBase(SensorBase):
     """The manager to handle all motion references. There are multiple types of motion references
     should be supported:
         1. PlaneDataset: as from pre-collected dataset. The robot's base pose trajectory is in the
@@ -140,7 +136,7 @@ class MotionReferenceManager(SensorBase):
         Shape: (num_envs, 3)
         """
         if ((self._reference_relative_base_pos.timestamp - self._timestamp_torch).abs() > 1e-6).any():
-            self._reference_relative_base_pos.data = self._view.get_root_transforms()[:, :3].clone()
+            self._reference_relative_base_pos.data = self.get_root_transforms()[:, :3].clone()
             self._reference_relative_base_pos.data[:, 2] = self.reference_frame.base_pos_w[:, 0, 2]
             self._reference_relative_base_pos.timestamp = self._timestamp_torch.clone()
         return self._reference_relative_base_pos.data
@@ -153,7 +149,7 @@ class MotionReferenceManager(SensorBase):
         Shape: (num_envs, 4)
         """
         if ((self._reference_relative_delta_quat.timestamp - self._timestamp_torch).abs() > 1e-6).any():
-            _view_quat = self._view.get_root_transforms()[:, 3:7]
+            _view_quat = self.get_root_transforms()[:, 3:7]
             self._reference_relative_delta_quat.data = math_utils.yaw_quat(
                 math_utils.quat_mul(
                     _view_quat,
@@ -221,7 +217,7 @@ class MotionReferenceManager(SensorBase):
 
     @property
     def num_joints(self):
-        return self._view.max_dofs
+        return self.max_dofs
 
     @property
     def joint_names(self) -> list[str]:
@@ -296,9 +292,7 @@ class MotionReferenceManager(SensorBase):
 
     @property
     def env_origins(self) -> torch.Tensor:
-        return (
-            self._env_origins if hasattr(self, "_env_origins") else torch.zeros(self._view.count, 3, device=self.device)
-        )
+        return self._env_origins if hasattr(self, "_env_origins") else torch.zeros(self.count, 3, device=self.device)
 
     @property
     def motion_buffers(self) -> dict[str, MotionBuffer]:
@@ -316,7 +310,7 @@ class MotionReferenceManager(SensorBase):
         ## NOTE: This property returns the total trajectory length for all envs, EVEN if the env is started from the middle
         of the motion file. The lengths are computed based on the motion buffer's complete_motion_lengths.
         """
-        lengths = torch.ones(self._view.count, device=self.device)
+        lengths = torch.ones(self.count, device=self.device)
         for buffer_name, motion_buffer in self.motion_buffers.items():
             env_ids_assignment = self._motion_buffer_assignment[buffer_name]
             env_ids_this_buffer = self.ALL_INDICES[env_ids_assignment]
@@ -330,7 +324,7 @@ class MotionReferenceManager(SensorBase):
         ## NOTE: This property returns the trajectory length for all envs. If the env is started from the middle of a motion
         file, the length is computed as the starting point to the end of the motion file.
         """
-        lengths = torch.ones(self._view.count, device=self.device)
+        lengths = torch.ones(self.count, device=self.device)
         for buffer_name, motion_buffer in self.motion_buffers.items():
             env_ids_assignment = self._motion_buffer_assignment[buffer_name]
             env_ids_this_buffer = self.ALL_INDICES[env_ids_assignment]
@@ -599,7 +593,7 @@ class MotionReferenceManager(SensorBase):
         """Prepare the kwargs for the data class `make_empty` method."""
         make_empty_kwargs: dict = {
             "device": self.device,
-            "num_joints": self._view.max_dofs,
+            "num_joints": self.max_dofs,
             "num_links": self.num_link_to_ref,
         }
         sig = inspect.signature(self.cfg.data_class_type.make_empty)
@@ -613,7 +607,7 @@ class MotionReferenceManager(SensorBase):
         """Prepare the kwargs for the state class `make_empty` method."""
         make_empty_kwargs: dict = {
             "device": self.device,
-            "num_joints": self._view.max_dofs,
+            "num_joints": self.max_dofs,
         }
         sig = inspect.signature(self.cfg.state_class_type.make_empty)
         if "num_objects" in sig.parameters:
@@ -624,49 +618,31 @@ class MotionReferenceManager(SensorBase):
 
     def _initialize_data(self):
         """Initialize _data for the 'sensor' output"""
-        sim = SimulationContext.instance()
-
-        manager = sim.physics_manager if sim is not None else None
-        manager_name = manager.__name__ if isinstance(manager, type) else str(manager)
-        if manager is not None and "newton" in manager_name.lower():
-            self._physics_sim_view = None
-            self._view = get_articulation_view(self.cfg.prim_path)
-        else:
-            import omni.physics.tensors.api as physx
-
-            self._physics_sim_view = physx.create_simulation_view(self._backend)
-            self._physics_sim_view.set_subspace_roots("/")
-            self._view = get_articulation_view(
-                self.cfg.prim_path,
-                self._physics_sim_view,
-            )
-        self._ALL_INDICES = torch.arange(self._view.count, device=self.device)
-        if hasattr(self._view, "shared_metatype"):
-            self.isaac_joint_names = self._view.shared_metatype.dof_names
-        else:
-            self.isaac_joint_names = self._view.joint_dof_names
+        self._view = self._create_articulation_view(self.cfg.prim_path)
+        self._ALL_INDICES = torch.arange(self.count, device=self.device)
+        self.isaac_joint_names = self.joint_dof_names
         self._initialize_symmetric_joint_mapping()
 
         make_empty_data_kwargs = self._prepare_data_class_kwargs()
 
         self._data = self.cfg.data_class_type.make_empty(
-            self._view.count,
+            self.count,
             self.cfg.num_frames,
             **make_empty_data_kwargs,
         )
 
         self._reference_frame = self.cfg.data_class_type.make_empty(
-            self._view.count,
+            self.count,
             1,  # num_frames
             **make_empty_data_kwargs,
         )
         # Add an additional timestamp to the reference frame data, which is used for lazy update of the reference frame.
-        self._reference_frame_timestamp = torch.zeros(self._view.count, device=self.device)
+        self._reference_frame_timestamp = torch.zeros(self.count, device=self.device)
 
         make_empty_state_kwargs = self._prepare_state_class_kwargs()
 
         self._init_reference_state = self.cfg.state_class_type.make_empty(
-            self._view.count,
+            self.count,
             **make_empty_state_kwargs,
         )
 
@@ -676,6 +652,41 @@ class MotionReferenceManager(SensorBase):
         self._reference_relative_delta_quat = TimestampedBuffer()
         self._reference_link_pos_relative_w = TimestampedBuffer()
         self._reference_link_quat_relative_w = TimestampedBuffer()
+
+    def _create_articulation_view(self, prim_path: str):
+        """Create the active backend's articulation view."""
+        raise NotImplementedError
+
+    @property
+    def count(self) -> int:
+        """Number of articulations selected by the backend view."""
+        raise NotImplementedError
+
+    @property
+    def max_dofs(self) -> int:
+        """Number of active degrees of freedom per articulation."""
+        raise NotImplementedError
+
+    @property
+    def joint_dof_names(self) -> list[str]:
+        """Joint names in backend articulation order."""
+        raise NotImplementedError
+
+    def get_root_transforms(self) -> torch.Tensor:
+        """Read root transforms as position followed by quaternion in xyzw order."""
+        raise NotImplementedError
+
+    def get_dof_positions(self) -> torch.Tensor:
+        """Read articulation joint positions."""
+        raise NotImplementedError
+
+    def get_dof_velocities(self) -> torch.Tensor:
+        """Read articulation joint velocities."""
+        raise NotImplementedError
+
+    def get_dof_limits(self) -> torch.Tensor:
+        """Read joint limits in ``(view, dof, lower-upper)`` layout."""
+        raise NotImplementedError
 
     def _initialize_symmetric_joint_mapping(self):
         """Resolve configured symmetry arrays into the runtime articulation order."""
@@ -719,7 +730,7 @@ class MotionReferenceManager(SensorBase):
             motion_buffer_cls: type[MotionBuffer] = motion_buffer_cfg.class_type
             self._motion_buffers[motion_buffer_name] = motion_buffer_cls(
                 motion_buffer_cfg,
-                articulation_view=self._view,
+                articulation_access=self,
                 link_of_interests=self.cfg.link_of_interests,
                 forward_kinematics_func=self.target_link_pose_forward_kinematics,
                 device=self.device,
@@ -755,7 +766,7 @@ class MotionReferenceManager(SensorBase):
             pk.Chain.get_frame_indices.cache_clear()
 
         # joint_pos_pk = joint_pos_isaac[_joint_order_isaac_to_pk]
-        self._joint_order_isaac_to_pk = torch.ones(self._view.max_dofs, device=self.device, dtype=torch.long) * -1
+        self._joint_order_isaac_to_pk = torch.ones(self.max_dofs, device=self.device, dtype=torch.long) * -1
         for joint_i, joint_name in enumerate(joint_parameter_names):
             if not joint_name in self.isaac_joint_names:
                 raise RuntimeError(
@@ -793,7 +804,7 @@ class MotionReferenceManager(SensorBase):
         # resample the frame interval
         if env_ids is None and isinstance(self.cfg.frame_interval_s, Sequence):
             self._frame_interval_s = (
-                torch.rand(self._view.count, device=self.device)
+                torch.rand(self.count, device=self.device)
                 * (self.cfg.frame_interval_s[1] - self.cfg.frame_interval_s[0])
                 + self.cfg.frame_interval_s[0]
             )
@@ -804,7 +815,7 @@ class MotionReferenceManager(SensorBase):
                 + self.cfg.frame_interval_s[0]
             )
         elif (not hasattr(self, "_frame_interval_s")) and (not isinstance(self.cfg.frame_interval_s, Sequence)):
-            self._frame_interval_s = torch.ones(self._view.count, device=self.device) * self.cfg.frame_interval_s
+            self._frame_interval_s = torch.ones(self.count, device=self.device) * self.cfg.frame_interval_s
         elif hasattr(self, "_frame_interval_s") and (not isinstance(self.cfg.frame_interval_s, Sequence)):
             pass
         else:
@@ -814,7 +825,7 @@ class MotionReferenceManager(SensorBase):
         if env_ids is None or not hasattr(self, "_env_symmetric_augmentation_mask"):
             # Specifying whether the symmetric augmentation should be applied to the given env_ids.
             # The values in self._data should be already symmetrically augmented.
-            self._env_symmetric_augmentation_mask = torch.zeros(self._view.count, device=self.device, dtype=torch.bool)
+            self._env_symmetric_augmentation_mask = torch.zeros(self.count, device=self.device, dtype=torch.bool)
 
     def _resample_update_period(self, env_ids: Sequence[int] | torch.Tensor | None = None):
         """Resample the update period for the given env_ids."""
@@ -824,7 +835,7 @@ class MotionReferenceManager(SensorBase):
             self.cfg.update_period_range = copy(self.cfg.update_period)
             self.cfg.update_period = (
                 torch.ones(
-                    self._view.count,
+                    self.count,
                     device=self.device,
                 )
                 * self.cfg.update_period[0]
@@ -922,15 +933,15 @@ class MotionReferenceManager(SensorBase):
         # compute the ratio of trajectories for each motion buffer and how many envs should be assigned to each buffer
         total_traj = sum(self._motion_buffer_num_trajectories.values())
         traj_ratio_d = {name: num_traj / total_traj for name, num_traj in self._motion_buffer_num_trajectories.items()}
-        num_env_assignment_d = {name: int(ratio * self._view.count) for name, ratio in traj_ratio_d.items()}
+        num_env_assignment_d = {name: int(ratio * self.count) for name, ratio in traj_ratio_d.items()}
 
         # check if the assignment matches all envs, otherwise, slightly add/subtract from the largest/smallest
-        if sum(num_env_assignment_d.values()) > self._view.count:
-            overflow_num = sum(num_env_assignment_d.values()) - self._view.count
+        if sum(num_env_assignment_d.values()) > self.count:
+            overflow_num = sum(num_env_assignment_d.values()) - self.count
             max_num_env_name = max(num_env_assignment_d.keys(), key=num_env_assignment_d.get)  # type: ignore
             num_env_assignment_d[max_num_env_name] -= overflow_num
-        elif sum(num_env_assignment_d.values()) < self._view.count:
-            underflow_num = self._view.count - sum(num_env_assignment_d.values())
+        elif sum(num_env_assignment_d.values()) < self.count:
+            underflow_num = self.count - sum(num_env_assignment_d.values())
             min_num_env_name = min(num_env_assignment_d.keys(), key=num_env_assignment_d.get)  # type: ignore
             num_env_assignment_d[min_num_env_name] += underflow_num
 
@@ -1050,11 +1061,8 @@ class MotionReferenceManager(SensorBase):
 
     def _find_reference_view(self):
         """Find the ArticulationView to serve as a motion reference visualization."""
-        if hasattr(self, "_backend") and (not self.cfg.reference_prim_path is None):
-            self._reference_view = get_articulation_view(self.cfg.reference_prim_path)
-            if self._reference_view._backend is None:
-                delattr(self, "_reference_view")
-                raise RuntimeError("Failed to find the reference view.")
+        if hasattr(self, "_backend") and self.cfg.reference_prim_path is not None:
+            self._reference_view = self._create_articulation_view(self.cfg.reference_prim_path)
 
     def _set_reference_view_state(self):
         """Set the articulation view to the reference state for motion visualization."""
@@ -1075,26 +1083,12 @@ class MotionReferenceManager(SensorBase):
         robot_pos_w[:, 1] += self.cfg.visualizing_robot_offset[1]
         robot_pos_w[:, 2] += self.cfg.visualizing_robot_offset[2]
 
-        # set the root transform
         root_pose_w = torch.cat([robot_pos_w, robot_quat_w], dim=-1)
-        self._reference_view.set_root_transforms(
-            root_pose_w,
-            indices=self.ALL_INDICES,
-        )
-        self._reference_view.set_root_velocities(
-            torch.zeros_like(root_pose_w[..., :6]),
-            indices=self.ALL_INDICES,
-        )
+        self._write_reference_view_state(root_pose_w, robot_joint_pos)
 
-        # set the joint positions
-        self._reference_view.set_dof_positions(
-            robot_joint_pos,
-            indices=self.ALL_INDICES,
-        )
-        self._reference_view.set_dof_velocities(
-            torch.zeros_like(robot_joint_pos),
-            indices=self.ALL_INDICES,
-        )
+    def _write_reference_view_state(self, root_pose_w: torch.Tensor, joint_pos: torch.Tensor) -> None:
+        """Write visualization state through the active backend's native view."""
+        raise NotImplementedError
 
     def _set_debug_vis_impl(self, debug_vis: bool):
         # set visibility of markers
@@ -1121,7 +1115,7 @@ class MotionReferenceManager(SensorBase):
             if "root" in self.cfg.visualizing_marker_types:
                 root_pos_w = self.data.base_pos_w[self.ALL_INDICES, aiming_frame_idx]
                 root_quat_w = self.data.base_quat_w[self.ALL_INDICES, aiming_frame_idx]
-                root_indices = torch.ones(self._view.count, device=self.device, dtype=torch.long) * 0
+                root_indices = torch.ones(self.count, device=self.device, dtype=torch.long) * 0
 
                 pos_list.append(root_pos_w.reshape(-1, 3))
                 quat_list.append(root_quat_w.reshape(-1, 4))
@@ -1165,9 +1159,25 @@ class MotionReferenceManager(SensorBase):
         # call parent
         super()._invalidate_initialize_callback(event)
         # set all existing views to None to invalidate them
-        if hasattr(self, "_physics_sim_view"):
-            delattr(self, "_physics_sim_view")
         if hasattr(self, "_view"):
             delattr(self, "_view")
         if hasattr(self, "_reference_view"):
             delattr(self, "_reference_view")
+        self._invalidate_backend_impl()
+
+    def _invalidate_backend_impl(self) -> None:
+        """Invalidate articulation-view state owned by the active backend."""
+        raise NotImplementedError
+
+
+class MotionReferenceManager:
+    """Construct the motion-reference manager for the active physics backend."""
+
+    def __new__(cls, cfg: MotionReferenceManagerCfg):
+        return create_backend_component(
+            cfg,
+            {
+                "physx": "instinctlab.motion_reference.physx:PhysxMotionReferenceManager",
+                "newton": "instinctlab.motion_reference.newton:NewtonMotionReferenceManager",
+            },
+        )

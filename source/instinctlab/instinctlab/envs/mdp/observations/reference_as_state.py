@@ -120,18 +120,12 @@ def root_tannorm_reference_as_state(
 class projected_gravity_reference_as_state(ManagerTermBase):
     def __init__(self, cfg: ObservationTermCfg, env: ManagerBasedEnv):
         super().__init__(cfg, env)
-        import omni.physics.tensors.api as physx
 
         self.motion_ref: MotionReferenceManager = (
             env.scene[cfg.params["asset_cfg"].name] if "asset_cfg" in cfg.params else env.scene["motion_reference"]
         )
 
-        # Obtain global physics sim view
-        physics_sim_view = physx.create_simulation_view("torch")
-        physics_sim_view.set_subspace_roots("/")
-        gravity = physics_sim_view.get_gravity()
-        # Convert to direction vector
-        gravity_dir = torch.tensor((gravity[0], gravity[1], gravity[2]), device=self.device)
+        gravity_dir = torch.tensor(env.cfg.sim.gravity, device=self.device)
         gravity_dir = math_utils.normalize(gravity_dir.unsqueeze(0)).squeeze(0)
 
         self.GRAVITY_VEC_W = gravity_dir.repeat(len(self.motion_ref.ALL_INDICES), 1)

@@ -622,22 +622,9 @@ class ProjectedGravityRefCommand(ShadowingCommandBase):
         """
         # initialize the base class
         super().__init__(cfg, env)
-        import omni.physics.tensors.api as physx
-
-        physics_sim_view = physx.create_simulation_view("torch")
-        physics_sim_view.set_subspace_roots("/")
-        gravity = physics_sim_view.get_gravity()
-        # Convert to direction vector
-        gravity_dir = torch.tensor((gravity[0], gravity[1], gravity[2]), device=self.device)
+        gravity_dir = torch.tensor(env.cfg.sim.gravity, device=self.device)
         gravity_dir = math_utils.normalize(gravity_dir.unsqueeze(0)).squeeze(0)
-        self.GRAVITY_VEC_W = math_utils.normalize(
-            torch.tensor(
-                (gravity[0], gravity[1], gravity[2]),
-                device=self.device,
-            ).unsqueeze(0)
-        ).expand(
-            self.num_envs, -1
-        )  # (num_envs, 3)
+        self.GRAVITY_VEC_W = gravity_dir.unsqueeze(0).expand(self.num_envs, -1)
         # generate the command tensor buffer
         self._command = torch.zeros(
             (self.num_envs, self._motion_reference.num_frames, 3),

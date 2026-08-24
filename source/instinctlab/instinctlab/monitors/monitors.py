@@ -20,7 +20,7 @@ from instinctlab.motion_reference.utils import (
     get_link_position_distance,
     matching_reference_timing,
 )
-from instinctlab.utils.prims import get_articulation_view
+from instinctlab.utils.prims import resolve_articulation_root_expression
 
 from .monitor_manager import MonitorSensor, MonitorTerm
 
@@ -82,7 +82,10 @@ class TorqueMonitorSensor(MonitorSensor):
     def _initialize_impl(self):
         super()._initialize_impl()
         # set access to the articulation we want to monitor
-        self._view = get_articulation_view(self.cfg.prim_path, self._physics_sim_view)
+        root_expr = resolve_articulation_root_expression(self.cfg.prim_path)
+        self._view = self._physics_sim_view.create_articulation_view(root_expr.replace(".*", "*"))
+        if self._view._backend is None:
+            raise RuntimeError(f"Failed to create a PhysX articulation view at: {root_expr}")
         # set the buffer
         self._torque_buffer = torch.zeros(
             self._view.count, self.cfg.history_length, self._view.max_dofs, dtype=torch.float32, device=self.device

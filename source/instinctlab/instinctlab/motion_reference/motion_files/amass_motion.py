@@ -788,7 +788,7 @@ class AmassMotion(MotionBuffer):
         # self._all_motion_sequences = MotionSequence.make_empty(
         #     len(all_motion_sequences),
         #     max_buffer_length,
-        #     num_joints=self.articulation_view.max_dofs,
+        #     num_joints=self.articulation_access.max_dofs,
         #     num_links=self.num_link_to_ref,
         #     device=self.buffer_device,
         # )
@@ -800,7 +800,7 @@ class AmassMotion(MotionBuffer):
         )
         self._all_motion_sequences = MotionSequence.make_emtpy_concat_batch(
             buffer_lengths=[int(motion.buffer_length) for motion in all_motion_sequences],
-            num_joints=self.articulation_view.max_dofs,
+            num_joints=self.articulation_access.max_dofs,
             num_links=self.num_link_to_ref,
             device=self.buffer_device,
         )
