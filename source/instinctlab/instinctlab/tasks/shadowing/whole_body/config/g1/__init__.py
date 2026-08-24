@@ -1,7 +1,6 @@
 import gymnasium as gym
 
 from . import agents
-from .plane_shadowing_newton_cfg import G1WholeBodyNewtonEnvCfg, G1WholeBodyNewtonEnvCfg_PLAY
 
 task_entry = "instinctlab.tasks.shadowing.whole_body.config.g1"
 

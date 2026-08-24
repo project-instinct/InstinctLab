@@ -6,7 +6,6 @@
 import gymnasium as gym
 
 from . import agents
-from .g1_parkour_target_amp_newton_cfg import G1ParkourNewtonEnvCfg, G1ParkourNewtonEnvCfg_PLAY
 
 task_entry = "instinctlab.tasks.parkour.config.g1"
 

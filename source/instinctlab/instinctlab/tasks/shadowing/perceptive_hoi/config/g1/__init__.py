@@ -1,10 +1,6 @@
 import gymnasium as gym
 
 from . import agents
-from .perceptive_shadowing_newton_cfg import (
-    G1PerceptiveHoiNewtonEnvCfg,
-    G1PerceptiveHoiNewtonEnvCfg_PLAY,
-)
 
 task_entry = "instinctlab.tasks.shadowing.perceptive_hoi.config.g1"
 

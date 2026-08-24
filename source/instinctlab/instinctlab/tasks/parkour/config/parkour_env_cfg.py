@@ -2,8 +2,6 @@ import math
 import os
 from dataclasses import MISSING
 
-from isaaclab_physx.physics import PhysxCfg
-
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
@@ -930,10 +928,13 @@ class ParkourEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.dt = 0.005
         self.sim.render_interval = self.decimation
         self.sim.physics_material = self.scene.terrain.physics_material
-        self.sim.physics = PhysxCfg(
-            gpu_max_rigid_patch_count=10 * 2**15,
-            gpu_collision_stack_size=2**29,
-        )
+        if self.sim.physics is None:
+            from isaaclab_physx.physics import PhysxCfg
+
+            self.sim.physics = PhysxCfg(
+                gpu_max_rigid_patch_count=10 * 2**15,
+                gpu_collision_stack_size=2**29,
+            )
         # update sensor update periods
         if self.scene.contact_forces is not None:
             self.scene.contact_forces.update_period = self.sim.dt

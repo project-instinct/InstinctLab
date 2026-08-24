@@ -2,8 +2,6 @@ import math
 import os
 from dataclasses import MISSING
 
-from isaaclab_physx.physics import PhysxCfg
-
 import isaaclab.envs.mdp as mdp
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
@@ -740,8 +738,11 @@ class PerceptiveHoiShadowingEnvCfg(InstinctLabRLEnvCfg):
         self.sim.dt = 1.0 / 50.0 / self.decimation
         self.sim.render_interval = self.decimation
         self.sim.physics_material = self.scene.terrain.physics_material
-        self.sim.physics = PhysxCfg(
-            gpu_max_rigid_patch_count=10 * 2**15,
-            gpu_max_rigid_contact_count=2**27,
-            gpu_collision_stack_size=2**27,
-        )
+        if self.sim.physics is None:
+            from isaaclab_physx.physics import PhysxCfg
+
+            self.sim.physics = PhysxCfg(
+                gpu_max_rigid_patch_count=10 * 2**15,
+                gpu_max_rigid_contact_count=2**27,
+                gpu_collision_stack_size=2**27,
+            )

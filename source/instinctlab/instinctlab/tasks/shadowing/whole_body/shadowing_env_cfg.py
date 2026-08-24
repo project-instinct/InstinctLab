@@ -1,8 +1,6 @@
 import os
 from dataclasses import MISSING
 
-from isaaclab_physx.physics import PhysxCfg
-
 import isaaclab.envs.mdp as mdp
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
@@ -609,6 +607,9 @@ class ShadowingEnvCfg(InstinctLabRLEnvCfg):
         self.sim.dt = 1.0 / 50.0 / self.decimation
         self.sim.render_interval = self.decimation
         self.sim.physics_material = self.scene.terrain.physics_material
-        self.sim.physics = PhysxCfg(gpu_max_rigid_patch_count=10 * 2**15)
+        if self.sim.physics is None:
+            from isaaclab_physx.physics import PhysxCfg
+
+            self.sim.physics = PhysxCfg(gpu_max_rigid_patch_count=10 * 2**15)
 
         self.run_name = "".join([])

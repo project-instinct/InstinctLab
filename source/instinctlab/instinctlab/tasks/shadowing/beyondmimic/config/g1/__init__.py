@@ -8,7 +8,6 @@
 import gymnasium as gym
 
 from . import agents
-from .beyondmimic_plane_newton_cfg import G1BeyondMimicNewtonEnvCfg, G1BeyondMimicNewtonEnvCfg_PLAY
 
 task_entry = "instinctlab.tasks.shadowing.beyondmimic.config.g1"
 

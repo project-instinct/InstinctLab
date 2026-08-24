@@ -5,7 +5,12 @@ from isaaclab.utils.configclass import configclass
 
 from instinctlab.tasks.parkour.config.g1.g1_parkour_target_amp_cfg import G1ParkourEnvCfg, G1ParkourEnvCfg_PLAY
 from instinctlab.tasks.parkour.config.parkour_env_cfg import SceneCfg
-from instinctlab.tasks.utils.newton import apply_newton_robot_cfg, newton_material_cfg, newton_sim_cfg
+from instinctlab.tasks.utils.newton import (
+    InstinctNewtonVisualizerCfg,
+    apply_newton_robot_cfg,
+    newton_material_cfg,
+    newton_sim_cfg,
+)
 
 
 @configclass
@@ -39,3 +44,8 @@ class G1ParkourNewtonEnvCfg_PLAY(G1ParkourEnvCfg_PLAY):
         apply_newton_robot_cfg(self.scene.robot)
         self.sim.physics = newton_sim_cfg().physics
         self.sim.use_newton_actuators = True
+        self.sim.visualizer_cfgs = [
+            InstinctNewtonVisualizerCfg(
+                follow_body=True,
+            )
+        ]
