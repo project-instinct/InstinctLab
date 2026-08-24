@@ -1,19 +1,17 @@
+from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg, NewtonCollisionPipelineCfg, NewtonShapeCfg
+from isaaclab_newton.sim.schemas import NewtonArticulationRootPropertiesCfg, NewtonMaterialPropertiesCfg
+from isaaclab_visualizers.newton import NewtonVisualizerCfg
+
 from isaaclab.sim import SimulationCfg
 from isaaclab.utils.configclass import configclass
-from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg, NewtonShapeCfg
-from isaaclab_newton.sim.schemas import (
-    NewtonArticulationRootPropertiesCfg,
-    NewtonMaterialPropertiesCfg,
-)
-from isaaclab_visualizers.newton import NewtonVisualizerCfg
 
 
 def newton_sim_cfg(
-    njmax: int = 256,
-    nconmax: int = 128,
+    njmax: int = 384,
+    nconmax: int = 192,
     margin: float = 0.01,
     gap: float = 0.01,
-    use_mujoco_contacts: bool = True,
+    use_mujoco_contacts: bool = False,
 ) -> SimulationCfg:
     """Return the shared Newton MJWarp simulation configuration."""
     return SimulationCfg(
@@ -29,6 +27,14 @@ def newton_sim_cfg(
                 impratio=1.0,
                 ls_parallel=False,
                 use_mujoco_contacts=use_mujoco_contacts,
+            ),
+            collision_cfg=(
+                None
+                if use_mujoco_contacts
+                else NewtonCollisionPipelineCfg(
+                    broad_phase="explicit",
+                    max_triangle_pairs=2_500_000,
+                )
             ),
             num_substeps=1,
             debug_mode=False,
