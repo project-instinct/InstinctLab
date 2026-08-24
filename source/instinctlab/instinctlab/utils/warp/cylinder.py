@@ -4,7 +4,9 @@ from collections import defaultdict
 
 import warp as wp
 
-from .kernels import points_penetrate_cylinder_kernel
+from isaaclab.utils.warp import ProxyArray
+
+from instinctlab.utils.warp.kernels import points_penetrate_cylinder_kernel
 
 
 class CylinderSpatialGrid:
@@ -122,24 +124,30 @@ class CylinderSpatialGrid:
         self.cylinder_end_wp = wp.array(self.cylinders_np[:, 3:6], dtype=wp.vec3, device=str(self.device))
         self.cylinder_thickness_wp = wp.array(self.cylinders_np[:, 6], dtype=wp.float32, device=str(self.device))
 
-    def get_points_penetration_offset(self, points: torch.Tensor) -> torch.Tensor:
+    def get_points_penetration_offset(self, points: ProxyArray) -> ProxyArray:
         """Compute the penetration depth of points into cylinders in the grid.
 
         ## Args:
-            points: A tensor of shape (N, 3) where N is the number of points.
+            points: A ProxyArray containing ``wp.vec3f`` points. Any array shape is accepted.
 
         ## Returns:
-            A tensor of shape (N, 3) containing the maximum penetration offset for each point.
+            A ProxyArray containing the maximum penetration offset for each point.
         """
-        assert points.shape[1] == 3, "Points should be of shape (N, 3) where N is the number of points."
-        points_wp = wp.from_torch(points, dtype=wp.vec3)
-        penetration_offset = torch.zeros(points.shape[0], 3, device=points.device, dtype=points.dtype)
-        penetration_offset_wp = wp.from_torch(penetration_offset, dtype=wp.vec3)
-        output_device = points.device
+        if not isinstance(points, ProxyArray):
+            raise TypeError(f"Expected points to be a ProxyArray, got {type(points).__name__}.")
+        if points.warp.dtype is not wp.vec3f:
+            raise TypeError(f"Expected points with wp.vec3f elements, got {points.warp.dtype}.")
+
+        points_wp = points.warp.flatten()
+        penetration_offset_wp = wp.zeros(
+            points.warp.shape,
+            dtype=wp.vec3f,
+            device=points.warp.device,
+        )
 
         wp.launch(
             points_penetrate_cylinder_kernel,
-            dim=points.shape[0],
+            dim=points_wp.shape[0],
             inputs=[
                 points_wp,
                 self.cylinder_start_wp,
@@ -150,9 +158,9 @@ class CylinderSpatialGrid:
                 self.grid_res_wp,
                 self.bbox_min_wp,
                 self.cell_size_wp,
-                penetration_offset_wp,
+                penetration_offset_wp.flatten(),
             ],
-            device=str(points.device),
+            device=points.warp.device,
         )
 
-        return penetration_offset.to(output_device)
+        return ProxyArray(penetration_offset_wp)

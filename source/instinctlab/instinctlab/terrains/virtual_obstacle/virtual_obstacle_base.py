@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from isaaclab.markers import VisualizationMarkersCfg
 from isaaclab.utils.configclass import configclass
+from isaaclab.utils.warp import ProxyArray
 
 
 @configclass
@@ -52,13 +53,13 @@ class VirtualObstacleBase(ABC):
         raise NotImplementedError("This method should be implemented by subclasses.")
 
     @abstractmethod
-    def get_points_penetration_offset(self, points: torch.Tensor) -> torch.Tensor:
+    def get_points_penetration_offset(self, points: ProxyArray) -> ProxyArray:
         """Get the penetration offset for the given points.
 
         Args:
-            points (torch.Tensor): Shape (N, 3) The points to check for penetration.
+            points: Warp-first points with ``wp.vec3f`` elements.
 
         Returns:
-            torch.Tensor: Shape (N, 3) The penetration offsets for the points. pointing from the surface to the point.
+            Warp-first penetration offsets with the same shape as ``points``.
         """
         raise NotImplementedError("This method should be implemented by subclasses.")

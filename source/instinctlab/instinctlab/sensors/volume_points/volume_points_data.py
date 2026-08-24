@@ -1,34 +1,41 @@
 from __future__ import annotations
 
-import torch
 from dataclasses import MISSING, dataclass
+
+import warp as wp
+
+from isaaclab.utils.warp import ProxyArray
 
 
 @dataclass
 class VolumePointsData:
-    """Data container for the volume points sensor."""
+    """Warp-first data container for the volume-points sensor.
 
-    pos_w: torch.Tensor = MISSING
+    Array properties are :class:`ProxyArray` objects. Use ``.torch`` for a
+    cached zero-copy Torch view or ``.warp`` for the underlying Warp array.
+    """
+
+    pos_w: ProxyArray = MISSING
     """The position of the volume points sensor in the world frame.
 
     Shape: (N, B, 3), where N is the number of envs, B is the number of bodies in each env.
     """
 
-    quat_w: torch.Tensor = MISSING
+    quat_w: ProxyArray = MISSING
     """The quaternion of the volume points sensor in the world frame.
 
     Shape: (N, B, 4), where N is the number of envs, B is the number of bodies in each env.
     The quaternion is in the format (x, y, z, w).
     """
 
-    vel_w: torch.Tensor = MISSING
+    vel_w: ProxyArray = MISSING
     """The velocity of the volume points sensor in the world frame.
 
     Shape: (N, B, 3), where N is the number of envs, B is the number of bodies in each env.
     The velocity is in the format (vx, vy, vz).
     """
 
-    ang_vel_w: torch.Tensor = MISSING
+    ang_vel_w: ProxyArray = MISSING
     """The angular velocity of the volume points sensor in the world frame.
 
     Shape: (N, B, 3), where N is the number of envs, B is the number of bodies in each env.
@@ -39,21 +46,21 @@ class VolumePointsData:
     This is used to calculate the shape of the volume points data.
     """
 
-    points_pos_w: torch.Tensor = MISSING
+    points_pos_w: ProxyArray = MISSING
     """The position of the volume points in the world frame.
 
     Shape is (N, B, point_num_each_body, 3),
     where N is the number of sensors and B is the number of bodies in each sensor.
     """
 
-    points_vel_w: torch.Tensor = MISSING
+    points_vel_w: ProxyArray = MISSING
     """The velocity of the volume points in the world frame.
 
     Shape is (N, B, point_num_each_body, 3),
     where N is the number of sensors and B is the number of bodies in each sensor.
     """
 
-    penetration_offset: torch.Tensor = MISSING
+    penetration_offset: ProxyArray = MISSING
     """The penetration offset of the volume points sensor.
     This is the offset from the surface of the body to the volume points.
 
@@ -68,18 +75,22 @@ class VolumePointsData:
         num_envs: int,
         num_bodies: int,
         point_num_each_body: int,
-        device="cpu",
-        dtype=torch.float32,
-        # Note: device and dtype are optional parameters for flexibility in tensor creation
+        device: str = "cpu",
     ) -> VolumePointsData:
-        """Creates a zero-initialized VolumePointsData object."""
+        """Create zero-initialized Warp buffers with cached dual access."""
         return VolumePointsData(
-            pos_w=torch.zeros((num_envs, num_bodies, 3), device=device, dtype=dtype),
-            quat_w=torch.zeros((num_envs, num_bodies, 4), device=device, dtype=dtype),
-            vel_w=torch.zeros((num_envs, num_bodies, 3), device=device, dtype=dtype),
-            ang_vel_w=torch.zeros((num_envs, num_bodies, 3), device=device, dtype=dtype),
+            pos_w=ProxyArray(wp.zeros((num_envs, num_bodies), dtype=wp.vec3f, device=device)),
+            quat_w=ProxyArray(wp.zeros((num_envs, num_bodies), dtype=wp.quatf, device=device)),
+            vel_w=ProxyArray(wp.zeros((num_envs, num_bodies), dtype=wp.vec3f, device=device)),
+            ang_vel_w=ProxyArray(wp.zeros((num_envs, num_bodies), dtype=wp.vec3f, device=device)),
             point_num_each_body=point_num_each_body,
-            points_pos_w=torch.zeros((num_envs, num_bodies, point_num_each_body, 3), device=device, dtype=dtype),
-            points_vel_w=torch.zeros((num_envs, num_bodies, point_num_each_body, 3), device=device, dtype=dtype),
-            penetration_offset=torch.zeros((num_envs, num_bodies, point_num_each_body, 3), device=device, dtype=dtype),
+            points_pos_w=ProxyArray(
+                wp.zeros((num_envs, num_bodies, point_num_each_body), dtype=wp.vec3f, device=device)
+            ),
+            points_vel_w=ProxyArray(
+                wp.zeros((num_envs, num_bodies, point_num_each_body), dtype=wp.vec3f, device=device)
+            ),
+            penetration_offset=ProxyArray(
+                wp.zeros((num_envs, num_bodies, point_num_each_body), dtype=wp.vec3f, device=device)
+            ),
         )

@@ -19,11 +19,11 @@ def volume_points_penetration(
     # extract the used quantities (to enable type-hinting)
     volume_sensor: VolumePoints = env.scene.sensors[sensor_cfg.name]
     # compute the reward
-    penetration = volume_sensor.data.penetration_offset  # (N, B_, P_, 3) where B_ and P_ varies in sensors
+    penetration = volume_sensor.data.penetration_offset.torch  # (N, B_, P_, 3), varying B_ and P_
     penetration = penetration.flatten(1, 2)  # (N, B_*P_, 3)
     penetration_depth = torch.norm(penetration, dim=-1)  # (N, B_*P_)
     in_obstacle = (penetration_depth > tolerance).float()  # (N, B_*P_)
-    points_vel = volume_sensor.data.points_vel_w  # (N, B_, P_, 3) where B_ and P_ varies in sensors
+    points_vel = volume_sensor.data.points_vel_w.torch  # (N, B_, P_, 3), varying B_ and P_
     points_vel = points_vel.flatten(1, 2)  # (N, B_*P_, 3)
     points_vel_norm = torch.norm(points_vel, dim=-1)  # (N, B_*P_)
     velocity_times_penetration = in_obstacle * (points_vel_norm + 1e-6) * penetration_depth  # (N, B_*P_)
@@ -49,7 +49,7 @@ def step_safety(
     volume_sensor: VolumePoints = env.scene.sensors[volume_points_cfg.name]
     contact_sensor: ContactSensor = env.scene.sensors[contact_forces_cfg.name]
     # compute the reward
-    penetration = volume_sensor.data.penetration_offset  # (N, B_, P_, 3) where B_ and P_ varies in sensors
+    penetration = volume_sensor.data.penetration_offset.torch  # (N, B_, P_, 3), varying B_ and P_
     penetration_depth = torch.norm(penetration, dim=-1)  # (N, B_, P_)
     penetration_depth_max = torch.max(penetration_depth, dim=-1)[0]  # (N, B_)
     if once:

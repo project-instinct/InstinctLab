@@ -24,7 +24,7 @@ VOLUME_POINTS_VISUALIZER_CFG = VisualizationMarkersCfg(
 
 @configclass
 class VolumePointsCfg(SensorBaseCfg):
-    """Configuration for the volume points sensor."""
+    """Backend-neutral configuration for the volume-points sensor."""
 
     class_type: type | str = "{DIR}.volume_points:VolumePoints"
 

@@ -11,28 +11,36 @@ from numpy.linalg import norm
 from typing import TYPE_CHECKING
 
 import cv2
-from pxr import UsdGeom, UsdPhysics
+import warp as wp
 from sklearn.cluster import DBSCAN
 
 import isaaclab.utils.math as math_utils
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.sensors import patterns
-from isaaclab.utils.warp import convert_to_warp_mesh, raycast_mesh
+from isaaclab.utils.warp import ProxyArray, convert_to_warp_mesh, raycast_mesh
 
+from instinctlab.terrains.virtual_obstacle.virtual_obstacle_base import VirtualObstacleBase
 from instinctlab.utils.warp.cylinder import CylinderSpatialGrid
 
-from .virtual_obstacle_base import VirtualObstacleBase
-
 if TYPE_CHECKING:
-    from .edge_cylinder_cfg import (
+    from instinctlab.terrains.virtual_obstacle.edge_cylinder_cfg import (
         EdgeCylinderCfg,
+        FeatureEdgeCylinderCfg,
         GreedyconcatEdgeCylinderCfg,
         PluckerEdgeCylinderCfg,
         RansacEdgeCylinderCfg,
         RayEdgeCylinderCfg,
-        FeatureEdgeCylinderCfg,
     )
 import pyvista as pv
+
+
+def _get_cylinder_penetration_offset(
+    cylinders: CylinderSpatialGrid | None,
+    points: ProxyArray,
+) -> ProxyArray:
+    if cylinders is not None:
+        return cylinders.get_points_penetration_offset(points)
+    return ProxyArray(wp.zeros(points.warp.shape, dtype=wp.vec3f, device=points.warp.device))
 
 
 class EdgeCylinder(VirtualObstacleBase):
@@ -132,12 +140,8 @@ class EdgeCylinder(VirtualObstacleBase):
         )
         self._cylinder_visualizer.set_visibility(True)
 
-    def get_points_penetration_offset(self, points):
-        return (
-            self.cylinders.get_points_penetration_offset(points)
-            if self.cylinders is not None
-            else torch.zeros_like(points, device=self.device)
-        )
+    def get_points_penetration_offset(self, points: ProxyArray) -> ProxyArray:
+        return _get_cylinder_penetration_offset(self.cylinders, points)
 
     def process_edges(self, edge_coords: np.ndarray) -> np.ndarray:
         """Process the edge coordinates.
@@ -643,12 +647,8 @@ class RayEdgeCylinder(VirtualObstacleBase):
         self._cylinder_visualizer.set_visibility(True)
         self._points_visualizer.set_visibility(True)
 
-    def get_points_penetration_offset(self, points):
-        return (
-            self.cylinders.get_points_penetration_offset(points)
-            if self.cylinders is not None
-            else torch.zeros_like(points, device=self.device)
-        )
+    def get_points_penetration_offset(self, points: ProxyArray) -> ProxyArray:
+        return _get_cylinder_penetration_offset(self.cylinders, points)
 
 
 class FeatureEdgeCylinder(VirtualObstacleBase):
@@ -763,12 +763,8 @@ class FeatureEdgeCylinder(VirtualObstacleBase):
         )
         self._cylinder_visualizer.set_visibility(True)
 
-    def get_points_penetration_offset(self, points):
-        return (
-            self.cylinders.get_points_penetration_offset(points)
-            if self.cylinders is not None
-            else torch.zeros_like(points, device=self.device)
-        )
+    def get_points_penetration_offset(self, points: ProxyArray) -> ProxyArray:
+        return _get_cylinder_penetration_offset(self.cylinders, points)
 
 
 def process_camera_edges(i, depth_image, normal_image, cfg):
