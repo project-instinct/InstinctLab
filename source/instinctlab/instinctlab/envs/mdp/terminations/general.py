@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
     from isaaclab.sensors import ContactSensor
 
-    from instinctlab.motion_reference import MotionReferenceManager
+    from instinctlab.motion_reference.motion_reference_manager import MotionReferenceManagerBase
 
 
 def dataset_exhausted(
@@ -38,7 +38,7 @@ def dataset_exhausted(
     Returns:
         True if the dataset is exhausted, False otherwise.
     """
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
     if check_all_frames:
         return_ = torch.logical_not(motion_reference.data.validity[motion_reference.ALL_INDICES]).any(
             dim=-1

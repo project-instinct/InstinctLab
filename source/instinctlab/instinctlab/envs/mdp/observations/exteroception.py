@@ -14,9 +14,9 @@ from isaaclab.managers import ManagerTermBase, ManagerTermBaseCfg, SceneEntityCf
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv, ManagerBasedRLEnv
-    from isaaclab.sensors import Camera, RayCasterCamera, TiledCamera
-
-    from instinctlab.sensors import GroupedRayCasterCamera, NoisyGroupedRayCasterCamera
+    from isaaclab.sensors import Camera, TiledCamera
+    from isaaclab.sensors.ray_caster.base_multi_mesh_ray_caster_camera import BaseMultiMeshRayCasterCamera
+    from isaaclab.sensors.ray_caster.base_ray_caster_camera import BaseRayCasterCamera
 
 
 def _debug_visualize_image(
@@ -79,9 +79,7 @@ def visualizable_image(
         The images produced at the last time-step
     """
     # extract the used quantities (to enable type-hinting)
-    sensor: TiledCamera | Camera | RayCasterCamera | GroupedRayCasterCamera | NoisyGroupedRayCasterCamera = (
-        env.scene.sensors[sensor_cfg.name]
-    )
+    sensor: TiledCamera | Camera | BaseRayCasterCamera = env.scene.sensors[sensor_cfg.name]
 
     # obtain the input image
     images = sensor.data.output[data_type].torch.clone()  # (N, H, W, C) or history
@@ -117,7 +115,7 @@ class delayed_visualizable_image(ManagerTermBase):
         self.sensor_cfg = cfg.params.get("sensor_cfg", SceneEntityCfg("camera"))
         self.data_type = cfg.params["data_type"]  # must provide the data_type, must have "history" in the data_type
         assert "history" in self.data_type, "data_type must have 'history' in it"
-        self.sensor: NoisyGroupedRayCasterCamera = env.scene.sensors[self.sensor_cfg.name]
+        self.sensor: BaseMultiMeshRayCasterCamera = env.scene.sensors[self.sensor_cfg.name]
         self.delayed_frame_ranges = cfg.params.get("delayed_frame_ranges", (0, 0))  # (min_delay, max_delay)
         # not recommended for gaussian distribution, but it is supported.
         self.delayed_frame_distribution: Literal["uniform", "log_uniform"] = cfg.params.get(

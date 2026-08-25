@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from isaaclab.assets import Articulation
     from isaaclab.envs import ManagerBasedRLEnv
 
-    from instinctlab.motion_reference import MotionReferenceManager
+    from instinctlab.motion_reference.motion_reference_manager import MotionReferenceManagerBase
 
 
 def pos_far_from_ref(
@@ -55,7 +55,7 @@ def pos_far_from_ref(
 
     return_ = distance > distance_threshold
     if print_reason and return_.any():
-        motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+        motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
         env_ids = torch.where(return_)[0]
         motion_identifiers = motion_reference.get_current_motion_identifiers(env_ids=env_ids)
         print(f"pos_far_from_ref: {return_.sum()} at {motion_identifiers}")
@@ -145,7 +145,7 @@ def link_pos_far_from_ref(
 
     return_ = distance > distance_threshold
     if print_reason and return_.any():
-        motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+        motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
         env_ids = torch.where(return_)[0]
         motion_identifiers = motion_reference.get_current_motion_identifiers(env_ids=env_ids)
         print(f"link_pos_far_from_ref: {return_.sum()} at {motion_identifiers}")
@@ -171,7 +171,7 @@ def rot_far_from_ref(
         True if the rotation is far from the reference rotation, False otherwise.
     """
     robot: Articulation = env.scene[asset_cfg.name]
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
 
     # get the current rotation
     rot = robot.data.root_state_w.torch[:, 3:7]  # shape: [N, 4]
@@ -205,7 +205,7 @@ def projected_gravity_far_from_ref(
     """Check if the projected gravity is far from the reference projected gravity."""
 
     robot: Articulation = env.scene[asset_cfg.name]
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
 
     # get the current rotation
     rot = robot.data.root_state_w.torch[:, 3:7]  # shape: [N, 4]

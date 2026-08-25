@@ -14,7 +14,7 @@ import instinctlab.utils.math as instinct_math_utils
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
-    from instinctlab.motion_reference import MotionReferenceManager
+    from instinctlab.motion_reference.motion_reference_manager import MotionReferenceManagerBase
 
     from .commands_cfg import (
         BaseHeightRefCommandCfg,
@@ -54,7 +54,7 @@ class ShadowingCommandBase(CommandTerm):
         super().__init__(cfg, env)
 
         # self.robot: Articulation = env.scene[cfg.asset_name]
-        self._motion_reference: MotionReferenceManager = env.scene[cfg.motion_reference.name]
+        self._motion_reference: MotionReferenceManagerBase = env.scene[cfg.motion_reference.name]
         cfg.asset_cfg.resolve(env.scene)
         robot = env.scene[cfg.asset_cfg.name]
         self._asset_joint_ids = cfg.asset_cfg.joint_ids

@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from isaaclab.assets import Articulation
     from isaaclab.envs import ManagerBasedEnv
 
-    from instinctlab.motion_reference import MotionReferenceManager
+    from instinctlab.motion_reference.motion_reference_manager import MotionReferenceManagerBase
 
 
 def joint_pos_reference_masked(
@@ -28,7 +28,7 @@ def joint_pos_reference_masked(
     joint_pos_ = joint_pos(env, asset_cfg)
 
     # get the mask from the reference frame
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
     mask = motion_reference.reference_frame.joint_pos_mask[:, 0, asset_cfg.joint_ids]
 
     return joint_pos_ * mask
@@ -45,7 +45,7 @@ def joint_pos_rel_reference_masked(
     joint_pos_ = joint_pos_rel(env, asset_cfg)
 
     # get the mask from the reference frame
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
     mask = motion_reference.reference_frame.joint_pos_mask[:, 0, asset_cfg.joint_ids]
 
     return joint_pos_ * mask
@@ -57,7 +57,7 @@ class link_pos_reference_masked(ManagerTermBase):
     def __init__(self, cfg: ObservationTermCfg, env: ManagerBasedEnv):
         super().__init__(cfg, env)
         self.reference_cfg: SceneEntityCfg = cfg.params.get("reference_cfg", SceneEntityCfg("motion_reference"))
-        self.motion_reference: MotionReferenceManager = env.scene[self.reference_cfg.name]
+        self.motion_reference: MotionReferenceManagerBase = env.scene[self.reference_cfg.name]
         self.asset_cfg: SceneEntityCfg = cfg.params.get("asset_cfg", SceneEntityCfg("robot"))
         self.asset: Articulation = env.scene[self.asset_cfg.name]
 

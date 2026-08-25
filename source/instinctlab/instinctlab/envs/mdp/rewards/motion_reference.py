@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from isaaclab.assets import Articulation, RigidObject
     from isaaclab.envs import ManagerBasedRLEnv
 
-    from instinctlab.motion_reference import MotionReferenceManager
+    from instinctlab.motion_reference.motion_reference_manager import MotionReferenceManagerBase
 
 """
 Reward functions
@@ -40,7 +40,7 @@ def base_position_tracking_gauss(
         multiply_by_frame_interval: Whether to multiply the reward by the frame interval.
             Default is False.
     """
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
     distance = motion_reference_utils.get_base_position_distance(
         env,
         asset_cfg,
@@ -78,7 +78,7 @@ def base_position_tracking_neg_log(
         tracking_torlerance: The tolerance for tracking the base position, which also prevents
             the reward from becoming infinite.
     """
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
     distance = motion_reference_utils.get_base_position_distance(
         env,
         asset_cfg,
@@ -107,7 +107,7 @@ def base_position_imitation_gauss(
     reference_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference"),
     std: float = 0.1,
 ):
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
     robot: Articulation = env.scene[asset_cfg.name]
     base_pos_ref = motion_reference.reference_frame.base_pos_w[:, 0]  # (batch_size, 3)
     base_pos = robot.data.root_pos_w.torch  # (batch_size, 3)
@@ -133,7 +133,7 @@ class base_position_offset_imitation_gauss(ManagerTermBase):
         self.asset_cfg = self.cfg.params.get("asset_cfg", SceneEntityCfg("robot"))
         self.asset = self._env.scene[self.asset_cfg.name]
         self.reference_cfg = self.cfg.params.get("reference_cfg", SceneEntityCfg("motion_reference"))
-        self.motion_reference: MotionReferenceManager = self._env.scene[self.reference_cfg.name]
+        self.motion_reference: MotionReferenceManagerBase = self._env.scene[self.reference_cfg.name]
         self.asset_position_marker = torch.ones_like(self.asset.data.root_pos_w.torch) * torch.nan  # (batch_size, 3)
         self.asset_quat_marker = torch.ones_like(self.asset.data.root_quat_w.torch) * torch.nan  # (batch_size, 4)
         self.reference_position_marker = (
@@ -227,7 +227,7 @@ def base_velocity_imitation_gauss(
         asset_cfg: The configuration for the scene entity. Default is "robot".
         reference_cfg: The configuration for the scene entity. Default is "motion_reference".
     """
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
     asset: RigidObject = env.scene[asset_cfg.name]
     base_vel_ref_w = motion_reference.reference_frame.base_lin_vel_w[:, 0]  # (batch_size, 6)
     if in_base_frame:
@@ -260,7 +260,7 @@ def base_velocity_imitation_square(
         asset_cfg: The configuration for the scene entity. Default is "robot".
         reference_cfg: The configuration for the scene entity. Default is "motion_reference".
     """
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
     asset: RigidObject = env.scene[asset_cfg.name]
     if in_base_frame:
         base_vel_ref = math_utils.quat_apply_inverse(
@@ -287,7 +287,7 @@ def base_rot_tracking_cos(
 ) -> torch.Tensor:
     # extract useful elements
     asset: RigidObject = env.scene[asset_cfg.name]
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
 
     # obtain the robot rotation and reference rotation
     quat = asset.data.root_state_w.torch[:, 3:7]
@@ -321,7 +321,7 @@ def base_rot_tracking_gauss(
 ):
     # extract useful elements
     asset: RigidObject = env.scene[asset_cfg.name]
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
 
     # obtain the robot rotation and reference rotation
     quat = asset.data.root_state_w.torch[:, 3:7]
@@ -358,7 +358,7 @@ def base_rot_imitation_gauss(
         asset_cfg: The configuration for the scene entity. Default is "robot".
         reference_cfg: The configuration for the scene entity. Default is "motion_reference".
     """
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
     asset: RigidObject = env.scene[asset_cfg.name]
     quat_ref = motion_reference.reference_frame.base_quat_w[:, 0]  # (batch_size, 4)
     quat = asset.data.root_quat_w.torch  # (batch_size, 4)
@@ -390,7 +390,7 @@ def base_rot_imitation_square(
         asset_cfg: The configuration for the scene entity. Default is "robot".
         reference_cfg: The configuration for the scene entity. Default is "motion_reference".
     """
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
     asset: RigidObject = env.scene[asset_cfg.name]
     quat_ref = motion_reference.reference_frame.base_quat_w[:, 0]  # (batch_size, 4)
     quat = asset.data.root_quat_w.torch  # (batch_size, 4)
@@ -430,7 +430,7 @@ def base_projected_gravity_tracking_gauss(
     """
     # extract useful elements
     asset: RigidObject = env.scene[asset_cfg.name]
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
 
     # obtain the robot rotation and reference rotation
     quat = asset.data.root_state_w.torch[:, 3:7]
@@ -465,7 +465,7 @@ def joint_pos_tracking_square(
     check_at_keyframe_threshold: float = -1,
     multiply_by_frame_interval: bool = False,
 ):
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
     joint_pos_diff = motion_reference_utils.get_joint_position_difference(env, asset_cfg, reference_cfg)
 
     rewards = torch.sum(torch.square(joint_pos_diff), dim=-1)
@@ -502,7 +502,7 @@ def joint_pos_tracking_gauss(
         zero_on_none_masked_on: If True, the reward will be zeroed out if the reference motion does not have a mask for
             any joint.
     """
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
     joint_pos_diff = motion_reference_utils.get_joint_position_difference(env, asset_cfg, reference_cfg, masking=False)
     joint_pos_diff_mask = motion_reference.data.joint_pos_mask[
         motion_reference.ALL_INDICES, motion_reference.aiming_frame_idx
@@ -556,7 +556,7 @@ class joint_pos_tracking_gauss_normalized(ManagerTermBase):
         sigma_times: float = 1.2,
         combine_method: str = "prod",
     ):
-        motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+        motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
         joint_pos_diff = motion_reference_utils.get_joint_position_difference(env, asset_cfg, reference_cfg)
 
         tracking_var = torch.var(joint_pos_diff, dim=0, keepdim=(combine_method == "sum")) * sigma_times * sigma_times
@@ -604,7 +604,7 @@ def joint_pos_imitation_gauss(
         reference_cfg: The configuration for the scene entity. Default is "motion_reference".
         masked: If True, only compute rewards for joints that are not masked in the reference motion.
     """
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
     robot: Articulation = env.scene[asset_cfg.name]
     joint_pos_ids = asset_cfg.joint_ids
     joint_pos_ref = motion_reference.reference_frame.joint_pos[:, 0, joint_pos_ids]  # (batch_size, num_joints_selected)
@@ -647,7 +647,7 @@ def joint_pos_imitation_square(
         reference_cfg: The configuration for the scene entity. Default is "motion_reference".
         masked: If True, only compute rewards for joints that are not masked in the reference motion.
     """
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
     robot: Articulation = env.scene[asset_cfg.name]
     joint_pos_ids = asset_cfg.joint_ids
     joint_pos_ref = motion_reference.reference_frame.joint_pos[:, 0, joint_pos_ids]  # (batch_size, num_joints_selected)
@@ -680,7 +680,7 @@ def joint_vel_imitation_gauss(
         reference_cfg: The configuration for the scene entity. Default is "motion_reference".
         masked: If True, only compute rewards for joints that are not masked in the reference motion.
     """
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
     robot: Articulation = env.scene[asset_cfg.name]
     joint_vel_ids = asset_cfg.joint_ids
     joint_vel_ref = motion_reference.reference_frame.joint_vel[:, 0, joint_vel_ids]  # (batch_size, num_joints_selected)
@@ -722,7 +722,7 @@ def joint_vel_imitation_square(
         reference_cfg: The configuration for the scene entity. Default is "motion_reference".
         masked: If True, only compute rewards for joints that are not masked in the reference motion.
     """
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
     robot: Articulation = env.scene[asset_cfg.name]
     joint_vel_ids = asset_cfg.joint_ids
     joint_vel_ref = motion_reference.reference_frame.joint_vel[:, 0, joint_vel_ids]  # (batch_size, num_joints_selected)
@@ -745,7 +745,7 @@ def link_pos_tracking_square(
     check_at_keyframe_threshold: float = -1,
     multiply_by_frame_interval: bool = False,
 ):
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
     link_pos_distance = motion_reference_utils.get_link_position_distance(
         env,
         asset_cfg,
@@ -787,7 +787,7 @@ def link_pos_tracking_gauss(
             - "prod": multiply rewards for each link's gaussian reward.
             - "sum": sum rewards for each link's gaussian reward.
     """
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
     link_pos_distance = motion_reference_utils.get_link_position_distance(
         env,
         asset_cfg,
@@ -848,7 +848,7 @@ def link_rot_tracking_gauss(
             - "prod": multiply rewards for each link's gaussian reward.
             - "sum": sum rewards for each link's gaussian reward.
     """
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
     link_rot_distance = motion_reference_utils.get_link_rotation_distance(
         env,
         asset_cfg,
@@ -903,7 +903,7 @@ def link_pos_imitation_gauss(
             which are moved to robot's relative position.
         masked: If True, only compute rewards for links that are not masked in the reference motion.
     """
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
     asset: Articulation = env.scene[asset_cfg.name]
     links = asset.find_bodies(motion_reference.cfg.link_of_interests, preserve_order=True)
     link_indices = links[0]
@@ -968,7 +968,7 @@ def link_pos_imitation_square(
         in_base_frame: Whether to compute the link position in the base frame of the robot.
         masked: If True, only compute rewards for links that are not masked in the reference motion.
     """
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
     asset: Articulation = env.scene[asset_cfg.name]
     links = asset.find_bodies(motion_reference.cfg.link_of_interests, preserve_order=True)
     link_indices = links[0]
@@ -1006,7 +1006,7 @@ def link_pos_imitation_neg_log(
     min_error: float = 1e-3,  # to avoid log(0) issues
 ):
     """Reward for computing the negative log of the link position error in every timestep."""
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
     asset: Articulation = env.scene[asset_cfg.name]
     links = asset.find_bodies(motion_reference.cfg.link_of_interests, preserve_order=True)
     link_indices = links[0]
@@ -1060,7 +1060,7 @@ def link_rot_imitation_gauss(
             which are moved to robot's relative position.
         masked: If True, only compute rewards for links that are not masked in the reference motion.
     """
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
     asset: Articulation = env.scene[asset_cfg.name]
     links = asset.find_bodies(motion_reference.cfg.link_of_interests, preserve_order=True)  # type: ignore
     link_indices = links[0]
@@ -1126,7 +1126,7 @@ def link_lin_vel_imitation_gauss(
         in_base_frame: Whether to compute the link linear velocity in the base frame of the robot.
         masked: If True, only compute rewards for links that are not masked in the reference motion.
     """
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
     asset: Articulation = env.scene[asset_cfg.name]
     links = asset.find_bodies(motion_reference.cfg.link_of_interests, preserve_order=True)  # type: ignore
     link_indices = links[0]
@@ -1195,7 +1195,7 @@ def link_ang_vel_imitation_gauss(
         in_base_frame: Whether to compute the link angular velocity in the base frame of the robot.
         masked: If True, only compute rewards for links that are not masked in the reference motion.
     """
-    motion_reference: MotionReferenceManager = env.scene[reference_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
     asset: Articulation = env.scene[asset_cfg.name]
     links = asset.find_bodies(motion_reference.cfg.link_of_interests, preserve_order=True)  # type: ignore
     link_indices = links[0]

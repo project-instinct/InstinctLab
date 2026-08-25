@@ -10,7 +10,8 @@ if TYPE_CHECKING:
     from isaaclab.assets import Articulation, RigidObject
     from isaaclab.envs import ManagerBasedEnv
 
-    from instinctlab.motion_reference import MotionReferenceData, MotionReferenceManager
+    from instinctlab.motion_reference import MotionReferenceData
+    from instinctlab.motion_reference.motion_reference_manager import MotionReferenceManagerBase
 
 """
 Sampling masks.
@@ -23,7 +24,7 @@ def resample_base_plane_pos_ref_mask(
     motion_ref_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference"),
     maskout_ratio: float = 0.5,
 ):
-    motion_reference: MotionReferenceManager = env.scene[motion_ref_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[motion_ref_cfg.name]
     data: MotionReferenceData = motion_reference.data
     data.base_pos_plane_mask[env_ids] = ~(torch.rand_like(data.base_pos_plane_mask[env_ids]) < maskout_ratio)
 
@@ -34,7 +35,7 @@ def resample_base_height_pos_ref_mask(
     motion_ref_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference"),
     maskout_ratio: float = 0.5,
 ):
-    motion_reference: MotionReferenceManager = env.scene[motion_ref_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[motion_ref_cfg.name]
     data: MotionReferenceData = motion_reference.data
     data.base_pos_height_mask[env_ids] = ~(torch.rand_like(data.base_pos_height_mask[env_ids]) < maskout_ratio)
 
@@ -46,7 +47,7 @@ def resample_base_position_ref_mask(
     maskout_ratio: float = 0.5,
 ):
     """Sample and maskout both pos_plane_mask and pos_height_mask together."""
-    motion_reference: MotionReferenceManager = env.scene[motion_ref_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[motion_ref_cfg.name]
     data: MotionReferenceData = motion_reference.data
     mask = torch.rand_like(data.base_pos_plane_mask[env_ids]) < maskout_ratio
     data.base_pos_plane_mask[env_ids] = ~mask
@@ -59,7 +60,7 @@ def resample_base_orientation_ref_mask(
     motion_ref_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference"),
     maskout_ratio: float = 0.5,
 ):
-    motion_reference: MotionReferenceManager = env.scene[motion_ref_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[motion_ref_cfg.name]
     data: MotionReferenceData = motion_reference.data
     data.base_orientation_mask[env_ids] = ~(torch.rand_like(data.base_orientation_mask[env_ids]) < maskout_ratio)
 
@@ -70,7 +71,7 @@ def resample_base_heading_ref_mask(
     motion_ref_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference"),
     maskout_ratio: float = 0.5,
 ):
-    motion_reference: MotionReferenceManager = env.scene[motion_ref_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[motion_ref_cfg.name]
     data: MotionReferenceData = motion_reference.data
     data.base_heading_mask[env_ids] = ~(torch.rand_like(data.base_heading_mask[env_ids]) < maskout_ratio)
 
@@ -82,7 +83,7 @@ def resample_base_rotation_ref_mask(
     maskout_ratio: float = 0.5,
 ):
     """Sample and maskout both orientation_mask and heading_mask together."""
-    motion_reference: MotionReferenceManager = env.scene[motion_ref_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[motion_ref_cfg.name]
     data: MotionReferenceData = motion_reference.data
     mask = torch.rand_like(data.base_orientation_mask[env_ids]) < maskout_ratio
     data.base_orientation_mask[env_ids] = ~mask
@@ -106,7 +107,7 @@ def maskout_base_height_pos_ref_on_orientation(
     Args:
         maskout_threshold: the threshold in radians.
     """
-    motion_reference: MotionReferenceManager = env.scene[motion_ref_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[motion_ref_cfg.name]
     data: MotionReferenceData = motion_reference.data
     leading_dims = data.base_quat_w[env_ids].shape[:-1]
     roll_ref, pitch_ref, _ = math_utils.euler_xyz_from_quat(data.base_quat_w[env_ids].reshape(-1, 4))  # (B*,)
@@ -126,7 +127,7 @@ def maskout_base_pos_ref_on_orientation(
     """Mask out the base_pos_plane_mask and base_pos_height_mask at a given probability when the reference roll/pitch
     is larger than the threshold. Recommend to use in `interval` mode and apply in each env_step.
     """
-    motion_reference: MotionReferenceManager = env.scene[motion_ref_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[motion_ref_cfg.name]
     data: MotionReferenceData = motion_reference.data
     leading_dims = data.base_quat_w[env_ids].shape[:-1]
     roll_ref, pitch_ref, _ = math_utils.euler_xyz_from_quat(data.base_quat_w[env_ids].reshape(-1, 4))  # (B*,)
@@ -144,7 +145,7 @@ def maskout_base_plane_pos_ref_on_height(
     motion_ref_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference"),
     maskout_threshold: float = 0.5,  # height threshold in meters
 ):
-    motion_reference: MotionReferenceManager = env.scene[motion_ref_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[motion_ref_cfg.name]
     data: MotionReferenceData = motion_reference.data
     leading_dims = data.base_quat_w[env_ids].shape[:-1]
     height_ref = data.base_pos_w[env_ids, :, 2]  # (num_envs, num_keyframes)
@@ -158,7 +159,7 @@ def maskout_base_pos_ref(
     motion_ref_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference"),
 ):
     """Mask out the base pos reference data on every motion reference."""
-    motion_reference: MotionReferenceManager = env.scene[motion_ref_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[motion_ref_cfg.name]
     data: MotionReferenceData = motion_reference.data
     data.base_pos_plane_mask[env_ids] = 0
     data.base_pos_height_mask[env_ids] = 0
@@ -174,7 +175,7 @@ def maskout_joint_ref(
     Args:
         wrist_name_expr: the regular expression to match the wrist names.
     """
-    motion_reference: MotionReferenceManager = env.scene[motion_ref_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[motion_ref_cfg.name]
     joint_ids = motion_ref_cfg.joint_ids
     # generate meshgrid for env_ids and joint_ids
     if isinstance(joint_ids, (list, tuple)):
@@ -200,7 +201,7 @@ def maskout_link_ref(
     """Mask out the link reference data on every motion reference.
     NOTE: This implementation uses motion_ref_cfg.link_ids. There is NO need to assign asset_cfg.link_names
     """
-    motion_reference: MotionReferenceManager = env.scene[motion_ref_cfg.name]
+    motion_reference: MotionReferenceManagerBase = env.scene[motion_ref_cfg.name]
     # generate meshgrid for env_ids and link_ids
     link_ids = torch.tensor(motion_ref_cfg.body_ids, dtype=torch.long, device=env_ids.device)
     env_ids_, link_ids_ = torch.meshgrid(env_ids, link_ids, indexing="ij")
@@ -233,7 +234,7 @@ def reset_robot_state_by_reference_gaussian_randomization_scale(
     reverse_gaussian: bool = True,  # higher scale at start/end, lower scale at middle
 ):
     asset: RigidObject | Articulation = env.scene[asset_cfg.name]
-    motion_ref: MotionReferenceManager = env.scene[motion_ref_cfg.name]
+    motion_ref: MotionReferenceManagerBase = env.scene[motion_ref_cfg.name]
 
     # no reset the motion reference object
     # motion reference (as sensor) is already reset(ed) in scene.reset(...)

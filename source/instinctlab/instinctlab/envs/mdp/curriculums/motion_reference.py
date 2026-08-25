@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from isaaclab.managers import CurriculumTermCfg
     from isaaclab.motion_reference.motion_files.amass_motion import AmassMotion
 
-    from instinctlab.motion_reference import MotionReferenceManager
+    from instinctlab.motion_reference.motion_reference_manager import MotionReferenceManagerBase
 
 
 class BeyondMimicAdaptiveWeighting(ManagerTermBase):
@@ -33,7 +33,9 @@ class BeyondMimicAdaptiveWeighting(ManagerTermBase):
         self.adaptive_alpha = cfg.params.get("adaptive_alpha", 0.001)
         self.adaptive_lambda = cfg.params.get("adaptive_lambda", 0.8)
 
-        self.motion_reference: MotionReferenceManager = env.scene[cfg.params.get("reference_name", "motion_reference")]
+        self.motion_reference: MotionReferenceManagerBase = env.scene[
+            cfg.params.get("reference_name", "motion_reference")
+        ]
 
         # NOTE: For simplicity, only support one motion buffer for now.
         assert len(self.motion_reference.motion_buffers.keys()) == 1, "Only support one motion buffer for now."

@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
     from isaaclab.sensors import ContactSensor
 
-    from instinctlab.sensors.volume_points.volume_points import VolumePoints
+    from instinctlab.sensors.volume_points.volume_points import VolumePointsBase
 
 
 def volume_points_penetration(
@@ -17,7 +17,7 @@ def volume_points_penetration(
 ) -> torch.Tensor:
     """Penalize the penetration of volume points into the environment."""
     # extract the used quantities (to enable type-hinting)
-    volume_sensor: VolumePoints = env.scene.sensors[sensor_cfg.name]
+    volume_sensor: VolumePointsBase = env.scene.sensors[sensor_cfg.name]
     # compute the reward
     penetration = volume_sensor.data.penetration_offset.torch  # (N, B_, P_, 3), varying B_ and P_
     penetration = penetration.flatten(1, 2)  # (N, B_*P_, 3)
@@ -46,7 +46,7 @@ def step_safety(
     NOTE: Be aware of the body order.
     """
     # extract the used quantities (to enable type-hinting)
-    volume_sensor: VolumePoints = env.scene.sensors[volume_points_cfg.name]
+    volume_sensor: VolumePointsBase = env.scene.sensors[volume_points_cfg.name]
     contact_sensor: ContactSensor = env.scene.sensors[contact_forces_cfg.name]
     # compute the reward
     penetration = volume_sensor.data.penetration_offset.torch  # (N, B_, P_, 3), varying B_ and P_

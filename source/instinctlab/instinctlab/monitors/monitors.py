@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from isaaclab.assets import Articulation
     from isaaclab.envs import ManagerBasedRLEnv
 
-    from instinctlab.motion_reference import MotionReferenceManager
+    from instinctlab.motion_reference.motion_reference_manager import MotionReferenceManagerBase
 
     from .monitor_cfg import MonitorTermCfg, TorqueMonitorSensorCfg
 
@@ -847,7 +847,7 @@ class ShadowingProgressMonitorTerm(MonitorTerm):
 
     def __init__(self, cfg: MonitorTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
-        self._motion_reference: MotionReferenceManager = self._env.scene[
+        self._motion_reference: MotionReferenceManagerBase = self._env.scene[
             self.cfg.params.get("reference_cfg", SceneEntityCfg("motion_reference")).name
         ]
         self._output_file: str = self.cfg.params.get("output_file", None)  # type: ignore
@@ -950,7 +950,7 @@ class ShadowingJointReferenceMonitorTerm(MonitorTerm):
                 "\033[93mWarning: ShadowingJointReferenceMonitorTerm is designed to work with a single environment."
                 " \033[0m"
             )
-        self._motion_reference: MotionReferenceManager = self._env.scene[
+        self._motion_reference: MotionReferenceManagerBase = self._env.scene[
             self.cfg.params.get("reference_cfg", SceneEntityCfg("motion_reference")).name
         ]
         self._reference_joint_ids = self.cfg.params["reference_cfg"].joint_ids
@@ -979,7 +979,7 @@ class ShadowingBasePosMonitorTerm(MonitorTerm):
         super().__init__(cfg, env)
         if not (self._env.num_envs == 1):
             print("\033[93mWarning: ShadowingBasePosMonitorTerm is designed to work with a single environment. \033[0m")
-        self._motion_reference: MotionReferenceManager = self._env.scene[
+        self._motion_reference: MotionReferenceManagerBase = self._env.scene[
             self.cfg.params.get("reference_cfg", SceneEntityCfg("motion_reference")).name
         ]
         self._robot: Articulation = self._env.scene[self.cfg.params.get("robot_cfg", SceneEntityCfg("robot")).name]
@@ -1022,7 +1022,7 @@ class ShadowingGravityMonitorTerm(MonitorTerm):
     """
 
     def update(self, dt: float):
-        motion_reference: MotionReferenceManager = self._env.scene[self.cfg.params["motion_reference_cfg"].name]
+        motion_reference: MotionReferenceManagerBase = self._env.scene[self.cfg.params["motion_reference_cfg"].name]
 
         in_frame_mask = matching_reference_timing(
             self._env,

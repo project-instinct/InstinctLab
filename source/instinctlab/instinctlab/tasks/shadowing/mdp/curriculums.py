@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from isaaclab.managers import CurriculumTermCfg
     from isaaclab.motion_reference.motion_files.amass_motion import AmassMotion
 
-    from instinctlab.motion_reference import MotionReferenceManager
+    from instinctlab.motion_reference.motion_reference_manager import MotionReferenceManagerBase
 
 
 def update_motion_reference_weight(
@@ -21,7 +21,7 @@ def update_motion_reference_weight(
     success_weight_ratio: float = 0.6,
 ) -> dict[str, float] | None:
     """Update the motion reference weights based on the timeouts and terminated states."""
-    motion_reference: MotionReferenceManager = env.scene[reference_name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_name]
     if not hasattr(env, "reset_time_outs") or not hasattr(env, "reset_terminated"):
         return None
     timeout_env_ids = env_ids[env.reset_time_outs[env_ids]]
@@ -49,7 +49,7 @@ def update_motion_reference_weights_by_progress(
     num_envs = len(env_ids)
     if num_envs == 0:
         return None
-    motion_reference: MotionReferenceManager = env.scene[reference_name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_name]
     current_weights = motion_reference.get_current_motion_weights(env_ids)
     weight_sum = current_weights.sum()
     progress = (env.episode_length_buf * env.step_dt)[env_ids] / motion_reference.assigned_motion_lengths[env_ids]
@@ -80,7 +80,9 @@ class update_motion_reference_weights_by_delayed_stats(ManagerTermBase):
         super().__init__(cfg, env)
         self.delayed_progress = cfg.params.get("init_delayed_progress", 0.0)
         self.experience_length = cfg.params.get("init_experience_length", 0.0)
-        self.motion_reference: MotionReferenceManager = env.scene[cfg.params.get("reference_name", "motion_reference")]
+        self.motion_reference: MotionReferenceManagerBase = env.scene[
+            cfg.params.get("reference_name", "motion_reference")
+        ]
 
     def __call__(
         self,
@@ -150,7 +152,7 @@ def update_motion_reference_weights_by_experience(
         - sampled_weight_ratio: The weight ratio for the motion that is sampled once.
 
     """
-    motion_reference: MotionReferenceManager = env.scene[reference_name]
+    motion_reference: MotionReferenceManagerBase = env.scene[reference_name]
     if not hasattr(env, "reset_time_outs") or not hasattr(env, "reset_terminated"):
         return None
     experience_length = (env.episode_length_buf * env.step_dt)[env_ids]

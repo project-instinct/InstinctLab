@@ -11,10 +11,9 @@ from isaaclab.managers import EventTermCfg, ManagerTermBase, SceneEntityCfg
 if TYPE_CHECKING:
     from isaaclab.assets import Articulation, RigidObject
     from isaaclab.envs import ManagerBasedEnv, ManagerBasedRLEnv
-    from isaaclab.sensors import Camera, RayCaster, RayCasterCamera
-
-    from instinctlab.sensors.grouped_ray_caster.grouped_ray_caster import GroupedRayCaster
-    from instinctlab.sensors.grouped_ray_caster.grouped_ray_caster_camera import GroupedRayCasterCamera
+    from isaaclab.sensors import Camera
+    from isaaclab.sensors.ray_caster.base_ray_caster import BaseRayCaster
+    from isaaclab.sensors.ray_caster.base_ray_caster_camera import BaseRayCasterCamera
 
 
 def randomize_default_joint_pos(
@@ -77,7 +76,7 @@ def randomize_ray_offsets(
     """
     num_env_ids = env.scene.num_envs if env_ids is None else len(env_ids)
     # extract the used quantities (to enable type-hinting)
-    sensor: RayCaster | GroupedRayCaster = env.scene[asset_cfg.name]
+    sensor: BaseRayCaster = env.scene[asset_cfg.name]
     ray_starts = sensor.ray_starts.torch[env_ids]  # (num_envs, num_rays, 3)
     ray_directions = sensor.ray_directions.torch[env_ids]  # (num_envs, num_rays, 3)
     # sample from given range
@@ -126,7 +125,7 @@ def randomize_camera_offsets(
     from isaaclab.envs.mdp.events import _randomize_prop_by_op
 
     # extract the used quantities (to enable type-hinting), as well as all inherited classes
-    sensor: Camera | RayCasterCamera | GroupedRayCasterCamera = env.scene[asset_cfg.name]
+    sensor: Camera | BaseRayCasterCamera = env.scene[asset_cfg.name]
 
     # resolve environment ids
     if env_ids is None:

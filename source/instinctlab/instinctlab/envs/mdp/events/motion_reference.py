@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
     from instinctlab.envs.mdp import BeyondMimicAdaptiveWeighting
     from instinctlab.motion_reference import MotionReferenceData
-    from instinctlab.motion_reference.motion_reference_manager import MotionReferenceManager
+    from instinctlab.motion_reference.motion_reference_manager import MotionReferenceManagerBase
 
 
 def match_motion_ref_with_scene(
@@ -26,7 +26,7 @@ def match_motion_ref_with_scene(
 ):
     """Match information between motion reference and the scene, use at 'startup' stage."""
     print("[Event] Match motion reference with scene.")
-    motion_ref: MotionReferenceManager = env.scene[motion_ref_cfg.name]
+    motion_ref: MotionReferenceManagerBase = env.scene[motion_ref_cfg.name]
     motion_ref.match_scene(env.scene)
 
 
@@ -59,7 +59,7 @@ def reset_robot_state_by_reference(
         randomize_joint_pos_range: Optional joint position randomization range (min, max).
     """
     asset: RigidObject | Articulation = env.scene[asset_cfg.name]
-    motion_ref: MotionReferenceManager = env.scene[motion_ref_cfg.name]
+    motion_ref: MotionReferenceManagerBase = env.scene[motion_ref_cfg.name]
 
     # reset the motion reference object
     # motion reference (as sensor) is already reset(ed) in scene.reset(...)
@@ -298,7 +298,7 @@ def reset_rigid_objects_state_by_reference(
 
     This function intentionally uses object index order and ignores object-name matching.
     """
-    motion_ref: MotionReferenceManager = env.scene[motion_ref_cfg.name]
+    motion_ref: MotionReferenceManagerBase = env.scene[motion_ref_cfg.name]
     init_state = motion_ref.get_init_reference_state(env_ids)
 
     if not isinstance(init_state, HoiMotionReferenceState):
@@ -342,7 +342,7 @@ def update_rigid_objects_state_by_reference(
         invalid_object_pos: If not None, set invalid (non-visible) objects to this position
             (e.g. to hide them far from the scene). If None, invalid objects are not updated.
     """
-    motion_ref: MotionReferenceManager = env.scene[motion_ref_cfg.name]
+    motion_ref: MotionReferenceManagerBase = env.scene[motion_ref_cfg.name]
     data: HoiMotionReferenceData = motion_ref.data
     scene_object_names = getattr(motion_ref.cfg, "scene_object_names", None)
     if not scene_object_names:
