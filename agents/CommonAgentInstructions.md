@@ -66,6 +66,14 @@ After editing:
 - summarize what changed and anything still uncertain
 - if `pre-commit` is configured in the repository, do run `pre-commit run --all-files` to maintain the coding format consistency.
 
+### Python specific coding
+
+Importing packages and modules:
+
+- When the module is in the same package and in the same folder, use import start with `.`
+- When the module is in the same package but not in the same folder or subfolder, use the complete import path starting with the package name.
+- When the module is just from another package, do remember to write complete informative import path.
+
 ## Ask Before Proceeding
 
 Stop and ask if:
