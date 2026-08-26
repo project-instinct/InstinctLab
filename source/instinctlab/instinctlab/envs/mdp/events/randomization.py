@@ -55,7 +55,11 @@ def randomize_default_joint_pos(
             env_ids = env_ids[:, None]  # type: ignore
         asset.data.default_joint_pos.torch[env_ids, joint_ids] = pos
         # update the offset in action since it is not updated automatically
-        env.action_manager.get_term("joint_pos")._offset[env_ids, joint_ids] = pos
+        action_term = env.action_manager.get_term("joint_pos")
+        # The action offset is stored in the action's own joint order, which may differ from
+        # the articulation order (e.g. when `joint_names` + `preserve_order` is configured).
+        # Reorder the randomized default into the action's joint order before writing it.
+        action_term._offset[env_ids.squeeze(-1)] = pos[:, action_term._joint_ids]
 
 
 def randomize_ray_offsets(
