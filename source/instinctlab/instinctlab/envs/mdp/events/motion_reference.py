@@ -357,7 +357,7 @@ def update_rigid_objects_state_by_reference(
     # Always use all env ids to avoid block index / out-of-bounds when interval event passes a subset.
     # Object pose updates must run for all envs to keep motion reference in sync.
     num_envs = env.scene.num_envs
-    all_env_ids = torch.arange(num_envs, device=data.object_pos_w.device, dtype=torch.long)
+    all_env_ids = torch.arange(num_envs, device=data.object_pos_w.torch.device, dtype=torch.long)
 
     # data shape is [N, T, O, ...]; use the first target frame.
     _apply_rigid_object_states(
