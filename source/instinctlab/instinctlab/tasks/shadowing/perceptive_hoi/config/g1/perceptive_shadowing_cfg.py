@@ -148,7 +148,7 @@ class G1PerceptiveHoiShadowingEnvCfg(perceptual_cfg.PerceptiveHoiShadowingEnvCfg
                         mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
                         collision_props=sim_utils.CollisionPropertiesCfg(),
                         rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
-                        mesh_collision_props=schemas_cfg.ConvexHullPropertiesCfg(),
+                        mesh_collision_props=schemas_cfg.MeshCollisionBaseCfg(mesh_approximation_name="none"),
                         scale=MESH_FILE_SCALES[object_name],
                     ),
                 ),

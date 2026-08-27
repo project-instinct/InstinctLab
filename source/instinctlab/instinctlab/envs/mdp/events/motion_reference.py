@@ -177,7 +177,7 @@ def _apply_rigid_object_states(
         invalid_object_pos: If not None, set invalid objects to this position (e.g. to hide them).
             If None, invalid objects are not updated.
     """
-    from isaaclab.assets import RigidObject
+    from isaaclab.assets.rigid_object.base_rigid_object import BaseRigidObject
 
     # Ensure env_ids is on the same device as data
     if env_ids.device != object_pos.device:
@@ -249,7 +249,7 @@ def _apply_rigid_object_states(
         if entity_name not in scene_keys:
             continue
         asset = env.scene[entity_name]
-        if not isinstance(asset, RigidObject):
+        if not isinstance(asset, BaseRigidObject):
             continue
 
         valid_mask = object_validity[:, obj_idx]
