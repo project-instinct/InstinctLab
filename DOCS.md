@@ -5,6 +5,68 @@ A monitor is an environment component that the user can use to store the simulat
 
 ---
 
+## Policy Joint Order
+
+An explicit policy joint order preserves backward compatibility with policies and checkpoints trained against an
+earlier joint layout. It also keeps simulation policy I/O aligned with the predefined joint order exposed by the
+real-robot interface. This ordering is an interface contract; it does not change the articulation's canonical joint
+order.
+
+Use `set_cfg_joint_order` when a policy-facing joint tensor must follow an explicit order instead of the
+articulation's native joint order. The helper copies `joint_order` into `cfg.joint_names`, sets
+`cfg.preserve_order = True`, and returns the same configuration object. It supports both `SceneEntityCfg` selectors
+and joint action configurations.
+
+Apply the schema in the robot-specific training environment's `__post_init__`. PLAY and backend-specific environment
+configurations should inherit it through `super().__post_init__()`.
+
+```python
+from isaaclab.managers import SceneEntityCfg
+from isaaclab.utils.configclass import configclass
+
+from instinctlab.utils.config import set_cfg_joint_order
+
+
+POLICY_JOINT_ORDER = [
+    "left_hip_pitch_joint",
+    "right_hip_pitch_joint",
+    # ...the remaining joints in policy order...
+]
+
+
+@configclass
+class RobotEnvCfg(BaseEnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+
+        # Action output order.
+        set_cfg_joint_order(self.actions.joint_pos, POLICY_JOINT_ORDER)
+
+        # Each observation term receives an independent SceneEntityCfg.
+        self.observations.policy.joint_pos.params["asset_cfg"] = set_cfg_joint_order(
+            SceneEntityCfg("robot"), POLICY_JOINT_ORDER
+        )
+        self.observations.policy.joint_vel.params["asset_cfg"] = set_cfg_joint_order(
+            SceneEntityCfg("robot"), POLICY_JOINT_ORDER
+        )
+        self.observations.critic.joint_pos.params["asset_cfg"] = set_cfg_joint_order(
+            SceneEntityCfg("robot"), POLICY_JOINT_ORDER
+        )
+        self.observations.critic.joint_vel.params["asset_cfg"] = set_cfg_joint_order(
+            SceneEntityCfg("robot"), POLICY_JOINT_ORDER
+        )
+
+        # Joint-reference commands already own an asset_cfg, so update it in place.
+        set_cfg_joint_order(self.commands.joint_pos_ref_command.asset_cfg, POLICY_JOINT_ORDER)
+        set_cfg_joint_order(self.commands.joint_vel_ref_command.asset_cfg, POLICY_JOINT_ORDER)
+```
+
+Use `SceneEntityCfg("motion_reference")` instead of `SceneEntityCfg("robot")` for observation terms that read joint
+state from a motion-reference scene entity. Do not reuse one `SceneEntityCfg` across observation terms because entity
+resolution mutates the selector with resolved joint indices.
+
+---
+
 ## Multi Reward Manager
 A multi reward manager is an environment component that substitute the default reward manager. It allows the user to define multiple rewards group for the use of advantage-mixing / multi-critic RL.
 

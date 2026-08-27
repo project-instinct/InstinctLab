@@ -19,14 +19,15 @@ from isaaclab.utils.noise import UniformNoiseCfg as Unoise
 
 import instinctlab.envs.mdp as instinct_mdp
 import instinctlab.tasks.locomotion.mdp as locomotion_mdp
-from instinctlab.envs.manager_based_rl_env_cfg import InstinctLabRLEnvCfg
 from instinctlab.assets.unitree_g1 import (
+    G1_29DOF_POLICY_JOINT_ORDER_V1,
     G1_29DOF_TORSOBASE_POPSICLE_CFG,
     beyondmimic_action_scale,
-    configure_g1_29dof_policy_io,
 )
+from instinctlab.envs.manager_based_rl_env_cfg import InstinctLabRLEnvCfg
 from instinctlab.monitors import MonitorTermCfg
 from instinctlab.sensors import HierarchicalContactSensorCfg
+from instinctlab.utils.config import set_cfg_joint_order
 
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
 
@@ -371,7 +372,21 @@ class G1FlatEnvCfg(InstinctLabRLEnvCfg):
     )
 
     def __post_init__(self):
-        configure_g1_29dof_policy_io(self)
+        joint_order = list(G1_29DOF_POLICY_JOINT_ORDER_V1)
+        set_cfg_joint_order(self.actions.joint_pos, joint_order)
+        self.observations.policy.joint_pos.params["asset_cfg"] = set_cfg_joint_order(
+            SceneEntityCfg("robot"), joint_order
+        )
+        self.observations.policy.joint_vel.params["asset_cfg"] = set_cfg_joint_order(
+            SceneEntityCfg("robot"), joint_order
+        )
+        self.observations.critic.joint_pos.params["asset_cfg"] = set_cfg_joint_order(
+            SceneEntityCfg("robot"), joint_order
+        )
+        self.observations.critic.joint_vel.params["asset_cfg"] = set_cfg_joint_order(
+            SceneEntityCfg("robot"), joint_order
+        )
+
         self.decimation = 4
         self.episode_length_s = 20.0
         self.sim.dt = 0.005

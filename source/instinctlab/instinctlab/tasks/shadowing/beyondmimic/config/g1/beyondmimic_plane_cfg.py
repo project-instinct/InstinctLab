@@ -13,17 +13,18 @@ import instinctlab.tasks.shadowing.beyondmimic.beyondmimic_env_cfg as beyondmimi
 # Pre-defined configs
 ##
 from instinctlab.assets.unitree_g1 import (
+    G1_29DOF_POLICY_JOINT_ORDER_V1,
     G1_29DOF_TORSOBASE_POPSICLE_CFG,
     G1_REFERENCE_CFG,
     beyondmimic_action_scale,
     beyondmimic_g1_29dof_actuators,
-    configure_g1_29dof_policy_io,
 )
 from instinctlab.monitors import MonitorTermCfg
 from instinctlab.motion_reference import MotionReferenceManagerCfg
 from instinctlab.motion_reference.motion_files.aistpp_motion_cfg import AistppMotionCfg as AistppMotionCfgBase
 from instinctlab.motion_reference.motion_files.amass_motion_cfg import AmassMotionCfg as AmassMotionCfgBase
 from instinctlab.motion_reference.utils import motion_interpolate_bilinear
+from instinctlab.utils.config import set_cfg_joint_order
 
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
 
@@ -84,6 +85,7 @@ motion_reference_cfg = MotionReferenceManagerCfg(
     symmetric_augmentation_link_mapping=None,
     symmetric_augmentation_joint_mapping=None,
     symmetric_augmentation_joint_reverse_buf=None,
+    symmetric_augmentation_joint_names=list(G1_29DOF_POLICY_JOINT_ORDER_V1),
     frame_interval_s=0.0,
     update_period=0.02,
     num_frames=1,
@@ -108,7 +110,22 @@ class G1BeyondMimicPlaneEnvCfg(beyondmimic_cfg.BeyondMimicEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        configure_g1_29dof_policy_io(self)
+        joint_order = list(G1_29DOF_POLICY_JOINT_ORDER_V1)
+        set_cfg_joint_order(self.actions.joint_pos, joint_order)
+        self.observations.policy.joint_pos.params["asset_cfg"] = set_cfg_joint_order(
+            SceneEntityCfg("robot"), joint_order
+        )
+        self.observations.policy.joint_vel.params["asset_cfg"] = set_cfg_joint_order(
+            SceneEntityCfg("robot"), joint_order
+        )
+        self.observations.critic.joint_pos.params["asset_cfg"] = set_cfg_joint_order(
+            SceneEntityCfg("robot"), joint_order
+        )
+        self.observations.critic.joint_vel.params["asset_cfg"] = set_cfg_joint_order(
+            SceneEntityCfg("robot"), joint_order
+        )
+        set_cfg_joint_order(self.commands.joint_pos_ref_command.asset_cfg, joint_order)
+        set_cfg_joint_order(self.commands.joint_vel_ref_command.asset_cfg, joint_order)
 
         # add link_of_interests to the policy observation
         if self.observations.policy.__dict__.get("link_pos", None) is not None:

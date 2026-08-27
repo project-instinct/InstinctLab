@@ -2,23 +2,25 @@ import copy
 import os
 
 from isaaclab.envs import ViewerCfg
+from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.configclass import configclass
 
 import instinctlab.tasks.parkour.mdp as mdp
 from instinctlab.assets.unitree_g1 import (
     G1_29DOF_LINKS,
+    G1_29DOF_POLICY_JOINT_ORDER_V1,
     G1_29DOF_TORSOBASE_POPSICLE_CFG,
     G1_29Dof_TorsoBase_symmetric_augmentation_joint_mapping,
     G1_29Dof_TorsoBase_symmetric_augmentation_joint_reverse_buf,
     beyondmimic_g1_29dof_actuators,
     beyondmimic_g1_29dof_delayed_actuators,
-    configure_g1_29dof_policy_io,
 )
 from instinctlab.motion_reference import MotionReferenceManagerCfg
 from instinctlab.motion_reference.motion_files.amass_motion_cfg import AmassMotionCfg as AmassMotionCfgBase
 from instinctlab.motion_reference.utils import motion_interpolate_bilinear
 from instinctlab.sensors import get_link_prim_targets
 from instinctlab.tasks.parkour.config.parkour_env_cfg import ROUGH_TERRAINS_CFG, ParkourEnvCfg
+from instinctlab.utils.config import set_cfg_joint_order
 from instinctlab.utils.urdf import urdf_importer_link_prim_path
 
 __file_dir__ = os.path.dirname(os.path.realpath(__file__))
@@ -52,6 +54,7 @@ motion_reference_cfg = MotionReferenceManagerCfg(
     symmetric_augmentation_link_mapping=[0, 1, 3, 2, 5, 4, 7, 6, 9, 8, 11, 10, 13, 12],
     symmetric_augmentation_joint_mapping=G1_29Dof_TorsoBase_symmetric_augmentation_joint_mapping,
     symmetric_augmentation_joint_reverse_buf=G1_29Dof_TorsoBase_symmetric_augmentation_joint_reverse_buf,
+    symmetric_augmentation_joint_names=list(G1_29DOF_POLICY_JOINT_ORDER_V1),
     frame_interval_s=0.02,
     update_period=0.02,
     num_frames=10,
@@ -88,6 +91,25 @@ class G1ParkourRoughEnvCfg(ParkourEnvCfg):
     def __post_init__(self):
         # post init of parent
         super().__post_init__()
+        joint_order = list(G1_29DOF_POLICY_JOINT_ORDER_V1)
+        set_cfg_joint_order(self.actions.joint_pos, joint_order)
+        self.observations.policy.joint_pos.params["asset_cfg"] = set_cfg_joint_order(
+            SceneEntityCfg("robot"), joint_order
+        )
+        self.observations.policy.joint_vel.params["asset_cfg"] = set_cfg_joint_order(
+            SceneEntityCfg("robot"), joint_order
+        )
+        self.observations.critic.joint_pos.params["asset_cfg"] = set_cfg_joint_order(
+            SceneEntityCfg("robot"), joint_order
+        )
+        self.observations.critic.joint_vel.params["asset_cfg"] = set_cfg_joint_order(
+            SceneEntityCfg("robot"), joint_order
+        )
+        set_cfg_joint_order(self.observations.amp_policy.joint_pos_rel.params["asset_cfg"], joint_order)
+        set_cfg_joint_order(self.observations.amp_policy.joint_vel.params["asset_cfg"], joint_order)
+        set_cfg_joint_order(self.observations.amp_reference.joint_pos_rel.params["asset_cfg"], joint_order)
+        set_cfg_joint_order(self.observations.amp_reference.joint_vel.params["asset_cfg"], joint_order)
+
         # Scene
         self.scene.terrain.terrain_generator = ROUGH_TERRAINS_CFG
         self.scene.robot = G1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
@@ -101,7 +123,6 @@ class G1ParkourRoughEnvCfg(ParkourEnvCfg):
         self.scene.camera.prim_path = urdf_importer_link_prim_path(G1_CFG.spawn.asset_path, "torso_link")
         self.scene.camera.mesh_prim_paths.extend(get_link_prim_targets(G1_29DOF_LINKS, G1_CFG.spawn.asset_path))
         self.scene.motion_reference = motion_reference_cfg
-        configure_g1_29dof_policy_io(self)
 
 
 class ShoeConfigMixin:

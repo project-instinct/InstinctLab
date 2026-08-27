@@ -3,7 +3,27 @@
 ## Common Practice
 
 - Following the common practice in the pinned IsaacLab.
-- For class registry, if using `str` instead of `type` as the key, using `{DIR}` is encourged.
+- For class registry, if using `str` instead of `type` as the key, using `{DIR}` is encouraged.
+
+### Policy Joint Order
+
+- Explicit policy joint ordering is used for backward compatibility with policies and checkpoints trained against an
+  earlier joint layout, and for matching the predefined joint order of the real-robot interface. It does not redefine
+  the articulation's canonical joint order.
+
+- Use `instinctlab.utils.config.set_cfg_joint_order` whenever a policy requires a joint order that differs from the
+  articulation's native joint order. The helper applies the supplied `joint_names` and enables `preserve_order` on
+  both `SceneEntityCfg` and joint action configurations.
+
+- Apply the joint order in the robot-specific training `EnvCfg.__post_init__`. Configure the action term,
+  policy/critic joint observation selectors, and joint-reference command selectors there. PLAY and backend-specific
+  configurations should inherit these settings by calling `super().__post_init__()`.
+
+- Give each observation term a fresh `SceneEntityCfg` and apply `set_cfg_joint_order` while assigning it. Do not
+  share one selector between observation terms because scene-entity resolution mutates the selector.
+
+- Apply `set_cfg_joint_order` directly to an existing action or command `asset_cfg`. Do not introduce
+  robot-specific action, observation, or command configuration subclasses solely to specify joint order.
 
 ## Sensor and Multi-Backend support
 

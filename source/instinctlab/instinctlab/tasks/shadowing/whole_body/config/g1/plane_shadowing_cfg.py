@@ -24,13 +24,13 @@ import instinctlab.tasks.shadowing.whole_body.shadowing_env_cfg as shadowing_cfg
 # Pre-defined configs
 ##
 from instinctlab.assets.unitree_g1 import (
+    G1_29DOF_POLICY_JOINT_ORDER_V1,
     G1_29DOF_TORSOBASE_POPSICLE_CFG,
+    G1_REFERENCE_CFG,
     G1_29Dof_TorsoBase_symmetric_augmentation_joint_mapping,
     G1_29Dof_TorsoBase_symmetric_augmentation_joint_reverse_buf,
-    G1_REFERENCE_CFG,
     beyondmimic_action_scale,
     beyondmimic_g1_29dof_actuators,
-    configure_g1_29dof_policy_io,
 )
 from instinctlab.managers import MultiRewardCfg
 from instinctlab.monitors import MonitorTermCfg
@@ -38,6 +38,7 @@ from instinctlab.motion_reference import MotionReferenceManagerCfg
 from instinctlab.motion_reference.motion_files.aistpp_motion_cfg import AistppMotionCfg as AistppMotionCfgBase
 from instinctlab.motion_reference.motion_files.amass_motion_cfg import AmassMotionCfg as AmassMotionCfgBase
 from instinctlab.motion_reference.utils import motion_interpolate_bilinear
+from instinctlab.utils.config import set_cfg_joint_order
 from instinctlab.utils.humanoid_ik import HumanoidSmplRotationalIK
 
 combine_method = "prod"
@@ -235,6 +236,7 @@ motion_reference_cfg = MotionReferenceManagerCfg(
     symmetric_augmentation_link_mapping=None,
     symmetric_augmentation_joint_mapping=None,
     symmetric_augmentation_joint_reverse_buf=None,
+    symmetric_augmentation_joint_names=list(G1_29DOF_POLICY_JOINT_ORDER_V1),
     frame_interval_s=0.02,
     update_period=0.02,
     num_frames=10,
@@ -281,7 +283,22 @@ class G1PlaneShadowingEnvCfg(shadowing_cfg.ShadowingEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        configure_g1_29dof_policy_io(self)
+        joint_order = list(G1_29DOF_POLICY_JOINT_ORDER_V1)
+        set_cfg_joint_order(self.actions.joint_pos, joint_order)
+        self.observations.policy.joint_pos.params["asset_cfg"] = set_cfg_joint_order(
+            SceneEntityCfg("robot"), joint_order
+        )
+        self.observations.policy.joint_vel.params["asset_cfg"] = set_cfg_joint_order(
+            SceneEntityCfg("robot"), joint_order
+        )
+        self.observations.critic.joint_pos.params["asset_cfg"] = set_cfg_joint_order(
+            SceneEntityCfg("robot"), joint_order
+        )
+        self.observations.critic.joint_vel.params["asset_cfg"] = set_cfg_joint_order(
+            SceneEntityCfg("robot"), joint_order
+        )
+        set_cfg_joint_order(self.commands.joint_pos_ref_command.asset_cfg, joint_order)
+        set_cfg_joint_order(self.commands.joint_vel_ref_command.asset_cfg, joint_order)
 
         # add link_of_interests to the policy observation
         if self.observations.policy.__dict__.get("link_pos", None) is not None:

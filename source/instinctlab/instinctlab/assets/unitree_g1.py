@@ -7,7 +7,6 @@ import os
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import DelayedPDActuatorCfg, ImplicitActuatorCfg
 from isaaclab.assets import AssetBaseCfg
-from isaaclab.managers import SceneEntityCfg
 from isaaclab.sim.schemas import CollisionBaseCfg, JointDriveBaseCfg
 from isaaclab_assets import G1_CFG
 
@@ -15,7 +14,7 @@ from instinctlab.sim import UrdfFileCfg
 
 __file_dir__ = os.path.dirname(os.path.realpath(__file__))
 
-G1_29DOF_JOINT_NAMES = [
+G1_29DOF_POLICY_JOINT_ORDER_V1 = (
     "left_shoulder_pitch_joint",
     "right_shoulder_pitch_joint",
     "waist_pitch_joint",
@@ -45,41 +44,11 @@ G1_29DOF_JOINT_NAMES = [
     "right_ankle_pitch_joint",
     "left_ankle_roll_joint",
     "right_ankle_roll_joint",
-]
-"""Policy and motion-augmentation joint order used by Isaac Lab 2.3.2 experiments."""
+)
+"""Versioned policy joint order retained from the Isaac Lab 2.3.2 experiments.
 
-
-def configure_g1_29dof_policy_io(env_cfg) -> None:
-    """Keep policy-facing joint tensors independent of the imported USD joint order."""
-    env_cfg.actions.joint_pos.joint_names = G1_29DOF_JOINT_NAMES.copy()
-    env_cfg.actions.joint_pos.preserve_order = True
-
-    for group_name in ("policy", "critic", "amp_policy", "amp_reference"):
-        observation_group = getattr(env_cfg.observations, group_name, None)
-        if observation_group is None:
-            continue
-        entity_name = "motion_reference" if group_name == "amp_reference" else "robot"
-        for term_name in ("joint_pos", "joint_vel", "joint_pos_rel"):
-            observation_term = getattr(observation_group, term_name, None)
-            if observation_term is not None:
-                observation_term.params["asset_cfg"] = SceneEntityCfg(
-                    entity_name,
-                    joint_names=G1_29DOF_JOINT_NAMES.copy(),
-                    preserve_order=True,
-                )
-
-    for command_name in ("joint_pos_ref_command", "joint_vel_ref_command"):
-        command = getattr(env_cfg.commands, command_name, None)
-        if command is not None:
-            command.asset_cfg = SceneEntityCfg(
-                "robot",
-                joint_names=G1_29DOF_JOINT_NAMES.copy(),
-                preserve_order=True,
-            )
-
-    motion_reference = getattr(env_cfg.scene, "motion_reference", None)
-    if motion_reference is not None:
-        motion_reference.symmetric_augmentation_joint_names = G1_29DOF_JOINT_NAMES.copy()
+Changing this tuple is a breaking policy-interface change. Define a new version instead.
+"""
 
 
 G1_29DOF_TORSOBASE_CFG = G1_CFG.copy()

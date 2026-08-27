@@ -15,12 +15,12 @@ import instinctlab.tasks.shadowing.mdp as shadowing_mdp
 import instinctlab.tasks.shadowing.perceptive_hoi.perceptive_env_cfg as perceptual_cfg
 from instinctlab.assets.unitree_g1 import (
     G1_29DOF_LINKS,
+    G1_29DOF_POLICY_JOINT_ORDER_V1,
     G1_29DOF_TORSOBASE_POPSICLE_CFG,
     G1_REFERENCE_CFG,
     beyondmimic_action_scale,
     beyondmimic_g1_29dof_actuators,
     beyondmimic_g1_29dof_delayed_actuators,
-    configure_g1_29dof_policy_io,
 )
 from instinctlab.monitors import MonitorTermCfg
 from instinctlab.motion_reference import HoiMotionReferenceData, HoiMotionReferenceState, MotionReferenceManagerCfg
@@ -28,6 +28,7 @@ from instinctlab.motion_reference.motion_files.omomo_motion_cfg import OmomoMoti
 from instinctlab.motion_reference.utils import motion_interpolate_bilinear
 from instinctlab.sensors import get_link_prim_targets
 from instinctlab.sim import MeshFileCfg
+from instinctlab.utils.config import set_cfg_joint_order
 from instinctlab.utils.urdf import urdf_importer_link_prim_path
 
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
@@ -91,6 +92,7 @@ motion_reference_cfg = MotionReferenceManagerCfg(
     symmetric_augmentation_link_mapping=None,
     symmetric_augmentation_joint_mapping=None,
     symmetric_augmentation_joint_reverse_buf=None,
+    symmetric_augmentation_joint_names=list(G1_29DOF_POLICY_JOINT_ORDER_V1),
     frame_interval_s=0.1,
     update_period=0.02,
     num_frames=10,
@@ -117,7 +119,22 @@ class G1PerceptiveHoiShadowingEnvCfg(perceptual_cfg.PerceptiveHoiShadowingEnvCfg
 
     def __post_init__(self):
         super().__post_init__()
-        configure_g1_29dof_policy_io(self)
+        joint_order = list(G1_29DOF_POLICY_JOINT_ORDER_V1)
+        set_cfg_joint_order(self.actions.joint_pos, joint_order)
+        self.observations.policy.joint_pos.params["asset_cfg"] = set_cfg_joint_order(
+            SceneEntityCfg("robot"), joint_order
+        )
+        self.observations.policy.joint_vel.params["asset_cfg"] = set_cfg_joint_order(
+            SceneEntityCfg("robot"), joint_order
+        )
+        self.observations.critic.joint_pos.params["asset_cfg"] = set_cfg_joint_order(
+            SceneEntityCfg("robot"), joint_order
+        )
+        self.observations.critic.joint_vel.params["asset_cfg"] = set_cfg_joint_order(
+            SceneEntityCfg("robot"), joint_order
+        )
+        set_cfg_joint_order(self.commands.joint_pos_ref_command.asset_cfg, joint_order)
+        set_cfg_joint_order(self.commands.joint_vel_ref_command.asset_cfg, joint_order)
 
         # add mesh objects as scene rigid objects
         for object_name, mesh_file_path in MESH_FILE_PATHS.items():
