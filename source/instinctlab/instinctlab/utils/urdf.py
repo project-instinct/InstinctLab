@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+
 def urdf_importer_link_prim_path(
     urdf_path: str,
     link_name: str,

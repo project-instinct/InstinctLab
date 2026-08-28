@@ -1,16 +1,11 @@
-from isaaclab.sim import SimulationCfg
-from isaaclab.utils.configclass import configclass
 from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg, NewtonShapeCfg
 from isaaclab_newton.sensors import ContactSensorCfg as NewtonContactSensorCfg
-from isaaclab_newton.sim.schemas import (
-    NewtonArticulationRootPropertiesCfg,
-    NewtonMaterialPropertiesCfg,
-)
+from isaaclab_newton.sim.schemas import NewtonArticulationRootPropertiesCfg, NewtonMaterialPropertiesCfg
 
-from instinctlab.assets.unitree_g1 import (
-    G1_29DOF_TORSOBASE_POPSICLE_CFG,
-    beyondmimic_g1_29dof_actuators,
-)
+from isaaclab.sim import SimulationCfg
+from isaaclab.utils.configclass import configclass
+
+from instinctlab.assets.unitree_g1 import G1_29DOF_TORSOBASE_POPSICLE_CFG, beyondmimic_g1_29dof_actuators
 
 from .flat_env_cfg import G1FlatEnvCfg, G1FlatEnvCfg_PLAY, G1FlatSceneCfg
 
@@ -53,9 +48,7 @@ class G1FlatNewtonSceneCfg(G1FlatSceneCfg):
     """G1 flat scene using Newton's native contact sensor."""
 
     robot = _newton_robot_cfg()
-    contact_forces = NewtonContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True
-    )
+    contact_forces = NewtonContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True)
 
     def __post_init__(self):
         self.terrain.physics_material = NewtonMaterialPropertiesCfg(
