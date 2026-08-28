@@ -9,7 +9,7 @@ from instinctlab.tasks.shadowing.perceptive.config.g1.perceptive_vae_cfg import 
     G1PerceptiveVaeEnvCfg_PLAY,
     motion_reference_cfg,
 )
-from instinctlab.tasks.utils.newton import apply_newton_robot_cfg, newton_sim_cfg
+from instinctlab.tasks.utils.newton import newton_sim_cfg
 
 
 @configclass
@@ -29,7 +29,6 @@ class G1PerceptiveVaeNewtonEnvCfg(G1PerceptiveVaeEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        apply_newton_robot_cfg(self.scene.robot)
         self.sim.physics = newton_sim_cfg(
             njmax=256, nconmax=128, margin=0.01, gap=0.01, use_mujoco_contacts=False
         ).physics
@@ -49,7 +48,6 @@ class G1PerceptiveVaeNewtonEnvCfg_PLAY(G1PerceptiveVaeEnvCfg_PLAY):
 
     def __post_init__(self):
         super().__post_init__()
-        apply_newton_robot_cfg(self.scene.robot)
         self.sim.physics = newton_sim_cfg(
             njmax=256, nconmax=128, margin=0.01, gap=0.01, use_mujoco_contacts=False
         ).physics

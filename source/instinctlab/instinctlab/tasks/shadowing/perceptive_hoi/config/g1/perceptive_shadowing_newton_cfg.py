@@ -11,16 +11,12 @@ from instinctlab.tasks.shadowing.perceptive_hoi.config.g1.perceptive_shadowing_c
     motion_reference_cfg,
 )
 from instinctlab.tasks.shadowing.perceptive_hoi.perceptive_env_cfg import PerceptiveHoiShadowingSceneCfg
-from instinctlab.tasks.utils.newton import apply_newton_robot_cfg, newton_material_cfg, newton_sim_cfg
+from instinctlab.tasks.utils.newton import newton_sim_cfg
 
 
 @configclass
 class G1PerceptiveHoiNewtonSceneCfg(PerceptiveHoiShadowingSceneCfg):
     contact_forces = NewtonContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True)
-
-    def __post_init__(self):
-        super().__post_init__()
-        self.terrain.physics_material = newton_material_cfg()
 
 
 @configclass
@@ -34,7 +30,6 @@ class G1PerceptiveHoiNewtonEnvCfg(G1PerceptiveHoiShadowingEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        apply_newton_robot_cfg(self.scene.robot)
         self.sim.physics = newton_sim_cfg(njmax=224, nconmax=56, margin=0.0, gap=0.01).physics
         self.sim.use_newton_actuators = True
 
@@ -52,6 +47,5 @@ class G1PerceptiveHoiNewtonEnvCfg_PLAY(G1PerceptiveHoiShadowingEnvCfg_PLAY):
 
     def __post_init__(self):
         super().__post_init__()
-        apply_newton_robot_cfg(self.scene.robot)
         self.sim.physics = newton_sim_cfg(njmax=224, nconmax=56, margin=0.0, gap=0.01).physics
         self.sim.use_newton_actuators = True

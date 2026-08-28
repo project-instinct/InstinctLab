@@ -5,21 +5,12 @@ from isaaclab.utils.configclass import configclass
 
 from instinctlab.tasks.parkour.config.g1.g1_parkour_target_amp_cfg import G1ParkourEnvCfg, G1ParkourEnvCfg_PLAY
 from instinctlab.tasks.parkour.config.parkour_env_cfg import SceneCfg
-from instinctlab.tasks.utils.newton import (
-    InstinctNewtonVisualizerCfg,
-    apply_newton_robot_cfg,
-    newton_material_cfg,
-    newton_sim_cfg,
-)
+from instinctlab.tasks.utils.newton import InstinctNewtonVisualizerCfg, newton_sim_cfg
 
 
 @configclass
 class G1ParkourNewtonSceneCfg(SceneCfg):
     contact_forces = NewtonContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True)
-
-    def __post_init__(self):
-        super().__post_init__()
-        self.terrain.physics_material = newton_material_cfg()
 
 
 @configclass
@@ -29,7 +20,6 @@ class G1ParkourNewtonEnvCfg(G1ParkourEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        apply_newton_robot_cfg(self.scene.robot)
         self.sim.physics = newton_sim_cfg().physics
         self.sim.use_newton_actuators = True
 
@@ -41,7 +31,6 @@ class G1ParkourNewtonEnvCfg_PLAY(G1ParkourEnvCfg_PLAY):
 
     def __post_init__(self):
         super().__post_init__()
-        apply_newton_robot_cfg(self.scene.robot)
         self.sim.physics = newton_sim_cfg().physics
         self.sim.use_newton_actuators = True
         self.sim.visualizer_cfgs = [

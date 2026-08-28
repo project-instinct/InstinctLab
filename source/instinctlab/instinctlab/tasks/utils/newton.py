@@ -1,5 +1,4 @@
 from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg, NewtonCollisionPipelineCfg, NewtonShapeCfg
-from isaaclab_newton.sim.schemas import NewtonArticulationRootPropertiesCfg, NewtonMaterialPropertiesCfg
 from isaaclab_visualizers.newton import NewtonVisualizerCfg
 
 from isaaclab.sim import SimulationCfg
@@ -42,19 +41,6 @@ def newton_sim_cfg(
             default_shape_cfg=NewtonShapeCfg(margin=margin, gap=gap),
         ),
         use_newton_actuators=True,
-    )
-
-
-def apply_newton_robot_cfg(robot_cfg) -> None:
-    """Apply Newton's stable articulation-root setting to a G1 robot config."""
-    robot_cfg.spawn.articulation_props = NewtonArticulationRootPropertiesCfg(self_collision_enabled=False)
-
-
-def newton_material_cfg() -> NewtonMaterialPropertiesCfg:
-    """Return the default high-friction Newton terrain material."""
-    return NewtonMaterialPropertiesCfg(
-        static_friction=1.0,
-        dynamic_friction=1.0,
     )
 
 

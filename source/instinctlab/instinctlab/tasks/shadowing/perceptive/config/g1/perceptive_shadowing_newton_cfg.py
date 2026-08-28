@@ -11,21 +11,12 @@ from instinctlab.tasks.shadowing.perceptive.config.g1.perceptive_shadowing_cfg i
     motion_reference_cfg,
 )
 from instinctlab.tasks.shadowing.perceptive.perceptive_env_cfg import PerceptiveShadowingSceneCfg
-from instinctlab.tasks.utils.newton import (
-    InstinctNewtonVisualizerCfg,
-    apply_newton_robot_cfg,
-    newton_material_cfg,
-    newton_sim_cfg,
-)
+from instinctlab.tasks.utils.newton import InstinctNewtonVisualizerCfg, newton_sim_cfg
 
 
 @configclass
 class G1PerceptiveNewtonSceneCfg(PerceptiveShadowingSceneCfg):
     contact_forces = NewtonContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True)
-
-    def __post_init__(self):
-        super().__post_init__()
-        self.terrain.physics_material = newton_material_cfg()
 
 
 @configclass
@@ -39,7 +30,6 @@ class G1PerceptiveNewtonEnvCfg(G1PerceptiveShadowingEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        apply_newton_robot_cfg(self.scene.robot)
         self.sim.physics = newton_sim_cfg(
             njmax=256, nconmax=128, margin=0.01, gap=0.01, use_mujoco_contacts=False
         ).physics
@@ -60,7 +50,6 @@ class G1PerceptiveNewtonEnvCfg_PLAY(G1PerceptiveShadowingEnvCfg_PLAY):
 
     def __post_init__(self):
         super().__post_init__()
-        apply_newton_robot_cfg(self.scene.robot)
         self.sim.physics = newton_sim_cfg(
             njmax=256, nconmax=128, margin=0.01, gap=0.01, use_mujoco_contacts=False
         ).physics
