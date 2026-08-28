@@ -27,13 +27,6 @@ class G1PerceptiveVaeNewtonEnvCfg(G1PerceptiveVaeEnvCfg):
     )
     sim: SimulationCfg = newton_sim_cfg(njmax=256, nconmax=128, margin=0.01, gap=0.01, use_mujoco_contacts=False)
 
-    def __post_init__(self):
-        super().__post_init__()
-        self.sim.physics = newton_sim_cfg(
-            njmax=256, nconmax=128, margin=0.01, gap=0.01, use_mujoco_contacts=False
-        ).physics
-        self.sim.use_newton_actuators = True
-
 
 @configclass
 class G1PerceptiveVaeNewtonEnvCfg_PLAY(G1PerceptiveVaeEnvCfg_PLAY):
@@ -45,10 +38,3 @@ class G1PerceptiveVaeNewtonEnvCfg_PLAY(G1PerceptiveVaeEnvCfg_PLAY):
         motion_reference=motion_reference_cfg.replace(debug_vis=True),
     )
     sim: SimulationCfg = newton_sim_cfg(njmax=256, nconmax=128, margin=0.01, gap=0.01, use_mujoco_contacts=False)
-
-    def __post_init__(self):
-        super().__post_init__()
-        self.sim.physics = newton_sim_cfg(
-            njmax=256, nconmax=128, margin=0.01, gap=0.01, use_mujoco_contacts=False
-        ).physics
-        self.sim.use_newton_actuators = True

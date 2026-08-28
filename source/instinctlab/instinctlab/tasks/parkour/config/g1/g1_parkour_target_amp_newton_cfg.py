@@ -18,11 +18,6 @@ class G1ParkourNewtonEnvCfg(G1ParkourEnvCfg):
     scene: G1ParkourNewtonSceneCfg = G1ParkourNewtonSceneCfg(num_envs=4096, env_spacing=2.5)
     sim: SimulationCfg = newton_sim_cfg()
 
-    def __post_init__(self):
-        super().__post_init__()
-        self.sim.physics = newton_sim_cfg().physics
-        self.sim.use_newton_actuators = True
-
 
 @configclass
 class G1ParkourNewtonEnvCfg_PLAY(G1ParkourEnvCfg_PLAY):
@@ -31,8 +26,6 @@ class G1ParkourNewtonEnvCfg_PLAY(G1ParkourEnvCfg_PLAY):
 
     def __post_init__(self):
         super().__post_init__()
-        self.sim.physics = newton_sim_cfg().physics
-        self.sim.use_newton_actuators = True
         self.sim.visualizer_cfgs = [
             InstinctNewtonVisualizerCfg(
                 follow_body=True,

@@ -28,11 +28,6 @@ class G1PerceptiveHoiNewtonEnvCfg(G1PerceptiveHoiShadowingEnvCfg):
     )
     sim: SimulationCfg = newton_sim_cfg(njmax=224, nconmax=56, margin=0.0, gap=0.01)
 
-    def __post_init__(self):
-        super().__post_init__()
-        self.sim.physics = newton_sim_cfg(njmax=224, nconmax=56, margin=0.0, gap=0.01).physics
-        self.sim.use_newton_actuators = True
-
 
 @configclass
 class G1PerceptiveHoiNewtonEnvCfg_PLAY(G1PerceptiveHoiShadowingEnvCfg_PLAY):
@@ -44,8 +39,3 @@ class G1PerceptiveHoiNewtonEnvCfg_PLAY(G1PerceptiveHoiShadowingEnvCfg_PLAY):
         motion_reference=motion_reference_cfg.replace(debug_vis=True),
     )
     sim: SimulationCfg = newton_sim_cfg(njmax=224, nconmax=56, margin=0.0, gap=0.01)
-
-    def __post_init__(self):
-        super().__post_init__()
-        self.sim.physics = newton_sim_cfg(njmax=224, nconmax=56, margin=0.0, gap=0.01).physics
-        self.sim.use_newton_actuators = True

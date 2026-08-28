@@ -30,10 +30,6 @@ class G1PerceptiveNewtonEnvCfg(G1PerceptiveShadowingEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        self.sim.physics = newton_sim_cfg(
-            njmax=256, nconmax=128, margin=0.01, gap=0.01, use_mujoco_contacts=False
-        ).physics
-        self.sim.use_newton_actuators = True
         self.events.reset_robot.params["position_offset"] = [0.0, 0.0, 0.05]
 
 
@@ -50,10 +46,6 @@ class G1PerceptiveNewtonEnvCfg_PLAY(G1PerceptiveShadowingEnvCfg_PLAY):
 
     def __post_init__(self):
         super().__post_init__()
-        self.sim.physics = newton_sim_cfg(
-            njmax=256, nconmax=128, margin=0.01, gap=0.01, use_mujoco_contacts=False
-        ).physics
-        self.sim.use_newton_actuators = True
         self.sim.visualizer_cfgs = [
             InstinctNewtonVisualizerCfg(show_collision=True, show_contacts=True, show_visual=False, follow_body=True)
         ]
