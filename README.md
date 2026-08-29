@@ -43,9 +43,9 @@ Use these source revisions and dependency constraints for the InstinctLab Isaac 
 | Isaac Sim | `6.0.1.0` |
 | Isaac Lab | `release/3.0.0-beta2` at `6a7acb0320a0bdc15b13e44e83b575e00797faf4` (package `6.1.17`) |
 | Instinct-RL | `upgrade/isaaclab3.0.0-beta2` at `b1ee3f84983e10da385eafcd7da1f010e34f01ca` (package `1.0.2`) |
-| PyTorch | `2.10.0` |
-| TorchVision | `0.25.0` |
-| TorchAudio | `2.10.0` |
+| PyTorch | `2.11.0` |
+| TorchVision | `0.26.0` |
+| TorchAudio | `2.11.0` |
 | NumPy | `>=2` |
 | Warp | `1.13.0` |
 | Gymnasium | `1.2.1` |

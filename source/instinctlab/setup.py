@@ -22,9 +22,9 @@ INSTALL_REQUIRES = [
     "instinct-rl==1.0.2",
     # Direct numerical/runtime dependencies
     "numpy>=2",
-    "torch==2.10.0",
-    "torchaudio==2.10.0",
-    "torchvision==0.25.0",
+    "torch==2.11.0",
+    "torchaudio==2.11.0",
+    "torchvision==0.26.0",
     "gymnasium==1.2.1",
     "warp-lang==1.13.0",
     # InstinctLab-specific dependencies

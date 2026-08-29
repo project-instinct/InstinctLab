@@ -17,7 +17,7 @@ task-config recipe. The exact target is pinned below; do not use a floating bran
 | `isaaclab-physx` | `1.1.3` |
 | `isaaclab-newton` | `0.13.6` |
 | `newton[sim]` | `1.2.1` |
-| Torch / Vision / Audio | `2.10.0` |
+| Torch / Vision / Audio | `2.11.0` / `0.26.0` / `2.11.0` |
 | Warp | `1.13.0` |
 | Gymnasium | `1.2.1` |
 | NumPy | `>=2` |
