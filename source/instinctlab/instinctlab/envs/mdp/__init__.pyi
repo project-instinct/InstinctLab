@@ -55,7 +55,12 @@ from .events.motion_reference import (
     reset_robot_state_by_reference,
     update_rigid_objects_state_by_reference,
 )
-from .events.randomization import randomize_camera_offsets, randomize_default_joint_pos, randomize_ray_offsets
+from .events.randomization import (
+    randomize_actuator_gains,
+    randomize_camera_offsets,
+    randomize_default_joint_pos,
+    randomize_ray_offsets,
+)
 from .events.terrain import register_virtual_obstacle_to_sensor
 from .observations.body import (
     base_heading_w,

@@ -470,7 +470,7 @@ class EventsCfg:
         },
     )
     randomize_actuator_gains = EventTermCfg(
-        func=mdp.randomize_actuator_gains,
+        func=instinct_mdp.randomize_actuator_gains,
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),

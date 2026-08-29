@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Literal
 import warp as wp
 
 import isaaclab.utils.math as math_utils
+from isaaclab.envs.mdp.events import randomize_actuator_gains as _IsaacLabRandomizeActuatorGains
 from isaaclab.managers import EventTermCfg, ManagerTermBase, SceneEntityCfg
 
 if TYPE_CHECKING:
@@ -225,3 +226,81 @@ def randomize_camera_offsets(
         env_ids=env_ids,
         convention="world",
     )
+
+
+def _native_gain_layout(asset):
+    """Return native Newton gain layout info, or ``None`` if not applicable."""
+    adapter = getattr(asset, "newton_actuator_adapter", None)
+    if adapter is None:
+        return None
+
+    num_envs = asset.num_instances
+    num_joints = asset.num_joints
+    env_stride = int(getattr(adapter, "num_joints", num_joints))
+    dof_offset = 0
+
+    root_view = getattr(asset, "_root_view", None)
+    if root_view is not None and hasattr(root_view, "frequency_layouts"):
+        from newton import Model as NewtonModel  # noqa: PLC0415
+
+        dof_layout = root_view.frequency_layouts.get(NewtonModel.AttributeFrequency.JOINT_DOF)
+        if dof_layout is not None:
+            if dof_layout.slice is not None:
+                dof_offset = dof_layout.slice.start or 0
+            elif dof_layout.indices is not None:
+                dof_indices = dof_layout.indices.numpy()
+                dof_offset = int(dof_indices[0]) if len(dof_indices) else 0
+
+    return adapter, num_envs, num_joints, dof_offset, env_stride
+
+
+def _read_native_actuator_gain(asset, attr: str) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+    """Project one live Newton controller gain into public joint order."""
+    import numpy as np  # noqa: PLC0415
+
+    layout = _native_gain_layout(asset)
+    if layout is None:
+        return None, None
+    adapter, num_envs, num_joints, dof_offset, env_stride = layout
+
+    gains = torch.zeros((num_envs, num_joints), dtype=torch.float32, device=asset.device)
+    covered = torch.zeros(num_joints, dtype=torch.bool, device=asset.device)
+
+    for act in adapter.actuators:
+        controller = act.controller
+        if not hasattr(controller, attr):
+            continue
+
+        indices = np.asarray(act.indices.numpy(), dtype=np.int64)
+        values = np.asarray(getattr(controller, attr).numpy(), dtype=np.float32)
+
+        env_ids = indices // env_stride
+        local_ids = indices - env_ids * env_stride - dof_offset
+        valid = (env_ids >= 0) & (env_ids < num_envs) & (local_ids >= 0) & (local_ids < num_joints)
+        if not valid.any():
+            continue
+
+        env_ids = env_ids[valid]
+        local_ids = local_ids[valid]
+        values = values[valid]
+        env_idx = torch.as_tensor(env_ids, dtype=torch.long, device=asset.device)
+        local_idx = torch.as_tensor(local_ids, dtype=torch.long, device=asset.device)
+        gains[env_idx, local_idx] = torch.as_tensor(values, device=asset.device)
+        covered[local_idx] = True
+
+    return gains, covered
+
+
+class randomize_actuator_gains(_IsaacLabRandomizeActuatorGains):
+    """Newton-stride-aware actuator gain randomization for InstinctLab."""
+
+    def __init__(self, cfg: EventTermCfg, env: ManagerBasedEnv):
+        super().__init__(cfg, env)
+
+        native_stiffness, covered = _read_native_actuator_gain(self.asset, "kp")
+        if native_stiffness is not None and covered is not None:
+            self.default_joint_stiffness[:, covered] = native_stiffness[:, covered]
+
+        native_damping, covered = _read_native_actuator_gain(self.asset, "kd")
+        if native_damping is not None and covered is not None:
+            self.default_joint_damping[:, covered] = native_damping[:, covered]
