@@ -25,7 +25,7 @@ class G1PerceptiveVaeNewtonEnvCfg(G1PerceptiveVaeEnvCfg):
         motion_reference=motion_reference_cfg,
         height_scanner=None,
     )
-    sim: SimulationCfg = newton_sim_cfg(njmax=256, nconmax=128, margin=0.01, gap=0.01, use_mujoco_contacts=False)
+    sim: SimulationCfg = newton_sim_cfg(nconmax=128)
 
 
 @configclass
@@ -37,4 +37,4 @@ class G1PerceptiveVaeNewtonEnvCfg_PLAY(G1PerceptiveVaeEnvCfg_PLAY):
         robot_reference=G1_REFERENCE_CFG.replace(prim_path="{ENV_REGEX_NS}/RobotReference"),
         motion_reference=motion_reference_cfg.replace(debug_vis=True),
     )
-    sim: SimulationCfg = newton_sim_cfg(njmax=256, nconmax=128, margin=0.01, gap=0.01, use_mujoco_contacts=False)
+    sim: SimulationCfg = newton_sim_cfg(nconmax=128)

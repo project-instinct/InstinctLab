@@ -8,7 +8,7 @@ from isaaclab.utils.configclass import configclass
 def newton_sim_cfg(
     njmax: int = 384,
     nconmax: int = 192,
-    margin: float = 0.01,
+    margin: float = 0.001,
     gap: float = 0.01,
     use_mujoco_contacts: bool = False,
 ) -> SimulationCfg:

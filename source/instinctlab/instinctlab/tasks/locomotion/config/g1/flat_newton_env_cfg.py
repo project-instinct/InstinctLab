@@ -1,6 +1,6 @@
 from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg, NewtonShapeCfg
 from isaaclab_newton.sensors import ContactSensorCfg as NewtonContactSensorCfg
-from isaaclab_newton.sim.schemas import NewtonArticulationRootPropertiesCfg, NewtonMaterialPropertiesCfg
+from isaaclab_newton.sim.schemas import NewtonMaterialPropertiesCfg
 
 from isaaclab.sim import SimulationCfg
 from isaaclab.utils.configclass import configclass
@@ -36,9 +36,8 @@ def _newton_sim_cfg() -> SimulationCfg:
 
 
 def _newton_robot_cfg():
-    """Return the G1 asset with Newton's stable articulation setting."""
+    """Return the self-colliding G1 asset with the locomotion actuators."""
     robot_cfg = G1_29DOF_TORSOBASE_POPSICLE_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
-    robot_cfg.spawn.articulation_props = NewtonArticulationRootPropertiesCfg(self_collision_enabled=False)
     robot_cfg.actuators = beyondmimic_g1_29dof_actuators
     return robot_cfg
 

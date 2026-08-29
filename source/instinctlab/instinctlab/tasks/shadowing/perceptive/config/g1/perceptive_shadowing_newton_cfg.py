@@ -16,7 +16,11 @@ from instinctlab.tasks.utils.newton import InstinctNewtonVisualizerCfg, newton_s
 
 @configclass
 class G1PerceptiveNewtonSceneCfg(PerceptiveShadowingSceneCfg):
-    contact_forces = NewtonContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True)
+    contact_forces = NewtonContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/.*",
+        history_length=3,
+        track_air_time=True,
+    )
 
 
 @configclass
@@ -26,7 +30,7 @@ class G1PerceptiveNewtonEnvCfg(G1PerceptiveShadowingEnvCfg):
         robot=G1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot"),
         motion_reference=motion_reference_cfg,
     )
-    sim: SimulationCfg = newton_sim_cfg(njmax=256, nconmax=128, margin=0.01, gap=0.01, use_mujoco_contacts=False)
+    sim: SimulationCfg = newton_sim_cfg(nconmax=128)
 
     def __post_init__(self):
         super().__post_init__()
@@ -42,10 +46,8 @@ class G1PerceptiveNewtonEnvCfg_PLAY(G1PerceptiveShadowingEnvCfg_PLAY):
         robot_reference=G1_REFERENCE_CFG.replace(prim_path="{ENV_REGEX_NS}/RobotReference"),
         motion_reference=motion_reference_cfg.replace(debug_vis=True),
     )
-    sim: SimulationCfg = newton_sim_cfg(njmax=256, nconmax=128, margin=0.01, gap=0.01, use_mujoco_contacts=False)
+    sim: SimulationCfg = newton_sim_cfg(nconmax=128)
 
     def __post_init__(self):
         super().__post_init__()
-        self.sim.visualizer_cfgs = [
-            InstinctNewtonVisualizerCfg(show_collision=True, show_contacts=True, show_visual=False, follow_body=True)
-        ]
+        self.sim.visualizer_cfgs = [InstinctNewtonVisualizerCfg(show_contacts=True, show_visual=True, follow_body=True)]
