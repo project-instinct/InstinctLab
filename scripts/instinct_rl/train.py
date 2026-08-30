@@ -12,6 +12,7 @@ import os
 import sys
 import torch
 import torch.distributed as dist
+import warp as wp
 from datetime import datetime
 
 from instinct_rl.runners import OnPolicyRunner
@@ -117,6 +118,8 @@ def main(
             raise ValueError("Distributed training requires a CUDA device.")
 
         if args_cli.distributed:
+            # Keep device-less Warp launches on this process's resolved distributed device.
+            wp.set_device(env_cfg.sim.device)
             dist.init_process_group(backend="nccl")
             auto_affinity()
             rank, world_size = dist.get_rank(), dist.get_world_size()
