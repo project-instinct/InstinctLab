@@ -42,7 +42,7 @@ Use these source revisions and dependency constraints for the InstinctLab Isaac 
 | Python | `>=3.12,<3.13` |
 | Isaac Sim | `6.0.1.0` |
 | Isaac Lab | `release/3.0.0-beta2` at `6a7acb0320a0bdc15b13e44e83b575e00797faf4` (package `6.1.17`) |
-| Instinct-RL | `upgrade/isaaclab3.0.0-beta2` at `b1ee3f84983e10da385eafcd7da1f010e34f01ca` (package `1.0.2`) |
+| Instinct-RL | `upgrade/isaaclab3.0.0-beta2` at `846008a0d7b77fce99167a73199807d3c94a703a` (package `1.0.3`) |
 | PyTorch | `2.11.0` |
 | TorchVision | `0.26.0` |
 | TorchAudio | `2.11.0` |
@@ -58,7 +58,7 @@ Use the full source SHAs rather than the floating branch heads when reproducing 
     TL; DR;
     ```bash
     git clone https://github.com/project-instinct/instinct_rl.git
-    git -C instinct_rl checkout b1ee3f84983e10da385eafcd7da1f010e34f01ca
+    git -C instinct_rl checkout 846008a0d7b77fce99167a73199807d3c94a703a
     python -m pip install -e instinct_rl
     ```
 

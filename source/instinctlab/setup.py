@@ -18,8 +18,7 @@ INSTALL_REQUIRES = [
     "isaaclab-physx==1.1.3",
     "isaaclab-tasks==1.10.9",
     "isaaclab-visualizers==0.1.0",
-    # Instinct-RL source snapshot b1ee3f84983e10da385eafcd7da1f010e34f01ca
-    "instinct-rl==1.0.2",
+    "instinct-rl==1.0.3",
     # Direct numerical/runtime dependencies
     "numpy>=2",
     "torch==2.11.0",
