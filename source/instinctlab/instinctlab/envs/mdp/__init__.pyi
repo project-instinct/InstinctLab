@@ -181,6 +181,8 @@ from .rewards.shadowing_command import (
 from .rewards.volume_points import step_safety, volume_points_penetration
 from .terminations.general import (
     abnormal_ang_vel,
+    abnormal_body_acc,
+    abnormal_body_vel,
     abnormal_joint_acc,
     abnormal_joint_vel,
     abnormal_lin_vel,

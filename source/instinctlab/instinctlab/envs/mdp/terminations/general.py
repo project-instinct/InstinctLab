@@ -107,36 +107,86 @@ def abnormal_lin_vel(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     max_value: float = 40.0,  # [m/s]
+    print_reason: bool = False,
 ):
     asset = env.scene[asset_cfg.name]
-    return torch.norm(asset.data.root_lin_vel_w.torch, dim=-1) > max_value
+    return_ = torch.norm(asset.data.root_lin_vel_w.torch, dim=-1) > max_value
+    if print_reason and return_.any():
+        print(f"abnormal_lin_vel: terminating {return_.sum().item()} envs")
+    return return_
 
 
 def abnormal_ang_vel(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     max_value: float = 40.0,  # [rad/s]
+    print_reason: bool = False,
 ):
     asset = env.scene[asset_cfg.name]
-    return torch.norm(asset.data.root_ang_vel_w.torch, dim=-1) > max_value
+    return_ = torch.norm(asset.data.root_ang_vel_w.torch, dim=-1) > max_value
+    if print_reason and return_.any():
+        print(f"abnormal_ang_vel: terminating {return_.sum().item()} envs")
+    return return_
 
 
 def abnormal_joint_vel(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     max_value: float = 40.0,  # [rad/s]
+    print_reason: bool = False,
 ):
     asset = env.scene[asset_cfg.name]
-    return torch.any(torch.abs(asset.data.joint_vel.torch) > max_value, dim=-1)
+    return_ = torch.any(torch.abs(asset.data.joint_vel.torch) > max_value, dim=-1)
+    if print_reason and return_.any():
+        print(f"abnormal_joint_vel: terminating {return_.sum().item()} envs")
+    return return_
 
 
 def abnormal_joint_acc(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     max_value: float = 4000.0,  # [rad/s^2]
+    print_reason: bool = False,
 ):
     asset = env.scene[asset_cfg.name]
-    return torch.any(torch.abs(asset.data.joint_acc.torch) > max_value, dim=-1)
+    return_ = torch.any(torch.abs(asset.data.joint_acc.torch) > max_value, dim=-1)
+    if print_reason and return_.any():
+        print(f"abnormal_joint_acc: terminating {return_.sum().item()} envs")
+    return return_
+
+
+def abnormal_body_vel(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    max_value: float = 100.0,  # [m/s or rad/s, norm of body spatial velocity]
+    print_reason: bool = False,
+):
+    """Terminate environments whose fastest body spatial-velocity norm is implausibly large."""
+    asset = env.scene[asset_cfg.name]
+    body_vel = asset.data.body_vel_w.torch
+    if asset_cfg.body_ids is not None:
+        body_vel = body_vel[:, asset_cfg.body_ids]
+    return_ = torch.any(torch.norm(body_vel, dim=-1) > max_value, dim=-1)
+    if print_reason and return_.any():
+        print(f"abnormal_body_vel: terminating {return_.sum().item()} envs")
+    return return_
+
+
+def abnormal_body_acc(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    max_value: float = 10000.0,  # [m/s^2 or rad/s^2, norm of body spatial acceleration]
+    print_reason: bool = False,
+):
+    """Terminate environments whose fastest body spatial-acceleration norm is implausibly large."""
+    asset = env.scene[asset_cfg.name]
+    body_acc = asset.data.body_acc_w.torch
+    if asset_cfg.body_ids is not None:
+        body_acc = body_acc[:, asset_cfg.body_ids]
+    return_ = torch.any(torch.norm(body_acc, dim=-1) > max_value, dim=-1)
+    if print_reason and return_.any():
+        print(f"abnormal_body_acc: terminating {return_.sum().item()} envs")
+    return return_
 
 
 def nan_guard(env: ManagerBasedRLEnv, print_reason: bool = False) -> torch.Tensor:
