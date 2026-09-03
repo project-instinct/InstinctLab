@@ -139,6 +139,50 @@ def abnormal_joint_acc(
     return torch.any(torch.abs(asset.data.joint_acc.torch) > max_value, dim=-1)
 
 
+def nan_guard(env: ManagerBasedRLEnv, print_reason: bool = False) -> torch.Tensor:
+    """Terminate environments whose canonical scene state contains NaN or Inf.
+
+    The state is obtained from :meth:`InteractiveScene.get_state`, which covers the restorable
+    state of articulations, rigid objects, deformable objects, and surface grippers.
+
+    Args:
+        env: The environment object.
+        print_reason: Whether to print which entities triggered the termination.
+
+    Returns:
+        A boolean tensor indicating which environments to terminate.
+    """
+    terminated = torch.zeros(env.num_envs, device=env.device, dtype=torch.bool)
+    scene_state = env.scene.get_state(is_relative=False)
+
+    for entity_group in scene_state.values():
+        for entity_name, entity_state in entity_group.items():
+            fields = entity_state.items() if isinstance(entity_state, dict) else (("state", entity_state),)
+            bad_envs = torch.zeros(env.num_envs, device=env.device, dtype=torch.bool)
+            for field_name, tensor in fields:
+                if (
+                    not isinstance(tensor, torch.Tensor)
+                    or not tensor.is_floating_point()
+                    or tensor.ndim < 1
+                    or tensor.shape[0] != env.num_envs
+                ):
+                    continue
+                non_finite = ~tensor.reshape(env.num_envs, -1).isfinite().all(dim=1)
+                bad_envs |= non_finite
+                if print_reason and non_finite.any():
+                    print(
+                        f"nan_guard: '{entity_name}.{field_name}' has non-finite data in {non_finite.sum().item()} envs"
+                    )
+
+            if print_reason and bad_envs.any():
+                print(f"nan_guard: '{entity_name}' has non-finite data in {bad_envs.sum().item()} envs")
+            terminated |= bad_envs
+
+    if print_reason and terminated.any():
+        print(f"nan_guard: terminating {terminated.sum().item()} envs")
+    return terminated
+
+
 class illegal_reset_contact(ManagerTermBase):
     def __init__(self, cfg: ManagerTermBaseCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)

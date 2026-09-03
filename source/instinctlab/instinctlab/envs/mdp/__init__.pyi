@@ -186,6 +186,7 @@ from .terminations.general import (
     abnormal_lin_vel,
     dataset_exhausted,
     illegal_reset_contact,
+    nan_guard,
     terrain_out_of_bounds,
 )
 from .terminations.motion_reference import (
