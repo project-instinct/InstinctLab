@@ -411,9 +411,9 @@ class MotionReferenceManagerBase(SensorBase):
                     self._init_reference_state.base_quat_w[env_ids_to_augment],
                 )
                 self._init_reference_state.base_lin_vel_w[env_ids_to_augment, 1] *= -1
-                self._init_reference_state.base_ang_vel_w[
-                    env_ids_to_augment, 1
-                ] *= -1  # NOTE: validity provided by chatgpt
+                self._init_reference_state.base_ang_vel_w[env_ids_to_augment] = self._symmetric_augment_ang_vel_buffer(
+                    self._init_reference_state.base_ang_vel_w[env_ids_to_augment],
+                )
         return self._init_reference_state[env_ids]
 
     def target_link_pose_forward_kinematics(self, joint_pos: torch.Tensor) -> torch.Tensor:
