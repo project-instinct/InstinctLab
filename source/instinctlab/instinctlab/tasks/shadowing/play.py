@@ -71,15 +71,10 @@ parser.add_argument(
 # append Instinct-RL cli arguments
 cli_args.add_instinct_rl_args(parser)
 # append simulation launcher cli args
-from isaaclab_tasks.utils import add_launcher_args  # isort: skip
+from isaaclab.app import add_launcher_args  # isort: skip
 
 add_launcher_args(parser)
 args_cli = parser.parse_args()
-# TODO: Remove this workaround once Isaac Lab initializes `/isaaclab/has_gui` itself.
-# release/3.0.0-beta2 leaves it unset, preventing the Kit `IsaacLab` window and live monitors
-# from being created. This setting concerns the Kit GUI only, not the selected physics backend.
-if "kit" in (args_cli.visualizer or []):
-    args_cli.kit_args = f"{args_cli.kit_args} --/isaaclab/has_gui=true".strip()
 # always enable cameras to record video
 if args_cli.video:
     args_cli.enable_cameras = True
@@ -93,9 +88,11 @@ import torch
 from instinct_rl.runners import OnPolicyRunner
 
 import isaaclab.utils.math as math_utils
+from isaaclab.app import launch_simulation
+from isaaclab.envs.utils.video_recorder_cfg import VideoRecorderCfg
 from isaaclab.utils.dict import print_dict
 from isaaclab.utils.io import load_yaml
-from isaaclab_tasks.utils import get_checkpoint_path, launch_simulation, parse_env_cfg
+from isaaclab_tasks.utils import get_checkpoint_path, parse_env_cfg
 
 # Import extensions to set up environment tasks
 import instinctlab.tasks  # noqa: F401
@@ -161,12 +158,29 @@ def main():
 
     # configure the environment-owned recorder before environment construction
     if args_cli.video:
-        env_cfg.video_recorder.backend_source = "visualizer"
-        env_cfg.video_recorder.window_width = 1920
-        env_cfg.video_recorder.window_height = 1080
+        env_cfg.video_recorders = [
+            VideoRecorderCfg(
+                source="visualizer",
+                output_dir=os.path.join(log_dir, "videos", "play"),
+                video_length=args_cli.video_length,
+                step_offset=args_cli.video_start_step,
+                output_filename_prefix=f"model_{resume_path.split('_')[-1].split('.')[0]}",
+            )
+        ]
 
     with launch_simulation(env_cfg, args_cli):
         return _run_play(env_cfg, agent_cfg, agent_cfg_dict, log_dir, resume_path)
+
+
+def _get_kit_visualizer(env):
+    """Return the active Kit visualizer from the environment's simulation, if any."""
+    sim = getattr(env.unwrapped, "sim", None)
+    if sim is None:
+        return None
+    for viz in getattr(sim, "visualizers", []):
+        if getattr(getattr(viz, "cfg", None), "visualizer_type", None) == "kit":
+            return viz
+    return None
 
 
 def _run_play(env_cfg, agent_cfg, agent_cfg_dict, log_dir: str, resume_path: str):
@@ -177,22 +191,10 @@ def _run_play(env_cfg, agent_cfg, agent_cfg_dict, log_dir: str, resume_path: str
     from instinctlab.utils.wrappers import InstinctRlVecEnvWrapper
 
     # create isaac environment
-    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
-    viewport_camera_controller = env.unwrapped.viewport_camera_controller
-    if args_cli.cam_rotate_speed is not None and viewport_camera_controller is None:
-        raise RuntimeError("--cam_rotate_speed requires --viz kit so Isaac Lab creates a viewport camera controller.")
-    # wrap for video recording
-    if args_cli.video:
-        video_kwargs = {
-            "video_folder": os.path.join(log_dir, "videos", "play"),
-            "step_trigger": lambda step: step == args_cli.video_start_step,
-            "video_length": args_cli.video_length,
-            "disable_logger": True,
-            "name_prefix": f"model_{resume_path.split('_')[-1].split('.')[0]}",
-        }
-        print("[INFO] Recording videos during playing.")
-        print_dict(video_kwargs, nesting=4)
-        env = gym.wrappers.RecordVideo(env, **video_kwargs)
+    env = gym.make(args_cli.task, cfg=env_cfg)
+    kit_visualizer = _get_kit_visualizer(env)
+    if args_cli.cam_rotate_speed is not None and kit_visualizer is None:
+        raise RuntimeError("--cam_rotate_speed requires --viz kit so Isaac Lab creates a Kit visualizer.")
 
     # convert to single-agent instance if required by the RL algorithm
     if isinstance(env.unwrapped, DirectMARLEnv):
@@ -268,7 +270,7 @@ def _run_play(env_cfg, agent_cfg, agent_cfg_dict, log_dir: str, resume_path: str
             else:
                 teacher_actions = None
             # get base errors
-            monitor = env.unwrapped.monitor_manager.active_terms["shadowing_position_stats"]
+            monitor = env.unwrapped.monitor_manager._terms["shadowing_position_stats"]
             robot_base_pos = monitor._robot_base_pos  # [number_env, 3]
             reference_base_pos = monitor._reference_base_pos  # [number_env, 3]
             pos_error = robot_base_pos - reference_base_pos  # (N, 3)
@@ -337,9 +339,9 @@ def _run_play(env_cfg, agent_cfg, agent_cfg_dict, log_dir: str, resume_path: str
                 break
 
         if args_cli.cam_rotate_speed is not None:
-            # ViewerCfg eye/lookat are offsets from the controller's current asset-root origin.
-            lookat = np.asarray(env_cfg.viewer.lookat)
-            eye_offset = np.asarray(env_cfg.viewer.eye) - lookat
+            # VisualizerCfg eye/lookat are offsets from the controller's current asset-root origin.
+            lookat = np.asarray(env_cfg.sim.default_visualizer_cfg.lookat)
+            eye_offset = np.asarray(env_cfg.sim.default_visualizer_cfg.eye) - lookat
             angle = args_cli.cam_rotate_speed * timestep * env.unwrapped.step_dt
             rotmat = np.array(
                 [
@@ -350,7 +352,9 @@ def _run_play(env_cfg, agent_cfg, agent_cfg_dict, log_dir: str, resume_path: str
             )
             eye_offset = rotmat @ eye_offset
             eye = lookat + eye_offset
-            viewport_camera_controller.update_view_location(eye=eye, lookat=lookat)
+            kit_visualizer.cfg.eye = tuple(eye.tolist())
+            kit_visualizer.cfg.lookat = tuple(lookat.tolist())
+            kit_visualizer.reapply_origin()
 
     # close the simulator
     env.close()
@@ -360,7 +364,7 @@ def _run_play(env_cfg, agent_cfg, agent_cfg_dict, log_dir: str, resume_path: str
             [
                 "code",
                 "-r",
-                os.path.join(log_dir, "videos", "play", f"model_{resume_path.split('_')[-1].split('.')[0]}-step-0.mp4"),
+                os.path.join(log_dir, "videos", "play", f"model_{resume_path.split('_')[-1].split('.')[0]}_0000.mp4"),
             ]
         )
     return total_success, total_traj

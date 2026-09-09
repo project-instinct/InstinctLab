@@ -10,6 +10,7 @@ import warp as wp
 
 import isaaclab.utils.math as math_utils
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.sim.utils import path_expr_to_glob
 
 from instinctlab.motion_reference.utils import (
     get_base_position_distance,
@@ -83,7 +84,7 @@ class TorqueMonitorSensor(MonitorSensor):
         super()._initialize_impl()
         # set access to the articulation we want to monitor
         root_expr = resolve_articulation_root_expression(self.cfg.prim_path)
-        self._view = self._physics_sim_view.create_articulation_view(root_expr.replace(".*", "*"))
+        self._view = self._physics_sim_view.create_articulation_view(path_expr_to_glob(root_expr))
         if self._view._backend is None:
             raise RuntimeError(f"Failed to create a PhysX articulation view at: {root_expr}")
         # set the buffer

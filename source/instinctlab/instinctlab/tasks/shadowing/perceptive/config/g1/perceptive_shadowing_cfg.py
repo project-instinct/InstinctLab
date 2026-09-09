@@ -1,8 +1,9 @@
 import numpy as np
 import os
 
+from isaaclab_visualizers.kit import KitVisualizerCfg
+
 import isaaclab.envs.mdp as mdp
-from isaaclab.envs import ViewerCfg
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.configclass import configclass
 
@@ -65,7 +66,7 @@ class AMASSMotionCfg(AmassMotionCfgBase):
 motion_reference_cfg = MotionReferenceManagerCfg(
     prim_path="{ENV_REGEX_NS}/Robot",
     robot_model_path=G1_CFG.spawn.asset_path,
-    reference_prim_path="/World/envs/env_.*/RobotReference",
+    reference_prim_path="/World/envs/env_[^/]+/RobotReference",
     link_of_interests=[
         "pelvis",
         "torso_link",
@@ -181,15 +182,15 @@ class G1PerceptiveShadowingEnvCfg_PLAY(G1PerceptiveShadowingEnvCfg):
         motion_reference=motion_reference_cfg.replace(debug_vis=True),
     )
 
-    viewer: ViewerCfg = ViewerCfg(
-        eye=(1.5, 0.0, 1.5),
-        lookat=(0.0, 0.0, 0.0),
-        origin_type="asset_root",
-        asset_name="robot",
-    )
-
     def __post_init__(self):
         super().__post_init__()
+
+        self.sim.default_visualizer_cfg = KitVisualizerCfg(
+            eye=(1.5, 0.0, 1.5),
+            lookat=(0.0, 0.0, 0.0),
+            origin_type="asset",
+            origin_track_path="robot",
+        )
 
         # deactivate adaptive sampling and start from the 0.0s of the motion
         self.curriculum.beyond_adaptive_sampling = None

@@ -11,6 +11,7 @@ from isaaclab.managers import RewardTermCfg as RewTermCfg
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTermCfg
 from isaaclab.scene import InteractiveSceneCfg
+from isaaclab.sensors import ContactSensorCfg
 from isaaclab.terrains import TerrainGeneratorCfg, TerrainImporterCfg
 from isaaclab.utils.configclass import configclass
 from isaaclab.utils.noise import UniformNoiseCfg
@@ -21,7 +22,6 @@ from instinctlab.envs.manager_based_rl_env_cfg import InstinctLabRLEnvCfg
 from instinctlab.managers import MultiRewardCfg
 from instinctlab.monitors import MonitorTermCfg, TorqueMonitorSensorCfg
 from instinctlab.motion_reference import MotionReferenceManagerCfg
-from instinctlab.sensors import HierarchicalContactSensorCfg
 from instinctlab.terrains.height_field import PerlinPlaneTerrainCfg
 
 
@@ -66,7 +66,7 @@ class ShadowingSceneCfg(InteractiveSceneCfg):
         prim_path="/World/skyLight",
         spawn=sim_utils.DomeLightCfg(color=(0.13, 0.13, 0.13), intensity=1000.0),
     )
-    contact_forces = HierarchicalContactSensorCfg(
+    contact_forces = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True, force_threshold=10.0
     )
 

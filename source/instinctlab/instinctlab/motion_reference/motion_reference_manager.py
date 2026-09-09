@@ -531,7 +531,7 @@ class MotionReferenceManagerBase(SensorBase):
         self._resample_update_period()
         print(self)  # print the tabular information of the motion reference managed buffer.
 
-    def _update_outdated_buffers(self):
+    def _update_outdated_buffers(self, force_recompute: bool = False):
         """Update only when at least one motion-reference environment is outdated.
 
         Isaac Lab 3's base implementation dispatches both the implementation and
@@ -539,6 +539,10 @@ class MotionReferenceManagerBase(SensorBase):
         when the outdated mask is empty. Motion-reference data is accessed many
         times per environment step, so retain the lazy-sensor contract here and
         skip both dispatches when there is no work.
+
+        ``force_recompute`` is accepted for signature parity with the base sensor
+        (used by the visualization/benchmark path); the time-based outdated mask
+        already drives the update here.
         """
         env_ids = self._ALL_INDICES[self._is_outdated_torch]
         if env_ids.numel() == 0:

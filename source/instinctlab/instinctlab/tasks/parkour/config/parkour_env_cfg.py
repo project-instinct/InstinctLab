@@ -13,7 +13,7 @@ from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.sensors import RayCasterCfg, patterns
+from isaaclab.sensors import ContactSensorCfg, RayCasterCfg, patterns
 from isaaclab.sensors.ray_caster.patterns import PinholeCameraPatternCfg
 from isaaclab.terrains import FlatPatchSamplingCfg, TerrainGeneratorCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
@@ -26,12 +26,7 @@ import instinctlab.terrains as terrain_gen
 from instinctlab.assets.unitree_g1 import beyondmimic_action_scale
 from instinctlab.managers import MultiRewardCfg
 from instinctlab.motion_reference import MotionReferenceManagerCfg
-from instinctlab.sensors import (
-    Grid3dPointsGeneratorCfg,
-    HierarchicalContactSensorCfg,
-    NoisyGroupedRayCasterCameraCfg,
-    VolumePointsCfg,
-)
+from instinctlab.sensors import Grid3dPointsGeneratorCfg, NoisyGroupedRayCasterCameraCfg, VolumePointsCfg
 from instinctlab.terrains import GreedyconcatEdgeCylinderCfg, TerrainImporterCfg
 from instinctlab.utils.noise import (
     CropAndResizeCfg,
@@ -338,9 +333,7 @@ class SceneCfg(InteractiveSceneCfg):
         mesh_prim_paths=["/World/ground"],
         update_period=0.02,
     )
-    contact_forces = HierarchicalContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True
-    )
+    contact_forces = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True)
     leg_volume_points = VolumePointsCfg(
         prim_path="{ENV_REGEX_NS}/Robot",
         body_names_expr=".*_ankle_roll_link",

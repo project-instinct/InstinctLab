@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import warp as wp
 from isaaclab_newton.physics import NewtonManager
-from isaaclab_newton.sensors.ray_caster import MultiMeshRayCaster, MultiMeshRayCasterCamera
+from isaaclab_newton.sensors.ray_caster import LegacyMultiMeshRayCaster, LegacyMultiMeshRayCasterCamera
 
 from instinctlab.sensors.grouped_ray_caster.flat_target_prim_registry import FlatTargetPrimRegistryMixin
 from instinctlab.sensors.grouped_ray_caster.grouped_ray_caster import GroupedRayCasterKernelMixin
@@ -23,7 +23,7 @@ class NewtonGroupedRayCasterBackendMixin:
         attach_expr = prim_expr
         if prim_expr.rsplit("/", 1)[-1].lower() in ("camera", "raycaster"):
             attach_expr = prim_expr.rsplit("/", 1)[0]
-        body_pattern = re.sub(r"env_\.\*", "env_0", attach_expr)
+        body_pattern = re.sub(r"env_(?:\.\*|\[\^/\]\*|\[\^/\]\+|\*)", "env_0", attach_expr, count=1)
         if body_pattern.startswith("/World/envs/env_0/"):
             identity = wp.transform(wp.vec3(0.0, 0.0, 0.0), wp.quat(0.0, 0.0, 0.0, 1.0))
             return [NewtonManager.cl_register_site(body_pattern, identity)]
@@ -31,13 +31,14 @@ class NewtonGroupedRayCasterBackendMixin:
 
     def _register_target_sites_for_exprs(self, owner_exprs: list[str]) -> list[str]:
         identity = wp.transform(wp.vec3(0.0, 0.0, 0.0), wp.quat(0.0, 0.0, 0.0, 1.0))
-        patterns = [re.sub(r"env_(?:\.\*|\*)", "env_0", owner_expr) for owner_expr in owner_exprs]
+        patterns = [
+            re.sub(r"env_(?:\.\*|\[\^/\]\*|\[\^/\]\+|\*)", "env_0", owner_expr, count=1) for owner_expr in owner_exprs
+        ]
         return [NewtonManager.cl_register_site(pattern, identity) for pattern in patterns]
 
     def _create_tracked_target_view(self, target_prim_path: str | list[str]):
         target_exprs = target_prim_path if isinstance(target_prim_path, list) else [target_prim_path]
-        lookup_key = tuple(re.sub(r"env_\.\*", "env_*", expr) for expr in target_exprs)
-        labels = self._tracked_site_labels_by_target[lookup_key]
+        labels = self._tracked_site_labels_by_target[tuple(target_exprs)]
         site_indices = self._resolve_site_indices(labels, str(target_prim_path), self._num_envs)
         return wp.array(site_indices, dtype=wp.int32, device=self._device)
 
@@ -65,7 +66,7 @@ class NewtonGroupedRayCaster(
     GroupedRayCasterKernelMixin,
     FlatTargetPrimRegistryMixin,
     NewtonGroupedRayCasterBackendMixin,
-    MultiMeshRayCaster,
+    LegacyMultiMeshRayCaster,
 ):
     """Newton ray caster over flat mesh entities grouped by fixed world IDs."""
 
@@ -76,7 +77,7 @@ class NewtonGroupedRayCasterCamera(
     GroupedRayCasterCameraKernelMixin,
     FlatTargetPrimRegistryMixin,
     NewtonGroupedRayCasterBackendMixin,
-    MultiMeshRayCasterCamera,
+    LegacyMultiMeshRayCasterCamera,
 ):
     """Newton grouped ray-caster camera."""
 

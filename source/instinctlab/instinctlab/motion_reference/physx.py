@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING
 
 import omni.physics.tensors.api as physx
 
+from isaaclab.sim.utils import path_expr_to_glob
+
 from instinctlab.motion_reference.motion_reference_manager import MotionReferenceManagerBase
 from instinctlab.utils.prims import resolve_articulation_root_expression
 
@@ -23,7 +25,7 @@ class PhysxMotionReferenceManager(MotionReferenceManagerBase):
             self._physics_sim_view.set_subspace_roots("/")
 
         root_expr = resolve_articulation_root_expression(prim_path)
-        articulation_view = self._physics_sim_view.create_articulation_view(root_expr.replace(".*", "*"))
+        articulation_view = self._physics_sim_view.create_articulation_view(path_expr_to_glob(root_expr))
         if articulation_view._backend is None:
             raise RuntimeError(f"Failed to create a PhysX articulation view at: {root_expr}")
         return articulation_view

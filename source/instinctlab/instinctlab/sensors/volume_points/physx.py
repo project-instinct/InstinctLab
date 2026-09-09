@@ -56,7 +56,7 @@ class PhysxVolumePoints(VolumePointsBase):
 
         template_root_path = template_root.GetPath().pathString
         body_paths_glob = [
-            (destination_root_expr + prim.GetPath().pathString[len(template_root_path) :]).replace(".*", "*")
+            sim_utils.path_expr_to_glob(destination_root_expr + prim.GetPath().pathString[len(template_root_path) :])
             for prim in body_prims
         ]
         self._body_physx_view = self._physics_sim_view.create_rigid_body_view(body_paths_glob)

@@ -12,7 +12,7 @@ from isaaclab.managers import RewardTermCfg as RewTermCfg
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTermCfg
 from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.sensors import RayCasterCfg, patterns
+from isaaclab.sensors import ContactSensorCfg, RayCasterCfg, patterns
 from isaaclab.terrains import FlatPatchSamplingCfg
 from isaaclab.utils.configclass import configclass
 from isaaclab.utils.noise import UniformNoiseCfg
@@ -23,7 +23,7 @@ from instinctlab.envs.mdp.events.motion_reference import update_rigid_objects_st
 from instinctlab.managers import MultiRewardCfg
 from instinctlab.monitors import MonitorTermCfg
 from instinctlab.motion_reference import MotionReferenceManagerCfg
-from instinctlab.sensors import GroupedRayCasterCfg, HierarchicalContactSensorCfg, NoisyGroupedRayCasterCameraCfg
+from instinctlab.sensors import GroupedRayCasterCfg, NoisyGroupedRayCasterCameraCfg
 from instinctlab.tasks.shadowing import mdp as shadowing_mdp
 from instinctlab.terrains.terrain_importer_cfg import TerrainImporterCfg
 from instinctlab.utils.noise import (
@@ -172,7 +172,7 @@ class PerceptiveHoiShadowingSceneCfg(InteractiveSceneCfg):
         depth_clipping_behavior="max",  # clip to the maximum value
         min_distance=0.05,
     )
-    contact_forces = HierarchicalContactSensorCfg(
+    contact_forces = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True, force_threshold=10.0
     )
 

@@ -9,6 +9,7 @@ from isaaclab_newton.physics import NewtonManager
 from newton import JointType
 from newton.selection import ArticulationView
 
+from isaaclab.sim.utils import path_expr_to_glob
 from isaaclab.utils.warp.math_ops import transform_to_vec_quat
 
 from instinctlab.motion_reference.motion_reference_manager import MotionReferenceManagerBase
@@ -27,7 +28,7 @@ class NewtonMotionReferenceManager(MotionReferenceManagerBase):
         root_expr = resolve_articulation_root_expression(prim_path)
         articulation_view = ArticulationView(
             NewtonManager.get_model(),
-            root_expr.replace(".*", "*"),
+            path_expr_to_glob(root_expr),
             verbose=False,
             exclude_joint_types=[JointType.FREE, JointType.FIXED],
         )

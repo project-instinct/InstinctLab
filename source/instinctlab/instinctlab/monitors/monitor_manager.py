@@ -101,8 +101,9 @@ class MonitorManager(ManagerBase):
     """
 
     @property
-    def active_terms(self) -> dict[str, MonitorTerm]:
-        return self._terms
+    def active_terms(self) -> list[str]:
+        """Names of the active monitor terms (standard ``ManagerBase`` contract)."""
+        return list(self._terms.keys())
 
     @property
     def has_debug_vis_implementation(self) -> bool:
@@ -138,7 +139,7 @@ class MonitorManager(ManagerBase):
     def get_active_iterable_terms(self, env_idx: int) -> Sequence[tuple[str, Sequence[float]]]:
         """Get the active iterable terms for the given environment index."""
         iterable_terms = []
-        for term_name, term in self.active_terms.items():
+        for term_name, term in self._terms.items():
             if isinstance(term, MonitorTerm):
                 term_data = term.get_log(is_episode=False)
                 term_data_list = []

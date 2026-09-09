@@ -10,7 +10,7 @@ import warp as wp
 from pxr import Usd, UsdPhysics
 
 import isaaclab.sim as sim_utils
-from isaaclab.cloner.cloner_utils import iter_clone_plan_matches
+from isaaclab.cloner.query import iter_sources
 from isaaclab.sensors.ray_caster.base_multi_mesh_ray_caster import BaseMultiMeshRayCaster
 from isaaclab.sim.simulation_context import SimulationContext
 from isaaclab.utils.mesh import PRIMITIVE_MESH_TYPES, create_trimesh_from_geom_mesh, create_trimesh_from_geom_shape
@@ -44,9 +44,7 @@ class FlatTargetPrimRegistryMixin:
         records_per_env = [[] for _ in range(self._num_envs)]
         tracked_target_exprs: list[str] = []
         found_articulation_root = False
-        for source_root, destination_template, source_path, env_ids in iter_clone_plan_matches(
-            plan, target_cfg.prim_expr
-        ):
+        for source_root, destination_template, source_path, env_ids in iter_sources(plan, target_cfg.prim_expr):
             source_prims = sim_utils.find_matching_prims(source_path)
             articulation_root_prims = [prim for prim in source_prims if prim.HasAPI(UsdPhysics.ArticulationRootAPI)]
             if not articulation_root_prims:
@@ -76,7 +74,7 @@ class FlatTargetPrimRegistryMixin:
                     raise RuntimeError(
                         f"Tracked target owner '{source_prim_path}' is not under ClonePlan source root '{source_root}'."
                     )
-                tracked_target_exprs.append(destination_template.format(".*") + owner_suffix)
+                tracked_target_exprs.append(destination_template.format("[^/]+") + owner_suffix)
 
             for env_id in env_ids:
                 for mesh_id in mesh_ids:

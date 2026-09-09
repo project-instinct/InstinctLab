@@ -17,7 +17,7 @@ class GroupedRayCasterCfg(MultiMeshRayCasterCfg):
 def get_link_prim_targets(
     links: list[str],
     urdf_path: str,
-    asset_prim_path: str = "/World/envs/env_.*/Robot",
+    asset_prim_path: str = "/World/envs/env_[^/]+/Robot",
     is_shared=True,  # whether the target prim is assumed to be the same mesh across all environments.
     **kwargs: dict,
 ) -> list[MultiMeshRayCasterCfg.RaycastTargetCfg]:

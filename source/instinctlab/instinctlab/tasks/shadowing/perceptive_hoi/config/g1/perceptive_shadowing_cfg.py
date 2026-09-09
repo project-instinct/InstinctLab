@@ -1,10 +1,11 @@
 import numpy as np
 import os
 
+from isaaclab_visualizers.kit import KitVisualizerCfg
+
 import isaaclab.envs.mdp as mdp
 import isaaclab.sim as sim_utils
 from isaaclab.assets import RigidObjectCfg
-from isaaclab.envs import ViewerCfg
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors.ray_caster import MultiMeshRayCasterCfg
 from isaaclab.sim.schemas import schemas_cfg
@@ -69,7 +70,7 @@ class OmomoMotionCfg(OmomoMotionCfgBase):
 motion_reference_cfg = MotionReferenceManagerCfg(
     prim_path="{ENV_REGEX_NS}/Robot",
     robot_model_path=G1_CFG.spawn.asset_path,
-    reference_prim_path="/World/envs/env_.*/RobotReference",
+    reference_prim_path="/World/envs/env_[^/]+/RobotReference",
     data_class_type="instinctlab.motion_reference.motion_reference_hoi_data:HoiMotionReferenceData",
     state_class_type="instinctlab.motion_reference.motion_reference_hoi_data:HoiMotionReferenceState",
     scene_object_names=list(MESH_FILE_PATHS.keys()),
@@ -142,7 +143,7 @@ class G1PerceptiveHoiShadowingEnvCfg(perceptual_cfg.PerceptiveHoiShadowingEnvCfg
                 self.scene,
                 object_name,
                 RigidObjectCfg(
-                    prim_path=f"/World/envs/env_.*/{object_name}",
+                    prim_path=f"/World/envs/env_[^/]+/{object_name}",
                     spawn=MeshFileCfg(
                         asset_path=mesh_file_path,
                         mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
@@ -159,7 +160,7 @@ class G1PerceptiveHoiShadowingEnvCfg(perceptual_cfg.PerceptiveHoiShadowingEnvCfg
         self.scene.camera.mesh_prim_paths.extend(get_link_prim_targets(G1_29DOF_LINKS, G1_CFG.spawn.asset_path))
         for object_name in list(MESH_FILE_PATHS.keys()):
             self.scene.camera.mesh_prim_paths.append(
-                MultiMeshRayCasterCfg.RaycastTargetCfg(prim_expr=f"/World/envs/env_.*/{object_name}")
+                MultiMeshRayCasterCfg.RaycastTargetCfg(prim_expr=f"/World/envs/env_[^/]+/{object_name}")
             )
 
         self.scene.robot.actuators = beyondmimic_g1_29dof_actuators
@@ -196,15 +197,15 @@ class G1PerceptiveHoiShadowingEnvCfg_PLAY(G1PerceptiveHoiShadowingEnvCfg):
         motion_reference=motion_reference_cfg.replace(debug_vis=True),
     )
 
-    viewer: ViewerCfg = ViewerCfg(
-        eye=(1.5, 0.0, 1.5),
-        lookat=(0.0, 0.0, 0.0),
-        origin_type="asset_root",
-        asset_name="robot",
-    )
-
     def __post_init__(self):
         super().__post_init__()
+
+        self.sim.default_visualizer_cfg = KitVisualizerCfg(
+            eye=(1.5, 0.0, 1.5),
+            lookat=(0.0, 0.0, 0.0),
+            origin_type="asset",
+            origin_track_path="robot",
+        )
 
         # deactivate adaptive sampling and start from the 0.0s of the motion
         MOTION_NAME = list(self.scene.motion_reference.motion_buffers.keys())[0]

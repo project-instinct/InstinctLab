@@ -4,10 +4,11 @@ import yaml
 from dataclasses import MISSING
 from functools import partial
 
+from isaaclab_visualizers.kit import KitVisualizerCfg
+
 import isaaclab.envs.mdp as mdp
 import isaaclab.sim as sim_utils
 from isaaclab.assets import RigidObjectCfg
-from isaaclab.envs import ViewerCfg
 from isaaclab.managers import CurriculumTermCfg, EventTermCfg
 from isaaclab.managers import ObservationGroupCfg as ObsGroupCfg
 from isaaclab.managers import ObservationTermCfg as ObsTermCfg
@@ -68,7 +69,7 @@ class TerrainMotionCfg(TerrainMotionCfgBase):
 motion_reference_cfg = MotionReferenceManagerCfg(
     prim_path="{ENV_REGEX_NS}/Robot",
     robot_model_path=G1_CFG.spawn.asset_path,
-    reference_prim_path="/World/envs/env_.*/RobotReference",
+    reference_prim_path="/World/envs/env_[^/]+/RobotReference",
     link_of_interests=[
         "pelvis",
         "torso_link",
@@ -262,15 +263,15 @@ class G1PerceptiveVaeEnvCfg_PLAY(G1PerceptiveVaeEnvCfg):
         motion_reference=motion_reference_cfg.replace(debug_vis=True),
     )
 
-    viewer: ViewerCfg = ViewerCfg(
-        eye=(0.0, 2.0, 2.5),
-        lookat=(0.0, 0.0, 0.0),
-        origin_type="asset_root",
-        asset_name="robot",
-    )
-
     def __post_init__(self):
         super().__post_init__()
+
+        self.sim.default_visualizer_cfg = KitVisualizerCfg(
+            eye=(0.0, 2.0, 2.5),
+            lookat=(0.0, 0.0, 0.0),
+            origin_type="asset",
+            origin_track_path="robot",
+        )
 
         # deactivate adaptive sampling and start from the 0.0s of the motion
         self.curriculum.beyond_adaptive_sampling = None

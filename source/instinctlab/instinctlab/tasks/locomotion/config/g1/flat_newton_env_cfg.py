@@ -23,7 +23,6 @@ def _newton_sim_cfg() -> SimulationCfg:
                 integrator="implicitfast",
                 cone="pyramidal",
                 impratio=1.0,
-                ls_parallel=False,
                 use_mujoco_contacts=True,
             ),
             num_substeps=1,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from isaaclab_newton.sensors.ray_caster import MultiMeshRayCasterCamera, RayCasterCamera
+from isaaclab_newton.sensors.ray_caster import LegacyMultiMeshRayCasterCamera, LegacyRayCasterCamera
 
 from instinctlab.sensors.grouped_ray_caster.newton import NewtonGroupedRayCasterCamera
 from instinctlab.sensors.noisy_camera.noisy_camera import NoisyCameraMixin
@@ -13,13 +13,13 @@ if TYPE_CHECKING:
     from instinctlab.sensors.noisy_camera.noisy_raycaster_camera_cfg import NoisyRayCasterCameraCfg
 
 
-class NewtonNoisyRayCasterCamera(NoisyCameraMixin, RayCasterCamera):
+class NewtonNoisyRayCasterCamera(NoisyCameraMixin, LegacyRayCasterCamera):
     """Newton noisy ray-caster camera."""
 
     cfg: NoisyRayCasterCameraCfg
 
 
-class NewtonNoisyMultiMeshRayCasterCamera(NoisyCameraMixin, MultiMeshRayCasterCamera):
+class NewtonNoisyMultiMeshRayCasterCamera(NoisyCameraMixin, LegacyMultiMeshRayCasterCamera):
     """Newton noisy multi-mesh ray-caster camera."""
 
     cfg: NoisyMultiMeshRayCasterCameraCfg

@@ -8,8 +8,9 @@ import os
 import yaml
 from functools import partial
 
+from isaaclab_visualizers.kit import KitVisualizerCfg
+
 import isaaclab.envs.mdp as mdp
-from isaaclab.envs import ViewerCfg
 from isaaclab.managers import CurriculumTermCfg
 from isaaclab.managers import RewardTermCfg as RewTermCfg
 from isaaclab.managers import SceneEntityCfg
@@ -198,7 +199,7 @@ class AmassMotionCfg(AmassMotionCfgBase):
 motion_reference_cfg = MotionReferenceManagerCfg(
     prim_path="{ENV_REGEX_NS}/Robot",
     robot_model_path=G1_CFG.spawn.asset_path,
-    reference_prim_path="/World/envs/env_.*/RobotReference",
+    reference_prim_path="/World/envs/env_[^/]+/RobotReference",
     link_of_interests=[
         "pelvis",
         "torso_link",
@@ -428,16 +429,16 @@ class G1PlaneShadowingEnvCfg_PLAY(G1PlaneShadowingEnvCfg):
         ),
     )
 
-    viewer: ViewerCfg = ViewerCfg(
-        eye=(4.0, 0.75, 1.0),
-        lookat=(0.0, 0.75, 0.0),
-        origin_type="asset_root",
-        asset_name="robot",
-    )
-
     def __post_init__(self):
         # post init of parent
         super().__post_init__()
+
+        self.sim.default_visualizer_cfg = KitVisualizerCfg(
+            eye=(4.0, 0.75, 1.0),
+            lookat=(0.0, 0.75, 0.0),
+            origin_type="asset",
+            origin_track_path="robot",
+        )
 
         # spawn the robot randomly in the grid (instead of their terrain levels)
         self.scene.terrain.max_init_terrain_level = None

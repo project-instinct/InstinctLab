@@ -12,16 +12,18 @@ import os
 import sys
 import torch
 import torch.distributed as dist
-import warp as wp
 from datetime import datetime
 
+import warp as wp
 from instinct_rl.runners import OnPolicyRunner
 
 import isaaclab
+from isaaclab.app import add_launcher_args, launch_simulation
 from isaaclab.envs import DirectMARLEnvCfg, DirectRLEnvCfg, ManagerBasedRLEnvCfg
+from isaaclab.envs.utils.video_recorder_cfg import VideoRecorderCfg
 from isaaclab.utils.dict import print_dict
 from isaaclab.utils.io import dump_yaml
-from isaaclab_tasks.utils import add_launcher_args, get_checkpoint_path, launch_simulation
+from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
 
 import instinctlab.tasks  # noqa: F401
@@ -49,12 +51,6 @@ parser.add_argument("--cprofile", action="store_true", default=False, help="Enab
 cli_args.add_instinct_rl_args(parser)
 add_launcher_args(parser)
 args_cli, hydra_args = parser.parse_known_args()
-
-# TODO: Remove this workaround once Isaac Lab initializes `/isaaclab/has_gui` itself.
-# release/3.0.0-beta2 leaves it unset, preventing the Kit `IsaacLab` window and live monitors
-# from being created. This setting concerns the Kit GUI only, not the selected physics backend.
-if "kit" in (args_cli.visualizer or []):
-    args_cli.kit_args = f"{args_cli.kit_args} --/isaaclab/has_gui=true".strip()
 
 if "LOCAL_RANK" in os.environ:
     args_cli.distributed = True
@@ -160,23 +156,31 @@ def main(
                 log_dir += f"_from{resume_name_parts[0]}_{resume_name_parts[1]}"
 
         env_cfg.log_dir = log_dir
-        env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
+        if args_cli.video:
+            env_cfg.video_recorders = [
+                VideoRecorderCfg(
+                    source="visualizer",
+                    output_dir=os.path.join(log_dir, "videos", "train"),
+                    video_interval=args_cli.video_interval,
+                    video_length=args_cli.video_length,
+                )
+            ]
+            print("[INFO] Recording videos during training.")
+            print_dict(
+                {
+                    "source": env_cfg.video_recorders[0].source,
+                    "output_dir": env_cfg.video_recorders[0].output_dir,
+                    "video_interval": env_cfg.video_recorders[0].video_interval,
+                    "video_length": env_cfg.video_recorders[0].video_length,
+                },
+                nesting=4,
+            )
+        env = gym.make(args_cli.task, cfg=env_cfg)
 
         if isinstance(env.unwrapped.cfg, DirectMARLEnvCfg):
             from isaaclab.envs import multi_agent_to_single_agent
 
             env = multi_agent_to_single_agent(env)
-
-        if args_cli.video:
-            video_kwargs = {
-                "video_folder": os.path.join(log_dir, "videos", "train"),
-                "step_trigger": lambda step: step % args_cli.video_interval == 0,
-                "video_length": args_cli.video_length,
-                "disable_logger": True,
-            }
-            print("[INFO] Recording videos during training.")
-            print_dict(video_kwargs, nesting=4)
-            env = gym.wrappers.RecordVideo(env, **video_kwargs)
 
         env = InstinctRlVecEnvWrapper(env)
         runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)

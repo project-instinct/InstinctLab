@@ -1,9 +1,11 @@
 import math
 from dataclasses import MISSING
 
+from isaaclab_visualizers.kit import KitVisualizerCfg
+
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
-from isaaclab.envs import ViewerCfg, mdp
+from isaaclab.envs import mdp
 from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.managers import EventTermCfg as Event
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
@@ -12,6 +14,7 @@ from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
+from isaaclab.sensors import ContactSensorCfg
 from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.configclass import configclass
@@ -26,7 +29,6 @@ from instinctlab.assets.unitree_g1 import (
 )
 from instinctlab.envs.manager_based_rl_env_cfg import InstinctLabRLEnvCfg
 from instinctlab.monitors import MonitorTermCfg
-from instinctlab.sensors import HierarchicalContactSensorCfg
 from instinctlab.utils.config import set_cfg_joint_order
 
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
@@ -52,9 +54,7 @@ class G1FlatSceneCfg(InteractiveSceneCfg):
         debug_vis=False,
     )
     robot = G1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
-    contact_forces = HierarchicalContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True
-    )
+    contact_forces = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True)
     sky_light = AssetBaseCfg(
         prim_path="/World/skyLight",
         spawn=sim_utils.DomeLightCfg(
@@ -367,11 +367,14 @@ class G1FlatEnvCfg(InstinctLabRLEnvCfg):
     monitors: G1FlatMonitorCfg = G1FlatMonitorCfg()
     events: G1FlatEventsCfg = G1FlatEventsCfg()
     curriculum: G1FlatCurriculumCfg = G1FlatCurriculumCfg()
-    viewer: ViewerCfg = ViewerCfg(
-        eye=(2.0, 2.0, 0.5), lookat=(0.0, 0.0, 0.0), origin_type="asset_root", asset_name="robot"
-    )
 
     def __post_init__(self):
+        self.sim.default_visualizer_cfg = KitVisualizerCfg(
+            eye=(2.0, 2.0, 0.5),
+            lookat=(0.0, 0.0, 0.0),
+            origin_type="asset",
+            origin_track_path="robot",
+        )
         joint_order = list(G1_29DOF_POLICY_JOINT_ORDER_V1)
         set_cfg_joint_order(self.actions.joint_pos, joint_order)
         self.observations.policy.joint_pos.params["asset_cfg"] = set_cfg_joint_order(

@@ -1,7 +1,7 @@
 # Project Instinct
 
 [![IsaacSim](https://img.shields.io/badge/IsaacSim-6.0.1-silver.svg)](https://docs.omniverse.nvidia.com/isaacsim/latest/overview.html)
-[![Isaac Lab](https://img.shields.io/badge/IsaacLab-3.0.0--beta2-silver)](https://isaac-sim.github.io/IsaacLab)
+[![Isaac Lab](https://img.shields.io/badge/IsaacLab-3.0.0-silver)](https://isaac-sim.github.io/IsaacLab)
 [![Python](https://img.shields.io/badge/python-3.12-blue.svg)](https://docs.python.org/3/whatsnew/3.12.html)
 [![Linux platform](https://img.shields.io/badge/platform-linux--64-orange.svg)](https://releases.ubuntu.com/20.04/)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://pre-commit.com/)
@@ -41,14 +41,14 @@ Use these source revisions and dependency constraints for the InstinctLab Isaac 
 |---|---|
 | Python | `>=3.12,<3.13` |
 | Isaac Sim | `6.0.1.0` |
-| Isaac Lab | `release/3.0.0-beta2` at `6a7acb0320a0bdc15b13e44e83b575e00797faf4` (package `6.1.17`) |
+| Isaac Lab | `release/3.0.0` at `6e0cbe2c3953b2e32fefc1065f4c4f5818f458c3` (package `16.4.0`) |
 | Instinct-RL | `upgrade/isaaclab3.0.0-beta2` at `846008a0d7b77fce99167a73199807d3c94a703a` (package `1.0.3`) |
 | PyTorch | `2.11.0` |
 | TorchVision | `0.26.0` |
 | TorchAudio | `2.11.0` |
 | NumPy | `>=2` |
-| Warp | `1.13.0` |
-| Gymnasium | `1.2.1` |
+| Warp | `1.16.0` |
+| Gymnasium | `1.3.0` |
 
 Use the full source SHAs rather than the floating branch heads when reproducing an experiment.
 

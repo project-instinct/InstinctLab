@@ -36,15 +36,10 @@ parser.add_argument("--keyboard_angvel", type=float, default=1.0, help="Angular 
 # append Instinct-RL cli arguments
 cli_args.add_instinct_rl_args(parser)
 # append simulation launcher cli args
-from isaaclab_tasks.utils import add_launcher_args  # isort: skip
+from isaaclab.app import add_launcher_args  # isort: skip
 
 add_launcher_args(parser)
 args_cli = parser.parse_args()
-# TODO: Remove this workaround once Isaac Lab initializes `/isaaclab/has_gui` itself.
-# release/3.0.0-beta2 leaves it unset, preventing the Kit `IsaacLab` window and live monitors
-# from being created. This setting concerns the Kit GUI only, not the selected physics backend.
-if "kit" in (args_cli.visualizer or []):
-    args_cli.kit_args = f"{args_cli.kit_args} --/isaaclab/has_gui=true".strip()
 # always enable cameras to record video
 if args_cli.video:
     args_cli.enable_cameras = True
@@ -57,9 +52,11 @@ import torch
 from instinct_rl.runners import OnPolicyRunner
 from instinct_rl.utils.utils import get_obs_slice, get_subobs_by_components, get_subobs_size
 
+from isaaclab.app import launch_simulation
+from isaaclab.envs.utils.video_recorder_cfg import VideoRecorderCfg
 from isaaclab.utils.dict import print_dict
 from isaaclab.utils.io import load_yaml
-from isaaclab_tasks.utils import get_checkpoint_path, launch_simulation, parse_env_cfg
+from isaaclab_tasks.utils import get_checkpoint_path, parse_env_cfg
 
 from instinctlab.utils.wrappers.instinct_rl import InstinctRlOnPolicyRunnerCfg
 
@@ -119,7 +116,15 @@ def main():
         env_cfg.episode_length_s = 1e10
 
     if args_cli.video:
-        env_cfg.video_recorder.backend_source = "visualizer"
+        env_cfg.video_recorders = [
+            VideoRecorderCfg(
+                source="visualizer",
+                output_dir=os.path.join(log_dir, "videos", "play"),
+                video_length=args_cli.video_length,
+                step_offset=args_cli.video_start_step,
+                output_filename_prefix=f"model_{resume_path.split('_')[-1].split('.')[0]}",
+            )
+        ]
 
     with launch_simulation(env_cfg, args_cli):
         return _run_play(env_cfg, agent_cfg, agent_cfg_dict, log_dir, resume_path)
@@ -137,19 +142,7 @@ def _run_play(env_cfg, agent_cfg, agent_cfg_dict, log_dir: str, resume_path: str
         from carb.input import KeyboardEventType
 
     # create isaac environment
-    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
-    # wrap for video recording
-    if args_cli.video:
-        video_kwargs = {
-            "video_folder": os.path.join(log_dir, "videos", "play"),
-            "step_trigger": lambda step: step == args_cli.video_start_step,
-            "video_length": args_cli.video_length,
-            "disable_logger": True,
-            "name_prefix": f"model_{resume_path.split('_')[-1].split('.')[0]}",
-        }
-        print("[INFO] Recording videos during playing.")
-        print_dict(video_kwargs, nesting=4)
-        env = gym.wrappers.RecordVideo(env, **video_kwargs)
+    env = gym.make(args_cli.task, cfg=env_cfg)
 
     # convert to single-agent instance if required by the RL algorithm
     if isinstance(env.unwrapped, DirectMARLEnv):
@@ -277,7 +270,7 @@ def _run_play(env_cfg, agent_cfg, agent_cfg_dict, log_dir: str, resume_path: str
             [
                 "code",
                 "-r",
-                os.path.join(log_dir, "videos", "play", f"model_{resume_path.split('_')[-1].split('.')[0]}-step-0.mp4"),
+                os.path.join(log_dir, "videos", "play", f"model_{resume_path.split('_')[-1].split('.')[0]}_0000.mp4"),
             ]
         )
 

@@ -1,7 +1,8 @@
 import copy
 import os
 
-from isaaclab.envs import ViewerCfg
+from isaaclab_visualizers.kit import KitVisualizerCfg
+
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.configclass import configclass
 
@@ -50,7 +51,7 @@ class AmassMotionCfg(AmassMotionCfgBase):
 motion_reference_cfg = MotionReferenceManagerCfg(
     prim_path="{ENV_REGEX_NS}/Robot",
     robot_model_path=G1_CFG.spawn.asset_path,
-    reference_prim_path="/World/envs/env_.*/RobotReference",
+    reference_prim_path="/World/envs/env_[^/]+/RobotReference",
     symmetric_augmentation_link_mapping=[0, 1, 3, 2, 5, 4, 7, 6, 9, 8, 11, 10, 13, 12],
     symmetric_augmentation_joint_mapping=G1_29Dof_TorsoBase_symmetric_augmentation_joint_mapping,
     symmetric_augmentation_joint_reverse_buf=G1_29Dof_TorsoBase_symmetric_augmentation_joint_reverse_buf,
@@ -141,11 +142,11 @@ class G1ParkourRoughEnvCfg_PLAY(G1ParkourRoughEnvCfg):
         self.scene.terrain.terrain_generator = ROUGH_TERRAINS_CFG_PLAY
         # make a smaller scene for play
         self.scene.num_envs = 10
-        self.viewer = ViewerCfg(
+        self.sim.default_visualizer_cfg = KitVisualizerCfg(
             eye=(4.0, 0.75, 1.0),
             lookat=(0.0, 0.75, 0.0),
-            origin_type="asset_root",
-            asset_name="robot",
+            origin_type="asset",
+            origin_track_path="robot",
         )
 
         self.scene.env_spacing = 2.5

@@ -1,5 +1,5 @@
 from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg, NewtonCollisionPipelineCfg, NewtonShapeCfg
-from isaaclab_visualizers.newton import NewtonVisualizerCfg
+from isaaclab_visualizers.newton import NewtonGLVisualizerCfg
 
 from isaaclab.sim import SimulationCfg
 from isaaclab.utils.configclass import configclass
@@ -24,7 +24,6 @@ def newton_sim_cfg(
                 integrator="implicitfast",
                 cone="pyramidal",
                 impratio=1.0,
-                ls_parallel=False,
                 use_mujoco_contacts=use_mujoco_contacts,
             ),
             collision_cfg=(
@@ -45,7 +44,7 @@ def newton_sim_cfg(
 
 
 @configclass
-class InstinctNewtonVisualizerCfg(NewtonVisualizerCfg):
+class InstinctNewtonVisualizerCfg(NewtonGLVisualizerCfg):
     """Newton visualizer config that can expose collision-only shapes clearly.
 
     Isaac Lab's Newton visualizer wrapper currently does not surface Newton's
