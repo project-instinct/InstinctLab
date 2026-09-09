@@ -1,4 +1,4 @@
-"""Script to play a checkpoint if an RL agent from Instinct-RL."""
+"""Script to play a checkpoint of an RL agent from Instinct-RL."""
 
 import argparse
 import gymnasium as gym
