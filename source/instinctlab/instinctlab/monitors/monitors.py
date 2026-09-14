@@ -1034,12 +1034,12 @@ class ShadowingGravityMonitorTerm(MonitorTerm):
         )
 
         robot: Articulation = self._env.scene[self.cfg.params["robot_cfg"].name]
-        rot = robot.data.root_state_w.torch[:, 3:7]
         ref_rot = motion_reference.data.base_quat_w
         ref_rot = ref_rot[motion_reference.ALL_INDICES, motion_reference.aiming_frame_idx]
 
-        pg = math_utils.quat_apply_inverse(rot, robot.data.GRAVITY_VEC_W.torch)
-        ref_pg = math_utils.quat_apply_inverse(ref_rot, robot.data.GRAVITY_VEC_W.torch)
+        gravity_dir_w = math_utils.normalize(robot.data.GRAVITY_VEC_W.torch, eps=1e-6)
+        pg = robot.data.projected_gravity_b.torch
+        ref_pg = math_utils.quat_apply_inverse(ref_rot, gravity_dir_w)
 
         if self.cfg.params.get("z_only", False):
             diff = (pg[:, 2] - ref_pg[:, 2]).abs()

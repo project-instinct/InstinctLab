@@ -435,12 +435,12 @@ def base_projected_gravity_tracking_gauss(
     # obtain the robot rotation and reference rotation
     quat = asset.data.root_state_w.torch[:, 3:7]
     quat_ref = motion_reference.data.base_quat_w[motion_reference.ALL_INDICES, motion_reference.aiming_frame_idx]
-    GRAVITY_VEC_W = asset.data.GRAVITY_VEC_W.torch
+    gravity_dir_w = math_utils.normalize(asset.data.GRAVITY_VEC_W.torch, eps=1e-6)
     projected_gravity = math_utils.quat_apply_inverse(
-        quat, GRAVITY_VEC_W
+        quat, gravity_dir_w
     )  # (num_envs, 3), projected gravity in the robot's local frame
     projected_gravity_ref = math_utils.quat_apply_inverse(
-        quat_ref, GRAVITY_VEC_W
+        quat_ref, gravity_dir_w
     )  # (num_envs, 3), projected gravity in the robot's local frame
 
     reward = projected_gravity - projected_gravity_ref  # (num_envs, 3)
