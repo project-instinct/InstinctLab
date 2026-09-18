@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import importlib.metadata
 import json
@@ -186,6 +187,11 @@ def publish_asset_cache(cfg, flat_usd_path: str | Path) -> Path:
         except FileExistsError:
             if not has_valid_asset_cache(cfg):
                 raise RuntimeError(f"URDF cache race detected at '{cache_dir}'")
+        except OSError as exc:
+            if exc.errno != errno.ENOTEMPTY:
+                raise
+            if not has_valid_asset_cache(cfg):
+                raise RuntimeError(f"URDF cache race detected at '{cache_dir}'") from exc
     finally:
         if promotion_dir.exists():
             shutil.rmtree(promotion_dir, ignore_errors=True)
