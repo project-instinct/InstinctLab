@@ -19,6 +19,10 @@ if TYPE_CHECKING:
 class NewtonGroupedRayCasterBackendMixin:
     """Newton site registration and tracked-target transform access."""
 
+    def _initialize_warp_meshes(self) -> None:
+        self._tracked_target_index = 0
+        super()._initialize_warp_meshes()
+
     def _register_sites_for_expr(self, prim_expr: str) -> list[str]:
         attach_expr = prim_expr
         if prim_expr.rsplit("/", 1)[-1].lower() in ("camera", "raycaster"):
@@ -35,12 +39,6 @@ class NewtonGroupedRayCasterBackendMixin:
             re.sub(r"env_(?:\.\*|\[\^/\]\*|\[\^/\]\+|\*)", "env_0", owner_expr, count=1) for owner_expr in owner_exprs
         ]
         return [NewtonManager.cl_register_site(pattern, identity) for pattern in patterns]
-
-    def _create_tracked_target_view(self, target_prim_path: str | list[str]):
-        target_exprs = target_prim_path if isinstance(target_prim_path, list) else [target_prim_path]
-        labels = self._tracked_site_labels_by_target[tuple(target_exprs)]
-        site_indices = self._resolve_site_indices(labels, str(target_prim_path), self._num_envs)
-        return wp.array(site_indices, dtype=wp.int32, device=self._device)
 
     @staticmethod
     def _tracked_target_count(view) -> int:
@@ -64,8 +62,8 @@ class NewtonGroupedRayCasterBackendMixin:
 
 class NewtonGroupedRayCaster(
     GroupedRayCasterKernelMixin,
-    FlatTargetPrimRegistryMixin,
     NewtonGroupedRayCasterBackendMixin,
+    FlatTargetPrimRegistryMixin,
     LegacyMultiMeshRayCaster,
 ):
     """Newton ray caster over flat mesh entities grouped by fixed world IDs."""
@@ -75,8 +73,8 @@ class NewtonGroupedRayCaster(
 
 class NewtonGroupedRayCasterCamera(
     GroupedRayCasterCameraKernelMixin,
-    FlatTargetPrimRegistryMixin,
     NewtonGroupedRayCasterBackendMixin,
+    FlatTargetPrimRegistryMixin,
     LegacyMultiMeshRayCasterCamera,
 ):
     """Newton grouped ray-caster camera."""
