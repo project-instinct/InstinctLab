@@ -119,6 +119,14 @@ To make the `pre-commit` run automatically on every commit, you can use the foll
 pre-commit install
 ```
 
+## Scripts Folder Conventions
+
+The `scripts/` directory is for entry scripts only. A script may import other modules, but code under
+`scripts/` must **never be imported by other code**. The single exception is `cli_args.py`, which
+originates from the `rsl_rl` workflow and is kept as-is. If you find code that should be reused, put
+it in a `pip`-installable package (e.g. under `source/<package>/`) instead of importing it across
+`scripts/`.
+
 ## Train your own projects
 
 ***To preserve your code development and progress. PLEASE create your own repository as an individual project by referring to https://isaac-sim.github.io/IsaacLab/main/source/overview/own-project/index.html***

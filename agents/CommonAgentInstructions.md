@@ -11,6 +11,8 @@ This a rule starting point for most agents. The `AGENTS.md` file should guide th
 - do not overwrite or revert unrelated work
 - state assumptions, risks, and limitations clearly
 - do not go out-side of the project folder without explicitly asking (once will do)
+- The repository-root `scripts/` directory holds entry scripts only: a script may import other modules, but code under `scripts/` must never be imported by other code. `scripts/instinct_rl/cli_args.py` is the documented exception. Put reusable code in a `pip`-installable package instead.
+    - Minor or historical deviations from a convention are allowed only as clearly stated exceptions. Do not add callers or otherwise broaden the deviation.
 
 ## Code of Conduct Following Linus's Coding Taste
 

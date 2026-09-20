@@ -4,6 +4,7 @@ import argparse
 import os
 import subprocess
 import sys
+from typing import Callable
 
 sys.path.append(os.path.join(os.getcwd(), "scripts", "instinct_rl"))
 
@@ -71,6 +72,37 @@ if args_cli.debug:
     debugpy.listen(ip_address)
     debugpy.wait_for_client()
     debugpy.breakpoint()
+
+
+def load_parkour_onnx_model(
+    model_dir: str, get_subobs_func: Callable, depth_shape: tuple, proprio_slice: slice
+) -> Callable:
+    """Load the Parkour ONNX policy."""
+    import numpy as np
+
+    import onnxruntime as ort
+
+    ort_providers = ort.get_available_providers()
+    encoder = ort.InferenceSession(os.path.join(model_dir, "0-depth_encoder.onnx"), providers=ort_providers)
+    actor = ort.InferenceSession(os.path.join(model_dir, "actor.onnx"), providers=ort_providers)
+    actor_input_name = actor.get_inputs()[0].name
+
+    def policy(obs: torch.Tensor) -> torch.Tensor:
+        depth_image_input = get_subobs_func(obs)
+        depth_image_input = depth_image_input.cpu().numpy()
+        depth_image_input = depth_image_input.reshape((-1, *depth_shape))
+        depth_image_output = encoder.run(None, {encoder.get_inputs()[0].name: depth_image_input})[0]
+        actor_input = np.concatenate(
+            [
+                obs.cpu().numpy()[:, proprio_slice],
+                depth_image_output,
+            ],
+            axis=1,
+        )
+        actor_output = actor.run(None, {actor_input_name: actor_input})[0]
+        return torch.from_numpy(actor_output).to(obs.device)
+
+    return policy
 
 
 def main():
@@ -175,8 +207,6 @@ def _run_play(env_cfg, agent_cfg, agent_cfg_dict, log_dir: str, resume_path: str
 
     # use the exported model for inference
     if args_cli.useonnx:
-        from onnxer import load_parkour_onnx_model
-
         # NOTE: This is only applicable with parkour task
         onnx_policy = load_parkour_onnx_model(
             model_dir=os.path.join(log_dir, "exported"),
