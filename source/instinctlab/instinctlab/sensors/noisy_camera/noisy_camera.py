@@ -146,3 +146,10 @@ class NoisyCameraMixin:
         """Reset the history buffers for the specified data types."""
         for data_type in self.cfg.data_histories:
             self.output_history_buffers[data_type].reset(env_ids)
+            # Sync the cleared window back into the exposed history output so that
+            # observations computed right after a reset do not read stale frames.
+            history_output = self._output_as_torch(f"{data_type}_history")
+            if env_ids is None:
+                history_output[:] = 0.0
+            else:
+                history_output[env_ids] = 0.0
