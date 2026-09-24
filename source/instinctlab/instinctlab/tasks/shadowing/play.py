@@ -266,7 +266,7 @@ def _run_play(env_cfg, agent_cfg, agent_cfg_dict, log_dir: str, resume_path: str
             actions = policy(obs)
             # get teacher actions
             if teacher_policy is not None:
-                teacher_actions = teacher_policy(infos["observations"]["critic"])
+                teacher_actions = teacher_policy(infos["observations"])
             else:
                 teacher_actions = None
             # get base errors
