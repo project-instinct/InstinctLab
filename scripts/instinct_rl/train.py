@@ -5,72 +5,30 @@
 
 """Train an Instinct-RL policy."""
 
-import argparse
 import gymnasium as gym
 import multiprocessing as mp
 import os
-import sys
 import torch
 import torch.distributed as dist
-from datetime import datetime
 
 import warp as wp
 from instinct_rl.runners import OnPolicyRunner
 
 import isaaclab
-from isaaclab.app import add_launcher_args, launch_simulation
-from isaaclab.envs import DirectMARLEnvCfg, DirectRLEnvCfg, ManagerBasedRLEnvCfg
-from isaaclab.envs.utils.video_recorder_cfg import VideoRecorderCfg
-from isaaclab.utils.dict import print_dict
+from isaaclab.app import launch_simulation
+from isaaclab.envs import DirectMARLEnvCfg
 from isaaclab.utils.io import dump_yaml
-from isaaclab_tasks.utils import get_checkpoint_path
-from isaaclab_tasks.utils.hydra import hydra_task_config
 
 import instinctlab.tasks  # noqa: F401
-from instinctlab.utils.wrappers.instinct_rl.rl_cfg import InstinctRlOnPolicyRunnerCfg
+from instinctlab.utils import instinct_rl_cli as cli
 
-# local imports
-import cli_args  # isort: skip
-
-
-parser = argparse.ArgumentParser(description="Train an RL agent with Instinct-RL.")
-parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
-parser.add_argument("--video_length", type=int, default=200, help="Length of each recorded video (in steps).")
-parser.add_argument("--video_interval", type=int, default=2000, help="Interval between video recordings (in steps).")
-parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
-parser.add_argument("--task", type=str, default=None, help="Name of the task.")
-parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment.")
-parser.add_argument(
-    "--logroot", type=str, default=None, help="Override the default log root, typically logs/instinct_rl/."
-)
-parser.add_argument("--max_iterations", type=int, default=None, help="RL policy training iterations.")
-parser.add_argument("--distributed", action="store_true", default=False, help="Run distributed training.")
-parser.add_argument("--local-rank", type=int, help="Local rank assigned by the distributed launcher.")
-parser.add_argument("--debug", action="store_true", default=False, help="Enable debug mode.")
-parser.add_argument("--cprofile", action="store_true", default=False, help="Enable cProfile.")
-cli_args.add_instinct_rl_args(parser)
-add_launcher_args(parser)
-args_cli, hydra_args = parser.parse_known_args()
+parser = cli.build_train_parser()
+args_cli, overrides = cli.parse_cli(parser, require_run_name=True)
 
 if "LOCAL_RANK" in os.environ:
     args_cli.distributed = True
-if args_cli.video:
-    args_cli.enable_cameras = True
 
-# Hydra consumes only the arguments not handled above.
-sys.argv = [sys.argv[0]] + hydra_args
-
-
-if args_cli.debug:
-    import debugpy
-
-    ip_address = ("0.0.0.0", 6789)
-    print("Process: " + " ".join(sys.argv[:]))
-    print("Is waiting for attach at address: %s:%d" % ip_address, flush=True)
-    debugpy.listen(ip_address)
-    debugpy.wait_for_client()
-    debugpy.breakpoint()
-
+cli.wait_for_debugger(args_cli.debug)
 
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
@@ -88,30 +46,25 @@ def auto_affinity():
     print("Affinity auto updated to:", core_mask, "for rank:", rank)
 
 
-@hydra_task_config(args_cli.task, "instinct_rl_cfg_entry_point")
-def main(
-    env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg,
-    agent_cfg: InstinctRlOnPolicyRunnerCfg,
-):
+def main():
     """Launch the configured simulator and train with Instinct-RL."""
     from instinctlab.sim.spawners.from_files.asset_cache import ensure_asset_cache_kit_args
 
+    env_cfg, agent_cfg = cli.resolve_train_cfg(args_cli.task, overrides)
+    agent_cfg = cli.update_instinct_rl_cfg(agent_cfg, args_cli)
+    if args_cli.num_envs is not None:
+        env_cfg.scene.num_envs = args_cli.num_envs
+    if args_cli.max_iterations is not None:
+        agent_cfg.max_iterations = args_cli.max_iterations
+    env_cfg.seed = agent_cfg.seed
+    if args_cli.distributed and args_cli.device is not None and "cpu" in args_cli.device:
+        raise ValueError("Distributed training requires a CUDA device.")
+
     ensure_asset_cache_kit_args(env_cfg, args_cli)
+    cli.pre_launch_video_config(env_cfg, args_cli, video_interval=args_cli.video_interval)
     with launch_simulation(env_cfg, args_cli):
-        # Import the simulator-dependent wrapper only after SimulationApp starts.
+        # Import the simulator-dependent wrapper only after the simulator starts.
         from instinctlab.utils.wrappers.instinct_rl.vecenv_wrapper import InstinctRlVecEnvWrapper
-
-        agent_cfg = cli_args.update_instinct_rl_cfg(agent_cfg, args_cli)
-        env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
-        agent_cfg.max_iterations = (
-            args_cli.max_iterations if args_cli.max_iterations is not None else agent_cfg.max_iterations
-        )
-
-        env_cfg.seed = agent_cfg.seed
-        if not args_cli.distributed:
-            env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
-        if args_cli.distributed and args_cli.device is not None and "cpu" in args_cli.device:
-            raise ValueError("Distributed training requires a CUDA device.")
 
         if args_cli.distributed:
             # Keep device-less Warp launches on this process's resolved distributed device.
@@ -124,57 +77,23 @@ def main(
             print(f"[INFO] Distributed training with rank {rank} of {world_size} on {agent_cfg.device}.")
 
         log_root_path = (
-            os.path.abspath(os.path.join("logs", "instinct_rl", agent_cfg.experiment_name))
+            os.path.abspath(os.path.join(cli.LOG_ROOT, agent_cfg.experiment_name))
             if args_cli.logroot is None
             else os.path.abspath(args_cli.logroot)
         )
         print(f"[INFO] Logging experiment in directory: {log_root_path}")
-        log_dir = datetime.now().strftime("%Y%m%d_%H%M%S")
-        if getattr(env_cfg, "run_name", None):
-            log_dir += f"_{env_cfg.run_name}"
-        if agent_cfg.run_name:
-            log_dir += f"_{agent_cfg.run_name}"
-            for hydra_arg in hydra_args:
-                key, value = hydra_arg.split("=", maxsplit=1)
-                log_dir += f"_{key.split('.')[-1]}-{value}"
-        log_dir = os.path.join(log_root_path, log_dir)
 
         resume_path = None
         if agent_cfg.resume:
-            if os.path.isabs(agent_cfg.load_run):
-                resume_path = get_checkpoint_path(
-                    os.path.dirname(agent_cfg.load_run),
-                    os.path.basename(agent_cfg.load_run),
-                    agent_cfg.load_checkpoint,
-                )
-            else:
-                resume_path = get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
+            resume_path = cli.checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
             print(f"[INFO] Resuming experiment from checkpoint: {resume_path}")
-            resume_run_name = os.path.basename(os.path.dirname(resume_path))
-            resume_name_parts = resume_run_name.split("_")
-            if len(resume_name_parts) >= 2:
-                log_dir += f"_from{resume_name_parts[0]}_{resume_name_parts[1]}"
+        log_dir = os.path.join(
+            log_root_path,
+            cli.train_log_dir_name(getattr(env_cfg, "run_name", None), agent_cfg.run_name, resume_path),
+        )
 
         env_cfg.log_dir = log_dir
-        if args_cli.video:
-            env_cfg.video_recorders = [
-                VideoRecorderCfg(
-                    source="visualizer",
-                    output_dir=os.path.join(log_dir, "videos", "train"),
-                    video_interval=args_cli.video_interval,
-                    video_length=args_cli.video_length,
-                )
-            ]
-            print("[INFO] Recording videos during training.")
-            print_dict(
-                {
-                    "source": env_cfg.video_recorders[0].source,
-                    "output_dir": env_cfg.video_recorders[0].output_dir,
-                    "video_interval": env_cfg.video_recorders[0].video_interval,
-                    "video_length": env_cfg.video_recorders[0].video_length,
-                },
-                nesting=4,
-            )
+        cli.apply_video_recording(env_cfg, args_cli, os.path.join(log_dir, "videos", "train"))
         env = gym.make(args_cli.task, cfg=env_cfg)
 
         if isinstance(env.unwrapped.cfg, DirectMARLEnvCfg):

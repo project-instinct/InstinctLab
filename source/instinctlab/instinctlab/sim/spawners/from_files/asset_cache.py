@@ -241,16 +241,15 @@ def ensure_asset_cache_kit_args(env_cfg, launcher_args) -> bool:
     if not find_uncached_asset_cfgs(env_cfg):
         return False
 
-    kit_args = getattr(launcher_args, "kit_args", "") or ""
+    is_dict = isinstance(launcher_args, dict)
+    kit_args = (launcher_args.get("kit_args") if is_dict else getattr(launcher_args, "kit_args", "")) or ""
     if "--/app/windowless=true" not in kit_args:
         kit_args = f"{kit_args} --/app/windowless=true".strip()
 
-    if isinstance(launcher_args, dict):
-        launcher_args["visualizer"] = ["kit"]
-        launcher_args["visualizer_explicit"] = True
+    if is_dict:
+        launcher_args["require_kit"] = True
         launcher_args["kit_args"] = kit_args
     else:
-        launcher_args.visualizer = ["kit"]
-        launcher_args.visualizer_explicit = True
+        launcher_args.require_kit = True
         launcher_args.kit_args = kit_args
     return True
