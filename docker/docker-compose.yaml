@@ -1,7 +1,12 @@
-x-default-isaac-lab-template-environment: &default-isaac-lab-template-environment
-  - OMNI_KIT_ALLOW_ROOT=1
+x-instinctlab-environment: &instinctlab-environment
+  - ISAACSIM_PATH=${DOCKER_ISAACLAB_PATH}/_isaac_sim
+  - ACCEPT_EULA=Y
+  # Let git (store_code_state) read the bind-mounted repos; container-only, no file is written.
+  - GIT_CONFIG_COUNT=1
+  - GIT_CONFIG_KEY_0=safe.directory
+  - GIT_CONFIG_VALUE_0=*
 
-x-default-isaac-lab-template-deploy: &default-isaac-lab-template-deploy
+x-instinctlab-deploy: &instinctlab-deploy
   resources:
     reservations:
       devices:
@@ -11,56 +16,89 @@ x-default-isaac-lab-template-deploy: &default-isaac-lab-template-deploy
 
 services:
   instinctlab:
+    init: true
     env_file: .env.base
     build:
       context: ../
       dockerfile: docker/Dockerfile
+      network: host
+      additional_contexts:
+        instinct_rl: ../../instinct_rl
       args:
         - ISAACLAB_BASE_IMAGE_ARG=${ISAACLAB_BASE_IMAGE}
-        - DOCKER_ISAACLAB_EXTENSION_TEMPLATE_PATH_ARG=${DOCKER_ISAACLAB_EXTENSION_TEMPLATE_PATH}
-    image: instinctlab
+        - DOCKER_USER_HOME_ARG=${DOCKER_USER_HOME}
+        - DOCKER_INSTINCT_WS_PATH_ARG=${DOCKER_INSTINCT_WS_PATH}
+    image: instinctlab:3main
     container_name: instinctlab
+    user: "1000:1000"
     volumes:
+      # The three clones at their host paths; the Isaac Lab sources also replace the base
+      # image's editable install so the container always runs the mounted clone.
+      - type: bind
+        source: ../../isaaclab
+        target: ${DOCKER_INSTINCT_WS_PATH}/isaaclab
+      - type: bind
+        source: ../../isaaclab/source
+        target: ${DOCKER_ISAACLAB_PATH}/source
+      - type: bind
+        source: ../../instinct_rl
+        target: ${DOCKER_INSTINCT_WS_PATH}/instinct_rl
       - type: bind
         source: ../
-        target: ${DOCKER_ISAACLAB_EXTENSION_TEMPLATE_PATH}
+        target: ${DOCKER_INSTINCT_WS_PATH}/instinctlab
+      - type: bind
+        source: ${DOCKER_USER_HOME}/Data
+        target: ${DOCKER_USER_HOME}/Data
+      - type: bind
+        source: ${DOCKER_USER_HOME}/Datasets
+        target: ${DOCKER_USER_HOME}/Datasets
+        read_only: true
+      # caches
+      - type: volume
+        source: instinctlab-cache-assets
+        target: ${DOCKER_USER_HOME}/.cache/instinctlab
+      - type: volume
+        source: instinctlab-cache-kit
+        target: ${DOCKER_ISAACSIM_ROOT_PATH}/kit/cache
+      - type: volume
+        source: instinctlab-data-kit
+        target: ${DOCKER_ISAACSIM_ROOT_PATH}/kit/data
+      - type: volume
+        source: instinctlab-cache-ov
+        target: ${DOCKER_USER_HOME}/.cache/ov
+      - type: volume
+        source: instinctlab-cache-gl
+        target: ${DOCKER_USER_HOME}/.cache/nvidia/GLCache
+      - type: volume
+        source: instinctlab-cache-compute
+        target: ${DOCKER_USER_HOME}/.nv/ComputeCache
+      - type: volume
+        source: instinctlab-ov-data
+        target: ${DOCKER_USER_HOME}/.local/share/ov/data
+      - type: volume
+        source: instinctlab-ov-logs
+        target: ${DOCKER_USER_HOME}/.nvidia-omniverse/logs
+      - type: volume
+        source: instinctlab-cache-uv
+        target: ${DOCKER_USER_HOME}/.cache/uv
+      - type: volume
+        source: instinctlab-cache-warp
+        target: ${DOCKER_USER_HOME}/.cache/warp
     network_mode: host
-    environment: *default-isaac-lab-template-environment
-    deploy: *default-isaac-lab-template-deploy
-    # This is the entrypoint for the container
+    environment: *instinctlab-environment
+    deploy: *instinctlab-deploy
     entrypoint: bash
     stdin_open: true
     tty: true
-  ziwenz-instinctlab:
-    env_file: .env.base
-    build:
-      context: ../
-      dockerfile: docker/Dockerfile
-      args:
-        - ISAACLAB_BASE_IMAGE_ARG=${ISAACLAB_BASE_IMAGE}
-        - DOCKER_ISAACLAB_EXTENSION_TEMPLATE_PATH_ARG=${DOCKER_ISAACLAB_EXTENSION_TEMPLATE_PATH}
-    image: ziwenz-instinctlab
-    container_name: ziwenz-instinctlab
-    volumes:
-      - type: bind
-        source: ../../
-        target: /root/ziwenz
-      - type: bind
-        source: /public/MARS/Users/zzw/Data
-        target: /root/Data
-      - type: bind
-        source: /public/MARS/Users/zzw/Data
-        target: /home/zzw/Data
-      - type: bind
-        source: /public/MARS/Users/zzw/Datasets
-        target: /root/Datasets
-      - type: bind
-        source: /public/MARS/Users/zzw/Datasets
-        target: /home/zzw/Datasets
-    network_mode: host
-    environment: *default-isaac-lab-template-environment
-    deploy: *default-isaac-lab-template-deploy
-    # This is the entrypoint for the container
-    entrypoint: bash
-    stdin_open: true
-    tty: true
+
+volumes:
+  instinctlab-cache-assets:
+  instinctlab-cache-kit:
+  instinctlab-data-kit:
+  instinctlab-cache-ov:
+  instinctlab-cache-gl:
+  instinctlab-cache-compute:
+  instinctlab-ov-data:
+  instinctlab-ov-logs:
+  instinctlab-cache-uv:
+  instinctlab-cache-warp:

@@ -12,8 +12,8 @@ from instinctlab.utils.torch import ConcatBatchTensor
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
     from isaaclab.managers import CurriculumTermCfg
-    from isaaclab.motion_reference.motion_files.amass_motion import AmassMotion
 
+    from instinctlab.motion_reference.motion_files.amass_motion import AmassMotion
     from instinctlab.motion_reference.motion_reference_manager import MotionReferenceManagerBase
 
 

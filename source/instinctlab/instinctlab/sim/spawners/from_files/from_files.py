@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
 
 from isaaclab.sim import converters, schemas
-from isaaclab.sim.spawners.from_files.from_files import _spawn_from_usd_file
+from isaaclab.sim.spawners.from_files.from_files import spawn_from_usd_file
 from isaaclab.sim.spawners.meshes.meshes import _spawn_mesh_geom_from_mesh
 from isaaclab.sim.utils import clone, get_current_stage
 
@@ -205,7 +205,7 @@ def spawn_from_urdf(
     """Spawn an articulation from a URDF with a flattened rigid-link tree."""
     if getattr(cfg, "asset_cache_enabled", True) and asset_cache.has_valid_asset_cache(cfg):
         cached_usd_path = asset_cache.asset_cached_usd_path(cfg)
-        return _spawn_from_usd_file(prim_path, str(cached_usd_path), cfg, translation, orientation, **kwargs)
+        return spawn_from_usd_file(prim_path, str(cached_usd_path), cfg, translation, orientation, **kwargs)
 
     # Isaac Sim's importer 3.0 removed this option. Keep the upstream converter
     # cache and warning path clean, then apply the legacy geometry mapping in
@@ -215,7 +215,7 @@ def spawn_from_urdf(
     flat_usd_path = _flatten_urdf_geometry(urdf_loader.usd_path, cfg.replace_cylinders_with_capsules)
     if getattr(cfg, "asset_cache_enabled", True):
         flat_usd_path = str(asset_cache.publish_asset_cache(cfg, flat_usd_path))
-    return _spawn_from_usd_file(prim_path, flat_usd_path, cfg, translation, orientation, **kwargs)
+    return spawn_from_usd_file(prim_path, flat_usd_path, cfg, translation, orientation, **kwargs)
 
 
 @clone
