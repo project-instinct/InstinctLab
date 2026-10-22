@@ -30,7 +30,9 @@ from instinctlab.utils.urdf import urdf_importer_link_prim_path
 
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
 
-MOTION_FOLDER = "~/Datasets/NoKov-Marslab-Motions-instinctnpz/20251116_50cm_kneeClimbStep6"
+# Download the Deep Whole-body Parkour dataset from:
+# https://drive.google.com/drive/folders/1dpSYHVhP1kFdBK5ixh_f_3g0vcbyC08f?usp=drive_link
+MOTION_FOLDER = "~/Datasets/Deep-Wholebody-Parkour_Dataset"
 
 
 @configclass
@@ -199,9 +201,6 @@ class G1PerceptiveShadowingEnvCfg_PLAY(G1PerceptiveShadowingEnvCfg):
         self.scene.motion_reference.motion_buffers[MOTION_NAME].motion_start_from_middle_range = [0.0, 0.0]
         self.scene.motion_reference.motion_buffers[MOTION_NAME].motion_bin_length_s = None
         self.scene.motion_reference.motion_buffers[MOTION_NAME].env_starting_stub_sampling_strategy = "independent"
-        # self.scene.motion_reference.motion_buffers[MOTION_NAME].path = (
-        #     "/localhdd/Datasets/NoKov-Marslab-Motions-instinctnpz/20251116_50cm_kneeClimbStep1/20251106_diveroll4_roadRamp_noWall"
-        # )
         self.scene.motion_reference.motion_buffers[MOTION_NAME].metadata_yaml = os.path.join(
             self.scene.motion_reference.motion_buffers[MOTION_NAME].path, "metadata.yaml"
         )

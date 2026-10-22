@@ -34,15 +34,15 @@ from instinctlab.utils.urdf import urdf_importer_link_prim_path
 
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
 
-OMOMO_DATASET_PATH = "/localhdd/Datasets/OMOMO/retargeted"
+OMOMO_DATASET_PATH = "~/Datasets/OMOMO/retargeted"
 
 MESH_FILE_PATHS = {
-    "floorlamp": "/localhdd/Datasets/OMOMO/data/captured_objects/floorlamp_cleaned_simplified.obj",
-    "largebox": "/localhdd/Datasets/OMOMO/data/captured_objects/largebox_cleaned_simplified.obj",
-    "whitechair": "/localhdd/Datasets/OMOMO/data/captured_objects/whitechair_cleaned_simplified.obj",
-    "trashcan": "/localhdd/Datasets/OMOMO/data/captured_objects/trashcan_cleaned_simplified.obj",
-    "smalltable": "/localhdd/Datasets/OMOMO/data/captured_objects/smalltable_cleaned_simplified.obj",
-    "suitcase": "/localhdd/Datasets/OMOMO/data/captured_objects/suitcase_cleaned_simplified.obj",
+    "floorlamp": "~/Datasets/OMOMO/data/captured_objects/floorlamp_cleaned_simplified.obj",
+    "largebox": "~/Datasets/OMOMO/data/captured_objects/largebox_cleaned_simplified.obj",
+    "whitechair": "~/Datasets/OMOMO/data/captured_objects/whitechair_cleaned_simplified.obj",
+    "trashcan": "~/Datasets/OMOMO/data/captured_objects/trashcan_cleaned_simplified.obj",
+    "smalltable": "~/Datasets/OMOMO/data/captured_objects/smalltable_cleaned_simplified.obj",
+    "suitcase": "~/Datasets/OMOMO/data/captured_objects/suitcase_cleaned_simplified.obj",
 }
 MESH_FILE_SCALES = {
     "floorlamp": (1.55 * 0.3793, 1.55 * 0.3793, 1.55 * 0.3793),
@@ -145,7 +145,7 @@ class G1PerceptiveHoiShadowingEnvCfg(perceptual_cfg.PerceptiveHoiShadowingEnvCfg
                 RigidObjectCfg(
                     prim_path=f"/World/envs/env_[^/]+/{object_name}",
                     spawn=MeshFileCfg(
-                        asset_path=mesh_file_path,
+                        asset_path=os.path.expanduser(mesh_file_path),
                         mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
                         collision_props=sim_utils.CollisionPropertiesCfg(),
                         rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
@@ -215,9 +215,6 @@ class G1PerceptiveHoiShadowingEnvCfg_PLAY(G1PerceptiveHoiShadowingEnvCfg):
         # BeyondConcatMotionAdaptiveWeighting requires _motion_bin_weights, which is only created when motion_bin_length_s is set
         self.curriculum.beyond_adaptive_sampling = None
         self.events.bin_fail_counter_smoothing = None
-        # self.scene.motion_reference.motion_buffers[MOTION_NAME].path = (
-        #     "/localhdd/Datasets/NoKov-Marslab-Motions-instinctnpz/20251116_50cm_kneeClimbStep1/20251106_diveroll4_roadRamp_noWall"
-        # )
         self.scene.camera.debug_vis = True
         self.observations.policy.depth_image.params["debug_vis"] = True
 

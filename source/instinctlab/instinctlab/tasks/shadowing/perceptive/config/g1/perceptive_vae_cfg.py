@@ -44,10 +44,9 @@ from instinctlab.utils.urdf import urdf_importer_link_prim_path
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
 PROPRIO_HISTORY_LENGTH = 8
 
-MOTION_FOLDER = (
-    "~/Datasets/NoKov-Marslab-Motions-instinctnpz/20251116_50cm_kneeClimbStep1"
-    # "~/Datasets/NoKov-Marslab-Motions-instinctnpz/20251116_50cm_kneeClimbStep1/20251106_diveroll4_roadRamp_noWall"
-)
+# Download the Deep Whole-body Parkour dataset from:
+# https://drive.google.com/drive/folders/1dpSYHVhP1kFdBK5ixh_f_3g0vcbyC08f?usp=drive_link
+MOTION_FOLDER = "~/Datasets/Deep-Wholebody-Parkour_Dataset"
 
 
 @configclass
@@ -280,18 +279,6 @@ class G1PerceptiveVaeEnvCfg_PLAY(G1PerceptiveVaeEnvCfg):
         self.scene.motion_reference.motion_buffers[MOTION_NAME].motion_start_from_middle_range = [0.0, 0.0]
         self.scene.motion_reference.motion_buffers[MOTION_NAME].motion_bin_length_s = None
         self.scene.motion_reference.motion_buffers[MOTION_NAME].env_starting_stub_sampling_strategy = "independent"
-        # self.scene.motion_reference.motion_buffers[MOTION_NAME].path = (
-        #     "/localhdd/Datasets/NoKov-Marslab-Motions-instinctnpz/20251115_diveRoll4_kneelClimb_jumpSit_rollVault"
-        # )
-        # self.scene.motion_reference.motion_buffers[MOTION_NAME].metadata_yaml = (
-        #     "/localhdd/Datasets/NoKov-Marslab-Motions-instinctnpz/20251115_diveRoll4_kneelClimb_jumpSit_rollVault/metadata.yaml"
-        # )
-        # self.scene.terrain.terrain_generator.sub_terrains["motion_matched"].path = (
-        #     self.scene.motion_reference.motion_buffers[MOTION_NAME].path
-        # )
-        # self.scene.terrain.terrain_generator.sub_terrains["motion_matched"].metadata_yaml = (
-        #     self.scene.motion_reference.motion_buffers[MOTION_NAME].metadata_yaml
-        # )
 
         # Use non-terrain-matching motion and plane to hack the scene.
         self.scene.terrain.terrain_generator.num_rows = 6
