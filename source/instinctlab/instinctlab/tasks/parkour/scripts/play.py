@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 from typing import Callable
@@ -120,12 +121,21 @@ def main():
     if agent_cfg.load_run is not None:
         print(f"[INFO] Loading experiment from directory: {log_root_path}")
         if os.path.isabs(agent_cfg.load_run):
-            resume_path = get_checkpoint_path(
-                os.path.dirname(agent_cfg.load_run), os.path.basename(agent_cfg.load_run), agent_cfg.load_checkpoint
-            )
+            run_root, run_name = os.path.dirname(agent_cfg.load_run), os.path.basename(agent_cfg.load_run)
         else:
-            resume_path = get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
-        log_dir = os.path.dirname(resume_path)
+            run_root, run_name = log_root_path, agent_cfg.load_run
+        if args_cli.useonnx:
+            # The ONNX models define the run; a PyTorch checkpoint is optional and only used for comparison.
+            onnx_actor_path = get_checkpoint_path(run_root, run_name, "actor.onnx", other_dirs=["exported"])
+            log_dir = os.path.dirname(os.path.dirname(onnx_actor_path))
+            if any(re.match(agent_cfg.load_checkpoint, f) for f in os.listdir(log_dir)):
+                resume_path = get_checkpoint_path(run_root, run_name, agent_cfg.load_checkpoint)
+            else:
+                print(f"[INFO] No PyTorch checkpoint in {log_dir}; running the ONNX policy without comparison.")
+                resume_path = None
+        else:
+            resume_path = get_checkpoint_path(run_root, run_name, agent_cfg.load_checkpoint)
+            log_dir = os.path.dirname(resume_path)
     elif not args_cli.no_resume:
         raise RuntimeError(
             f"\033[91m[ERROR] No checkpoint specified and play.py resumes from a checkpoint by default. Please specify"
@@ -135,6 +145,11 @@ def main():
         print(f"[INFO] No experiment directory specified. Using default: {log_root_path}")
         log_dir = os.path.join(log_root_path, agent_cfg.run_name + "_play")
         resume_path = "model_scratch.pt"
+    if args_cli.exportonnx and resume_path is None:
+        raise RuntimeError(
+            f"--exportonnx needs a PyTorch checkpoint matching '{agent_cfg.load_checkpoint}' in {log_dir}."
+        )
+    video_prefix = "onnx" if resume_path is None else f"model_{resume_path.split('_')[-1].split('.')[0]}"
 
     if args_cli.env_cfg:
         env_cfg = load_yaml(os.path.join(log_dir, "params", "env.yaml"))
@@ -154,15 +169,15 @@ def main():
                 output_dir=os.path.join(log_dir, "videos", "play"),
                 video_length=args_cli.video_length,
                 step_offset=args_cli.video_start_step,
-                output_filename_prefix=f"model_{resume_path.split('_')[-1].split('.')[0]}",
+                output_filename_prefix=video_prefix,
             )
         ]
 
     with launch_simulation(env_cfg, args_cli):
-        return _run_play(env_cfg, agent_cfg, agent_cfg_dict, log_dir, resume_path)
+        return _run_play(env_cfg, agent_cfg, agent_cfg_dict, log_dir, resume_path, video_prefix)
 
 
-def _run_play(env_cfg, agent_cfg, agent_cfg_dict, log_dir: str, resume_path: str):
+def _run_play(env_cfg, agent_cfg, agent_cfg_dict, log_dir: str, resume_path: str | None, video_prefix: str):
     """Run Parkour policy inference inside an active simulation runtime."""
     from isaaclab.envs import DirectMARLEnv, multi_agent_to_single_agent
 
@@ -185,7 +200,7 @@ def _run_play(env_cfg, agent_cfg, agent_cfg_dict, log_dir: str, resume_path: str
 
     # load previously trained model
     ppo_runner = OnPolicyRunner(env, agent_cfg_dict, log_dir=None, device=agent_cfg.device)
-    if agent_cfg.load_run is not None:
+    if agent_cfg.load_run is not None and resume_path is not None:
         print(f"[INFO]: Loading model checkpoint from: {resume_path}")
         ppo_runner.load(resume_path)
 
@@ -270,9 +285,10 @@ def _run_play(env_cfg, agent_cfg, agent_cfg_dict, log_dir: str, resume_path: str
             # agent stepping
             if args_cli.keyboard_control:
                 obs[:, command_obs_slice[0]] = override_command.repeat(1, command_obs_slice[1][0] // 3)
-            actions = policy(obs)
-            if args_cli.useonnx:
-                torch_actions = actions
+            if args_cli.useonnx and resume_path is None:
+                actions = onnx_policy(obs)
+            elif args_cli.useonnx:
+                torch_actions = policy(obs)
                 actions = onnx_policy(obs)
                 if (actions - torch_actions).abs().max() > 1e-5:
                     print(
@@ -280,6 +296,8 @@ def _run_play(env_cfg, agent_cfg, agent_cfg_dict, log_dir: str, resume_path: str
                         f" {(actions - torch_actions).abs().max()} in actions at joint"
                         f" {((actions - torch_actions).abs() > 1e-5).nonzero(as_tuple=True)[0]}"
                     )
+            else:
+                actions = policy(obs)
             if timestep < args_cli.zero_act_until:
                 actions[:] = 0.0
             # env stepping
@@ -300,7 +318,7 @@ def _run_play(env_cfg, agent_cfg, agent_cfg_dict, log_dir: str, resume_path: str
             [
                 "code",
                 "-r",
-                os.path.join(log_dir, "videos", "play", f"model_{resume_path.split('_')[-1].split('.')[0]}_0000.mp4"),
+                os.path.join(log_dir, "videos", "play", f"{video_prefix}_0000.mp4"),
             ]
         )
 
