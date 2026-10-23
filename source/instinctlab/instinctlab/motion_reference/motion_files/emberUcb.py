@@ -71,12 +71,12 @@ class EmberUcb(AmassMotion):
 
         # compute the link pos/rot/vel in base frame represented in the base frame
         base_rot_w_conj = math_utils.quat_conjugate(base_rot_w)
-        link_pos_b = math_utils.quat_rotate(base_rot_w_conj[:, None, :], link_pos_w - base_pos_w[:, None, :])
+        link_pos_b = math_utils.quat_apply(base_rot_w_conj[:, None, :], link_pos_w - base_pos_w[:, None, :])
         link_rot_b = math_utils.quat_mul(base_rot_w_conj[:, None, :].expand(-1, link_rot_w.shape[1], -1), link_rot_w)
-        link_lin_vel_b = math_utils.quat_rotate(
+        link_lin_vel_b = math_utils.quat_apply(
             base_rot_w_conj[:, None, :], link_lin_vel_w - base_lin_vel_w[:, None, :]
         ) - torch.cross(link_ang_vel_w, link_pos_b)
-        link_ang_vel_b = math_utils.quat_rotate(base_rot_w_conj[:, None, :], link_ang_vel_w)
+        link_ang_vel_b = math_utils.quat_apply(base_rot_w_conj[:, None, :], link_ang_vel_w)
 
         return MotionSequence(
             joint_pos=joint_pos.to(device=self.buffer_device),

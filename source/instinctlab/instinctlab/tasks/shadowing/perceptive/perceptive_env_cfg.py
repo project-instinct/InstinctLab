@@ -75,7 +75,7 @@ class PerceptiveShadowingSceneCfg(InteractiveSceneCfg):
                 ),
             },
         ),
-        physics_material=sim_utils.RigidBodyMaterialCfg(
+        physics_material=sim_utils.PhysxRigidBodyMaterialCfg(
             friction_combine_mode="multiply",
             restitution_combine_mode="multiply",
             static_friction=1.0,
