@@ -1,6 +1,35 @@
 # Upgrade log: Isaac Lab 3.0.0 EA to Isaac Lab 3.0.0 GA (`main`)
 
-Findings and decisions made while porting InstinctLab from Isaac Lab EA `release/3.0.0` (Isaac Sim 6.0.1) to Isaac Lab `main` (Isaac Sim 6.2). The plan is `agents/UPGRADE_TO_3main_LMUOpus.md`. Evidence files are under `~/Data/instinctlab_logs/upgrade_3main/`.
+Findings and decisions made while porting InstinctLab from Isaac Lab EA `release/3.0.0` (Isaac Sim 6.0.1) to Isaac Lab `main` (Isaac Sim 6.2). The plan is `agents/UPGRADE_TO_3main_LMUOpus.md`. Evidence files are under `~/Data/instinctlab_logs/upgrade_3main/`; the manifest with every tolerance, accepted difference and sync point is `~/Data/instinctlab_logs/upgrade_3main/manifest.yaml`.
+
+## Summary of differences against EA
+
+Network I/O layout (observation names, order, shapes, dtypes, joint/body lists, ray patterns, ONNX signatures) is unchanged on all 14 rows (7 task families × PhysX/Newton). The DWP checkpoint re-exports to ONNX bit-identically on both backends.
+
+Value-level differences, all accepted (manifest ids):
+
+| Id | Change | Effect on InstinctLab |
+|---|---|---|
+| D6 | URDF importer 3.x writes correct link inertia (EA rotated it) | G1 dynamics change; largest on dynamic motions. Details below |
+| D7 | `BaseRayCaster.reset` no longer draws zero-range drifts | Later CUDA random draws shift; same distributions |
+| D8 | PhysX 6.2 contact response at deep self-contact | HOI PhysX rollouts diverge after the first step |
+| H1 | PhysX contact `net_forces_w` includes friction | Contact rewards/terminations see a larger force; no observation term |
+| H2 | float64 air/contact time | Removes a tiny float32 drift (locomotion air-time reward) |
+| H3 | PhysX ray casters refresh kinematics first | No measured change |
+| H4 | Height-field `to_discrete_units` | No change for InstinctLab terrains |
+| H5 | Default ground-plane look | Visual only |
+| H6 | `string_to_callable` raises the original error | Error messages only |
+| H7 | `update_from_dict` no longer type-checks scalars | Mistyped Hydra overrides are no longer rejected |
+| H8 | `use_newton_actuators` defaults to True | Numerically identical on PhysX |
+| D1 | PhysX and Newton order bodies/joints differently (EA too) | Each backend is compared with its own baseline |
+| D2-D4 | PhysX filter-pair log message; normalizer `until=2**62`; ONNX external data file | None (same on EA) |
+| D5 | Managers copy omitted keyword defaults into term params | Layout dump only |
+
+Open: Q1, a Newton height-scan difference of up to 1.6 mm on 10 of 748 rays at reset (perceptive shadowing; 7.6 mm on HOI), inside the Newton ray-cast path. Meshes, rays and sensor pose are identical.
+
+Restored to EA behavior in InstinctLab: terrain origins and the parkour height-field scales (Phase 3), the torque-monitor prim path, and non-deprecated schema/material cfgs with identical values.
+
+Not validated: distributed training; hosts with NVIDIA drivers older than 580 (the image's PyTorch is built for CUDA 13.0).
 
 ## 2026-10-23: URDF link inertia, EA importer bug fixed on main
 

@@ -1,7 +1,7 @@
 # Project Instinct
 
-[![IsaacSim](https://img.shields.io/badge/IsaacSim-6.0.1-silver.svg)](https://docs.omniverse.nvidia.com/isaacsim/latest/overview.html)
-[![Isaac Lab](https://img.shields.io/badge/IsaacLab-3.0.0-silver)](https://isaac-sim.github.io/IsaacLab)
+[![IsaacSim](https://img.shields.io/badge/IsaacSim-6.2.0-silver.svg)](https://docs.omniverse.nvidia.com/isaacsim/latest/overview.html)
+[![Isaac Lab](https://img.shields.io/badge/IsaacLab-main-silver)](https://isaac-sim.github.io/IsaacLab)
 [![Python](https://img.shields.io/badge/python-3.12-blue.svg)](https://docs.python.org/3/whatsnew/3.12.html)
 [![Linux platform](https://img.shields.io/badge/platform-linux--64-orange.svg)](https://releases.ubuntu.com/20.04/)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://pre-commit.com/)
@@ -35,59 +35,97 @@ See [CONTRIBUTORS.md](CONTRIBUTORS.md) for a list of acknowledged contributors.
 
 ### Pinned runtime dependencies
 
-Use these source revisions and dependency constraints for the InstinctLab Isaac Lab 3.0 migration:
+This branch runs on Isaac Lab `main` inside Docker. The validated revisions are:
 
 | Dependency | Version or revision |
 |---|---|
-| Python | `>=3.12,<3.13` |
-| Isaac Sim | `6.0.1.0` |
-| Isaac Lab | `release/3.0.0` at `6e0cbe2c3953b2e32fefc1065f4c4f5818f458c3` (package `16.4.0`) |
-| Instinct-RL | `upgrade/isaaclab3.0.0-beta2` at `846008a0d7b77fce99167a73199807d3c94a703a` (package `1.0.3`) |
-| PyTorch | `2.11.0` |
-| TorchVision | `0.26.0` |
-| TorchAudio | `2.11.0` |
-| NumPy | `>=2` |
-| Warp | `1.16.0` |
+| Python | `3.12` |
+| Isaac Sim | `6.2.0-rc.14` (from the Isaac Lab base image) |
+| Isaac Lab | `main` at `8c9b995cb95c74ec81498ae948ce4c1d4e20ae00` (package `41.0.1`) |
+| Instinct-RL | `574c8d50cdd16618cf8f4e0df553f84759c1d837` (package `1.0.3`) |
+| PyTorch | `2.11.0+cu130` (needs NVIDIA driver 580 or newer) |
+| Warp | `1.17.0` |
+| Newton | `1.8.0.dev0` |
+| NumPy | `2.5.1` |
 | Gymnasium | `1.3.0` |
 
 Use the full source SHAs rather than the floating branch heads when reproducing an experiment.
 
-- Install Isaac Lab by following the [installation guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html), then check out the Isaac Lab revision listed above.
+The conda environment for Isaac Lab EA `release/3.0.0` (Isaac Sim 6.0.1) does not run this branch.
 
-- Install Instinct-RL by following the [installation guide](https://github.com/project-instinct/instinct_rl/blob/main/README.md).
-    TL; DR;
-    ```bash
-    git clone https://github.com/project-instinct/instinct_rl.git
-    git -C instinct_rl checkout 846008a0d7b77fce99167a73199807d3c94a703a
-    python -m pip install -e instinct_rl
-    ```
+### Docker workflow
 
-- Clone this repository separately from the Isaac Lab installation (i.e. outside the `IsaacLab` directory):
+Place the three repositories side by side, with `logs` as a relative symlink into `~/Data/instinctlab_logs`:
 
-    ```bash
-    # Option 1: HTTPS
-    git clone https://github.com/project-instinct/instinctlab.git
+```text
+~/workspace/instinctlab_ws/
+├── isaaclab/        # Isaac Lab, branch main at the SHA above
+├── instinct_rl/     # Instinct-RL at the SHA above
+└── instinctlab/     # this repository
+    └── logs -> ../../../Data/instinctlab_logs
+```
 
-    # Option 2: SSH
-    git clone git@github.com:project-instinct/instinctlab.git
-    ```
-
-- Using a python interpreter that has Isaac Lab installed, install the library
+1. Build the Isaac Lab base image from the Isaac Lab clone and tag it with its SHA:
 
     ```bash
-    python -m pip install -e source/instinctlab
+    cd ~/workspace/instinctlab_ws/isaaclab
+    ./docker/container.py build base
+    docker tag isaac-lab-base:latest isaac-lab-base:$(git rev-parse --short=9 HEAD)
     ```
 
-- To run with `instinct-rl`, you can use the following command after installing [instinct-rl](https://github.com/project-instinct/instinct_rl):
+2. Set `ISAACLAB_BASE_IMAGE` in `docker/.env.base` to that tag, then build the InstinctLab image (`instinctlab:3main`):
 
     ```bash
-    python scripts/instinct_rl/train.py --task=Instinct-Shadowing-WholeBody-Plane-G1-Play-v0 --viz none
+    cd ~/workspace/instinctlab_ws/instinctlab/docker
+    docker compose --env-file .env.base build instinctlab
     ```
+
+3. Run commands in a throwaway container. The three clones are bind-mounted at their host paths, together with
+   `~/Data` and `~/Datasets` (read-only); caches live in named volumes.
+
+    ```bash
+    docker compose --env-file .env.base run --rm --no-deps instinctlab -c \
+        "isaaclab -p scripts/instinct_rl/train.py --task Instinct-Shadowing-WholeBody-Plane-G1-v0 --viz none"
+    ```
+
+    Use `isaaclab -p` for anything that starts the simulator; plain `python` is enough for `pytest` and `--help`.
+
+- `instinct_rl` and `instinctlab` are installed with `uv pip install -e` into the base image's `/opt/isaaclab-venv`.
+  Never run an exact `uv sync` in the container: it removes these editable installs.
+- Source edits need no rebuild. Rebuild both images when Isaac Lab's `pyproject.toml`/`uv.lock`, or either `docker/`
+  directory, changes.
+
+### Datasets
+
+Task defaults read datasets from `~/Datasets`; `~` is expanded when the files are read, so CLI overrides such as
+`env.scene.motion_reference.motion_buffers.<name>.path=...` may use it too.
+
+| Data | Default path | Source |
+|---|---|---|
+| Deep Whole-body Parkour motions | `~/Datasets/Deep-Wholebody-Parkour_Dataset` | [Google Drive](https://drive.google.com/drive/folders/1dpSYHVhP1kFdBK5ixh_f_3g0vcbyC08f?usp=drive_link) |
+| Hiking in the Wild (parkour) | `~/Datasets/hiking-in-the-wild_Data&Model/data&model/parkour_motion_reference` | project release |
+| OMOMO (perceptive HOI) | `~/Datasets/OMOMO/retargeted`, objects in `~/Datasets/OMOMO/data/captured_objects` | OMOMO release |
+| LAFAN1 (BeyondMimic) | `~/Datasets/UbisoftLAFAN1_GMR_g1_29dof_torsoBase_retargetted_instinctnpz` | retargeted LAFAN1 |
+
+A cfg's `__post_init__` derives some fields from these paths and does not run again after a CLI override; the
+affected fields are documented in the motion-file and terrain cfg docstrings.
+
+### Validated matrix
+
+Every family below was checked on PhysX and Newton (layout snapshot against the Isaac Lab EA baseline, full/partial
+and int32/int64 resets, a short train and resume): locomotion (`Instinct-Locomotion-Flat-G1-v0`), whole-body
+shadowing (`Instinct-Shadowing-WholeBody-Plane-G1-v0`), BeyondMimic (`Instinct-BeyondMimic-Plane-G1-v0`), perceptive
+shadowing (`Instinct-Perceptive-Shadowing-G1-v0`), perceptive VAE (`Instinct-Perceptive-Vae-G1-v0`), perceptive HOI
+(`Instinct-Perceptive-HOI-Shadowing-G1-v0`) and parkour (`Instinct-Parkour-Target-Amp-G1-v0`), each with its
+`-Newton-v0` variant. Behavior differences against Isaac Lab EA are listed in
+[`agents/UPGRADE_ISAACLAB300EA_TO_ISAACLAB300GA_LOG.md`](agents/UPGRADE_ISAACLAB300EA_TO_ISAACLAB300GA_LOG.md).
 
 ### Unsupported combinations
 
 - Physics backend `ovphysx`: only `physx` and `newton` are supported. Selecting `ovphysx` (`--physics ovphysx`) raises
   `NotImplementedError` from `instinctlab.utils.backend_dispatch` instead of being mapped to PhysX.
+- NVIDIA drivers older than 580: the image's PyTorch is built for CUDA 13.0 and cannot use the GPU.
+- Distributed (multi-GPU) training is not validated on this branch.
 
 ## Documentation of Critical Components
 
