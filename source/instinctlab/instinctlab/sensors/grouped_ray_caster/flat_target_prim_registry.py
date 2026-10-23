@@ -1,3 +1,11 @@
+"""Target resolution for the grouped ray-caster sensors.
+
+Grouping is provided by Isaac Lab's per-environment multi-mesh tables: each configured target expression
+contributes one row of mesh slots per environment, tracked targets are bound to their body through the
+scene-data provider, and padded slots never produce a hit. This module only adapts target resolution where
+InstinctLab's scenes differ from upstream's assumptions.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -6,18 +14,16 @@ import re
 import trimesh
 from typing import TYPE_CHECKING
 
-import warp as wp
 from pxr import Usd, UsdPhysics
 
 import isaaclab.sim as sim_utils
-from isaaclab.cloner.query import iter_sources
+from isaaclab import cloner
 from isaaclab.sensors.ray_caster.base_multi_mesh_ray_caster import BaseMultiMeshRayCaster
-from isaaclab.sim.simulation_context import SimulationContext
 from isaaclab.utils.mesh import PRIMITIVE_MESH_TYPES, create_trimesh_from_geom_mesh, create_trimesh_from_geom_shape
+from isaaclab.utils.string import resolve_matching_names
 from isaaclab.utils.warp import convert_to_warp_mesh
 
 from instinctlab.utils.math import matrix_from_quat_xyzw
-from instinctlab.utils.warp.kernels import copy_flat_mesh_transforms_kernel
 
 if TYPE_CHECKING:
     from isaaclab.sensors.ray_caster import MultiMeshRayCasterCfg
@@ -27,25 +33,32 @@ logger = logging.getLogger(__name__)
 
 
 class FlatTargetPrimRegistryMixin:
-    """Build flat target-prim records and fixed world membership for grouped ray casting."""
+    """Resolve grouped ray-cast targets per environment, keeping articulation roots as one body each."""
 
-    def _build_mesh_records(self, target_cfg, plan, dummy_mesh_id):
+    def _build_mesh_records(self, target_cfg, plan: cloner.ClonePlan | None):
+        """Resolve one target expression and reject targets whose prim count differs per environment."""
+        records_per_env = None
+        if plan is not None and target_cfg.track_mesh_transforms:
+            records_per_env = self._build_articulation_root_records(target_cfg, plan)
+        if records_per_env is None:
+            records_per_env = super()._build_mesh_records(target_cfg, plan)
+        self._check_uniform_record_count(target_cfg, records_per_env)
+        return records_per_env
+
+    def _build_articulation_root_records(self, target_cfg, plan: cloner.ClonePlan):
         """Keep an articulation-root link as one tracked mesh target.
 
-        The upstream multi-mesh builder interprets a prim with
-        ``ArticulationRootAPI`` as a request for every rigid-body descendant.
-        Importer 3 authors that API on the G1 torso link, but InstinctLab lists
-        every robot link explicitly. Expanding the torso would therefore add
-        the whole robot once and the other 29 links a second time.
-        """
-        if plan is None or not target_cfg.track_mesh_transforms:
-            return super()._build_mesh_records(target_cfg, plan, dummy_mesh_id)
+        The upstream multi-mesh builder interprets a prim with ``ArticulationRootAPI`` as a request for
+        every rigid-body descendant. Importer 3 authors that API on the G1 torso link, but InstinctLab
+        lists every robot link explicitly. Expanding the torso would therefore add the whole robot once
+        and the other 29 links a second time.
 
+        Returns:
+            Per-environment mesh records, or None when the target matches no articulation root.
+        """
         records_per_env = [[] for _ in range(self._num_envs)]
-        tracked_target_exprs: list[str] = []
         found_articulation_root = False
-        for source_root, destination_template, source_path, env_ids in iter_sources(plan, target_cfg.prim_expr):
-            source_prims = sim_utils.find_matching_prims(source_path)
+        for source_root, destination_template, source_prims, env_ids in self._iter_plan_targets(target_cfg, plan):
             articulation_root_prims = [prim for prim in source_prims if prim.HasAPI(UsdPhysics.ArticulationRootAPI)]
             if not articulation_root_prims:
                 continue
@@ -55,263 +68,86 @@ class FlatTargetPrimRegistryMixin:
                 )
 
             found_articulation_root = True
-            mesh_ids = []
             for source_prim in articulation_root_prims:
                 if not source_prim.HasAPI(UsdPhysics.RigidBodyAPI):
                     raise RuntimeError(
                         f"Articulation-root ray-cast target '{source_prim.GetPath()}' is not a rigid body."
                     )
                 mesh_id = self._load_target_prim_warp_mesh(source_prim, target_cfg, reference_prim=source_prim)
-                dummy_mesh_id = mesh_id if dummy_mesh_id is None else dummy_mesh_id
-                mesh_ids.append(mesh_id)
-
-                source_prim_path = str(source_prim.GetPath())
-                if source_prim_path == source_root:
-                    owner_suffix = ""
-                elif source_prim_path.startswith(source_root + "/"):
-                    owner_suffix = source_prim_path[len(source_root) :]
-                else:
+                owner_suffix = cloner.path.relative_to(str(source_prim.GetPath()), source_root)
+                if owner_suffix is None:
                     raise RuntimeError(
-                        f"Tracked target owner '{source_prim_path}' is not under ClonePlan source root '{source_root}'."
+                        f"Tracked target owner '{source_prim.GetPath()}' is not under ClonePlan source root"
+                        f" '{source_root}'."
                     )
-                tracked_target_exprs.append(destination_template.format("[^/]+") + owner_suffix)
+                for env_id in env_ids:
+                    body_path = destination_template.format(env_id) + owner_suffix
+                    records_per_env[env_id].append((mesh_id, (1.0e9, 1.0e9, 1.0e9), (0.0, 0.0, 0.0, 1.0), body_path))
 
-            for env_id in env_ids:
-                for mesh_id in mesh_ids:
-                    records_per_env[env_id].append((mesh_id, (1.0e9, 1.0e9, 1.0e9), (0.0, 0.0, 0.0, 1.0)))
+        return records_per_env if found_articulation_root else None
 
-        if found_articulation_root:
-            if not tracked_target_exprs:
-                raise RuntimeError(f"No tracked body expression resolved for target '{target_cfg.prim_expr}'.")
-            return records_per_env, dummy_mesh_id, tracked_target_exprs
-        return super()._build_mesh_records(target_cfg, plan, dummy_mesh_id)
+    def _iter_plan_targets(self, target_cfg, plan: cloner.ClonePlan):
+        """Yield the ClonePlan rows that own ``target_cfg.prim_expr``.
+
+        This mirrors upstream's ClonePlan target resolution: only the shortest matched suffix is used, and
+        each row reports the destination environment IDs whose instance text the expression selects.
+        """
+        sources = cloner.path.get_asset_prototype_paths(plan)
+        templates, starts, worlds, world_starts = cloner.path.get_world_prototype_asset_templates(
+            plan, include_world_indices=True
+        )
+        matches = []
+        # Match populated world prototypes, excluding the shared-world slice.
+        for group in np.flatnonzero(np.diff(world_starts[1:])) + 1:
+            for index in range(*starts[group : group + 2]):
+                if (matched := cloner.path.match(target_cfg.prim_expr, templates[index])) is not None:
+                    matches.append((group, index, matched))
+        suffix = min((matched.suffix for _, _, matched in matches), key=len, default=None)
+        for group, index, matched in matches:
+            if matched.suffix != suffix:
+                continue
+            env_ids = worlds[world_starts[group] : world_starts[group + 1]]
+            env_ids = env_ids[
+                resolve_matching_names(matched.instance, env_ids.astype(str), raise_when_no_match=False)[0]
+            ]
+            if not len(env_ids):
+                continue
+            source_root = sources[plan.topology.world_prototypes[index]]
+            source_pattern = re.compile(source_root + suffix)
+            source_prims = sim_utils.get_all_matching_child_prims(
+                source_root, lambda prim: source_pattern.fullmatch(prim.GetPath().pathString) is not None
+            )
+            yield source_root, templates[index], source_prims, env_ids
 
     @staticmethod
-    def _mesh_record_key(record) -> tuple[int, tuple[float, ...], tuple[float, ...]]:
-        """Return the exact identity used to share one static entity across worlds."""
-        mesh_id, position, orientation = record
-        return int(mesh_id), tuple(float(value) for value in position), tuple(float(value) for value in orientation)
+    def _check_uniform_record_count(target_cfg, records_per_env: list[list[tuple]]) -> None:
+        """Reject a target that resolves a different number of prims in different environments.
 
-    def _initialize_warp_meshes(self) -> None:
-        """Build flat entity records and fixed world-to-entity membership.
-
-        A global static mesh is one entity referenced by every applicable world.
-        Dynamic per-world bodies remain distinct entities even when their Warp
-        geometry ID is shared. The membership is precomputed once for the sensor
-        lifetime and checked before it is copied to the device.
+        An environment without any record is accepted: a static target may exist in only some prototypes.
+        Ragged non-empty rows cannot be expressed by the per-environment mesh tables, which pad each target
+        to its widest row, so they would silently stop hitting in the narrower environments.
         """
-        sim = SimulationContext.instance()
-        plan = sim.get_clone_plan() if sim is not None else None
-
-        self._num_meshes_per_env.clear()
-        self._mesh_views = []
-        self._tracked_view_entity_indices: list[wp.array | None] = []
-
-        flat_mesh_ids: list[int] = []
-        flat_mesh_positions: list[tuple[float, ...]] = []
-        flat_mesh_orientations: list[tuple[float, ...]] = []
-        world_entity_indices: list[list[int]] = [[] for _ in range(self._num_envs)]
-        world_entity_sets: list[set[int]] = [set() for _ in range(self._num_envs)]
-        static_entities: dict[tuple[int, tuple[float, ...], tuple[float, ...]], int] = {}
-        dummy_mesh_id: int | None = None
-
-        def append_entity(record) -> int:
-            mesh_id, position, orientation = record
-            entity_index = len(flat_mesh_ids)
-            flat_mesh_ids.append(int(mesh_id))
-            flat_mesh_positions.append(tuple(float(value) for value in position))
-            flat_mesh_orientations.append(tuple(float(value) for value in orientation))
-            return entity_index
-
-        def add_world_membership(world_id: int, entity_index: int) -> None:
-            if world_id < 0 or world_id >= self._num_envs:
-                raise RuntimeError(f"Ray-cast world ID {world_id} is outside [0, {self._num_envs}).")
-            if entity_index not in world_entity_sets[world_id]:
-                world_entity_sets[world_id].add(entity_index)
-                world_entity_indices[world_id].append(entity_index)
-
-        for target_cfg in self._raycast_targets_cfg:
-            records_per_world, dummy_mesh_id, tracked_target_exprs = self._build_mesh_records(
-                target_cfg, plan, dummy_mesh_id
+        counts = [len(records) for records in records_per_env]
+        populated = {count for count in counts if count}
+        if len(populated) > 1:
+            raise RuntimeError(
+                f"Ray-cast target '{target_cfg.prim_expr}' resolves a different number of prims per"
+                f" environment: {counts}."
             )
-            if len(records_per_world) != self._num_envs:
-                raise RuntimeError(
-                    f"Ray-cast target '{target_cfg.prim_expr}' returned {len(records_per_world)} world rows; "
-                    f"expected {self._num_envs}."
-                )
-
-            record_counts = [len(records) for records in records_per_world]
-            self._num_meshes_per_env[target_cfg.prim_expr] = max(record_counts, default=0)
-            view = self._create_tracked_target_view(tracked_target_exprs) if target_cfg.track_mesh_transforms else None
-            self._mesh_views.append(view)
-
-            if not target_cfg.track_mesh_transforms:
-                for world_id, records in enumerate(records_per_world):
-                    for record in records:
-                        key = self._mesh_record_key(record)
-                        entity_index = static_entities.get(key)
-                        if entity_index is None:
-                            entity_index = append_entity(record)
-                            static_entities[key] = entity_index
-                        add_world_membership(world_id, entity_index)
-                self._tracked_view_entity_indices.append(None)
-                continue
-
-            if view is None:
-                raise RuntimeError(f"Tracked ray-cast target '{target_cfg.prim_expr}' did not create a physics view.")
-
-            view_count = self._tracked_target_count(view)
-            populated_worlds = [world_id for world_id, count in enumerate(record_counts) if count > 0]
-            if view_count == 1:
-                if any(record_counts[world_id] != 1 for world_id in populated_worlds):
-                    raise RuntimeError(
-                        f"Single-body ray-cast target '{target_cfg.prim_expr}' has per-world record counts "
-                        f"{record_counts}."
-                    )
-                first_record = records_per_world[populated_worlds[0]][0] if populated_worlds else None
-                if first_record is None:
-                    raise RuntimeError(f"Tracked ray-cast target '{target_cfg.prim_expr}' has no mesh record.")
-                if any(int(records_per_world[world_id][0][0]) != int(first_record[0]) for world_id in populated_worlds):
-                    raise RuntimeError(
-                        f"Single-body ray-cast target '{target_cfg.prim_expr}' resolves different geometry per world."
-                    )
-                entity_index = append_entity(first_record)
-                for world_id in populated_worlds:
-                    add_world_membership(world_id, entity_index)
-                view_entity_indices = [entity_index]
-            else:
-                if view_count != sum(record_counts):
-                    raise RuntimeError(
-                        f"Tracked ray-cast target '{target_cfg.prim_expr}' has {view_count} physics bodies but "
-                        f"{sum(record_counts)} flat mesh records across worlds {record_counts}."
-                    )
-
-                target_entities_per_world: list[list[int]] = [[] for _ in range(self._num_envs)]
-                for world_id, records in enumerate(records_per_world):
-                    for record in records:
-                        entity_index = append_entity(record)
-                        target_entities_per_world[world_id].append(entity_index)
-                        add_world_membership(world_id, entity_index)
-
-                concrete_view_world_ids = self._tracked_target_world_ids(view)
-                if concrete_view_world_ids is None:
-                    if len(set(record_counts)) != 1:
-                        raise RuntimeError(
-                            f"Cannot prove tracked-view ordering for ragged target '{target_cfg.prim_expr}': "
-                            f"{record_counts}."
-                        )
-                    view_entity_indices = [
-                        entity_index for entities in target_entities_per_world for entity_index in entities
-                    ]
-                else:
-                    per_world_view_count = [0] * self._num_envs
-                    view_entity_indices = []
-                    for view_index, world_id in enumerate(concrete_view_world_ids):
-                        if world_id < 0 or world_id >= self._num_envs:
-                            raise RuntimeError(
-                                f"Tracked view index {view_index} for '{target_cfg.prim_expr}' belongs to invalid "
-                                f"world {world_id}."
-                            )
-                        mesh_slot = per_world_view_count[world_id]
-                        if mesh_slot >= len(target_entities_per_world[world_id]):
-                            raise RuntimeError(
-                                f"Tracked view index {view_index} exceeds world {world_id}'s mesh records for "
-                                f"'{target_cfg.prim_expr}'."
-                            )
-                        view_entity_indices.append(target_entities_per_world[world_id][mesh_slot])
-                        per_world_view_count[world_id] += 1
-                    if per_world_view_count != record_counts:
-                        raise RuntimeError(
-                            f"Tracked view world counts {per_world_view_count} do not match mesh record counts "
-                            f"{record_counts} for '{target_cfg.prim_expr}'."
-                        )
-
-            if len(view_entity_indices) != view_count:
-                raise RuntimeError(
-                    f"Tracked target '{target_cfg.prim_expr}' produced {len(view_entity_indices)} view mappings; "
-                    f"expected {view_count}."
-                )
-            self._tracked_view_entity_indices.append(wp.array(view_entity_indices, dtype=wp.int32, device=self._device))
-
-        if dummy_mesh_id is None or not flat_mesh_ids:
-            raise RuntimeError(f"No meshes found for ray-casting. Check mesh prim paths: {self.cfg.mesh_prim_paths}")
-
-        num_entities = len(flat_mesh_ids)
-        world_mesh_offsets = [0]
-        flat_world_mesh_indices: list[int] = []
-        for world_id, entity_indices in enumerate(world_entity_indices):
-            for mesh_index in entity_indices:
-                if mesh_index < 0 or mesh_index >= num_entities:
-                    raise RuntimeError(
-                        f"World {world_id} references flat mesh index {mesh_index}, but there are"
-                        f" {num_entities} entities."
-                    )
-            flat_world_mesh_indices.extend(entity_indices)
-            world_mesh_offsets.append(len(flat_world_mesh_indices))
-
-        self._flat_mesh_ids_wp = wp.array(flat_mesh_ids, dtype=wp.uint64, device=self._device)
-        self._flat_mesh_positions_w = wp.array(flat_mesh_positions, dtype=wp.vec3f, device=self._device)
-        self._flat_mesh_orientations_w = wp.array(flat_mesh_orientations, dtype=wp.quatf, device=self._device)
-        self._world_mesh_indices_wp = wp.array(flat_world_mesh_indices, dtype=wp.int32, device=self._device)
-        self._world_mesh_offsets_wp = wp.array(world_mesh_offsets, dtype=wp.int32, device=self._device)
-        self._num_flat_mesh_entities = num_entities
-        self._num_world_mesh_indices = len(flat_world_mesh_indices)
-
-        logger.info(
-            "Built %d flat ray-cast entities and %d fixed memberships across %d worlds.",
-            self._num_flat_mesh_entities,
-            self._num_world_mesh_indices,
-            self._num_envs,
-        )
 
     def _initialize_rays_impl(self) -> None:
-        """Initialize upstream ray buffers and the fixed world ID of every ray."""
+        """Initialize the ray buffers and state the grouped sensor's mount rule.
+
+        Upstream rejects a view count that differs from the environment count in ``_initialize_impl``; the
+        grouped sensors keep their own check because it names the public contract they promise: one mounted
+        body per environment, so a target group never aliases another environment's frame.
+        """
         super()._initialize_rays_impl()
         if self._view_count != self._num_envs:
             raise RuntimeError(
-                f"Grouped ray caster has {self._view_count} ray batches for {self._num_envs} worlds; "
-                "the ray-to-world mapping is not one-to-one."
-            )
-        ray_world_ids = np.broadcast_to(
-            np.arange(self._num_envs, dtype=np.int32)[:, None], (self._num_envs, self.num_rays)
-        ).copy()
-        if ray_world_ids.shape != (self._view_count, self.num_rays):
-            raise RuntimeError(
-                f"Ray world-ID table has shape {ray_world_ids.shape}; expected ({self._view_count}, {self.num_rays})."
-            )
-        self._ray_world_ids_wp = wp.array2d(ray_world_ids, dtype=wp.int32, device=self._device)
-
-        if self.cfg.update_mesh_ids and self._num_flat_mesh_entities > np.iinfo(np.int16).max:
-            raise RuntimeError(
-                f"Cannot report {self._num_flat_mesh_entities} flat mesh IDs through the int16 sensor data contract."
-            )
-
-    def _update_mesh_transforms(self) -> None:
-        """Scatter live physics transforms into their checked flat entity indices."""
-        for view, entity_indices in zip(self._mesh_views, self._tracked_view_entity_indices):
-            if view is None:
-                if entity_indices is not None:
-                    raise RuntimeError("Static ray-cast target unexpectedly has tracked entity indices.")
-                continue
-            view_count = self._tracked_target_count(view)
-            if entity_indices is None or entity_indices.shape[0] != view_count:
-                raise RuntimeError(
-                    f"Tracked ray-cast view has {view_count} transforms but "
-                    f"{0 if entity_indices is None else entity_indices.shape[0]} flat entity indices."
-                )
-
-            transforms_wp = self._tracked_target_transforms_wp(view)
-            wp.launch(
-                copy_flat_mesh_transforms_kernel,
-                dim=view_count,
-                inputs=[
-                    transforms_wp,
-                    entity_indices,
-                    int(self._num_flat_mesh_entities),
-                    self._flat_mesh_positions_w,
-                    self._flat_mesh_orientations_w,
-                ],
-                device=self._device,
+                f"Grouped ray caster at '{self.cfg.prim_path}' has {self._view_count} ray batches for"
+                f" {self._num_envs} environments; each instance must mount on exactly one body per"
+                " environment."
             )
 
     def _load_target_prim_warp_mesh(
