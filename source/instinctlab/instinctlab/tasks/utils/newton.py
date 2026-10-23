@@ -1,8 +1,18 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg, NewtonCollisionPipelineCfg, NewtonShapeCfg
-from isaaclab_visualizers.newton import NewtonGLVisualizerCfg
+from isaaclab_visualizers.newton import NewtonGLBackendCfg, NewtonGLVisualizer
 
 from isaaclab.sim import SimulationCfg
 from isaaclab.utils.configclass import configclass
+from isaaclab.visualizers import VisualizerCfg
+
+if TYPE_CHECKING:
+    from isaaclab.sensors import Camera
+    from isaaclab.sim import SimulationContext
+    from isaaclab.visualizers import PerspectiveCameraCfg
 
 
 def newton_sim_cfg(
@@ -43,65 +53,34 @@ def newton_sim_cfg(
     )
 
 
-@configclass
-class InstinctNewtonVisualizerCfg(NewtonGLVisualizerCfg):
-    """Newton visualizer config that can expose collision-only shapes clearly.
+class InstinctNewtonGLVisualizer(NewtonGLVisualizer):
+    """Newton GL visualizer that can expose collision-only shapes clearly and follow the robot.
 
-    Isaac Lab's Newton visualizer wrapper currently does not surface Newton's
-    ``show_visual`` setting.  Collision-only shapes are rendered behind opaque
-    visual meshes, which makes ``show_collision=True`` appear to do nothing on
-    the robot even though the collision shapes are present in the Newton model.
+    Newton's viewer has a ``show_visual`` toggle but Isaac Lab's Newton backend configuration has no
+    counterpart, so the viewer attribute is set directly after the backend has configured the viewer.
+    Follow mode recenters the camera on the robot torso of the first environment.
     """
 
-    show_visual: bool | None = None
-    """When set, override the underlying Newton viewer's visual-shape visibility."""
+    def initialize(self, sim: SimulationContext, *, cameras: list[PerspectiveCameraCfg | Camera]) -> None:
+        super().initialize(sim, cameras=cameras)
+        if self.cfg.backend.show_visual is not None:
+            self._viewer.show_visual = self.cfg.backend.show_visual
+        if self.cfg.backend.follow_body:
+            self._update_camera_to_body()
 
-    follow_body: bool = False
-    """When true, recenter the Newton camera on the active G1 torso every frame."""
+    def step(self, dt: float) -> None:
+        super().step(dt)
+        if self.cfg.backend.follow_body:
+            self._update_camera_to_body()
 
-    def create_visualizer(self):
-        visualizer = super().create_visualizer()
-        original_initialize = visualizer.initialize
-
-        def initialize(scene_data_provider):
-            original_initialize(scene_data_provider)
-            if self.show_collision:
-                visualizer._viewer.show_collision = True
-            if self.show_visual is not None:
-                visualizer._viewer.show_visual = self.show_visual
-            if self.follow_body:
-                visualizer._viewer.model_changed = True
-                self._update_camera_to_body(visualizer)
-
-        visualizer.initialize = initialize
-
-        if self.follow_body:
-            original_step = visualizer.step
-
-            def step(dt):
-                visualizer._viewer.model_changed = True
-                if self.show_collision:
-                    visualizer._viewer.show_collision = True
-                if self.show_visual is not None:
-                    visualizer._viewer.show_visual = self.show_visual
-                self._update_camera_to_body(visualizer)
-                original_step(dt)
-
-            visualizer.step = step
-
-        return visualizer
-
-    def _update_camera_to_body(self, visualizer) -> None:
+    def _update_camera_to_body(self) -> None:
         """Point the Newton camera at the active G1 torso."""
-        from isaaclab_newton.physics import NewtonManager
-
-        model = NewtonManager.get_model()
-        state = NewtonManager.get_state_0()
-        if model is None or state is None:
+        body_q = self.backend.state_0.body_q
+        if body_q is None:
             return
 
-        labels = list(model.body_label)
-        body_q = state.body_q.numpy()
+        labels = list(self.backend.model.body_label)
+        body_q = body_q.numpy()
         if not labels or len(body_q) != len(labels):
             return
 
@@ -114,4 +93,32 @@ class InstinctNewtonVisualizerCfg(NewtonGLVisualizerCfg):
         target = body_q[body_index][0:3]
         eye = (float(target[0] + 1.5), float(target[1]), float(target[2] + 1.5))
         target = (float(target[0]), float(target[1]), float(target[2] + 0.4))
-        visualizer._apply_camera_pose((eye, target))
+        self.set_camera_view(eye, target)
+
+
+@configclass
+class InstinctNewtonBackendCfg(NewtonGLBackendCfg):
+    """Newton GL backend with InstinctLab's collision-shape visibility and follow-camera options.
+
+    Isaac Lab's Newton visualizer wrapper does not surface Newton's ``show_visual`` setting.
+    Collision-only shapes are rendered behind opaque visual meshes, which makes
+    ``show_collision=True`` appear to do nothing on the robot even though the collision shapes are
+    present in the Newton model.
+    """
+
+    class_type: type[InstinctNewtonGLVisualizer] | str = "{DIR}.newton:InstinctNewtonGLVisualizer"
+
+    show_visual: bool | None = None
+    """When set, override the underlying Newton viewer's visual-shape visibility."""
+
+    follow_body: bool = False
+    """When true, recenter the Newton camera on the active G1 torso every frame."""
+
+
+@configclass
+class InstinctNewtonVisualizerCfg(VisualizerCfg):
+    """Newton GL view backed by :class:`InstinctNewtonBackendCfg`."""
+
+    backend: InstinctNewtonBackendCfg = InstinctNewtonBackendCfg()
+    streaming_view: bool = True
+    """Keep the streaming camera panel enabled, as Isaac Lab's deprecated Newton GL config did."""

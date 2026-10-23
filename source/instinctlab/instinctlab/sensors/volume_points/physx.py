@@ -4,7 +4,6 @@ import re
 from typing import TYPE_CHECKING
 
 import warp as wp
-from isaaclab_physx.physics import PhysxManager
 from pxr import UsdPhysics
 
 import isaaclab.sim as sim_utils
@@ -30,7 +29,7 @@ class PhysxVolumePoints(VolumePointsBase):
         return self._body_physx_view
 
     def _initialize_backend_impl(self) -> None:
-        self._physics_sim_view = PhysxManager.get_physics_sim_view()
+        self._physics_sim_view = self._backend_manager.get_physics_sim_view()
         if self._physics_sim_view is None:
             raise RuntimeError("PhysX simulation view is not initialized.")
 

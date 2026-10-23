@@ -1,10 +1,11 @@
 import copy
 import os
 
-from isaaclab_visualizers.kit import KitVisualizerCfg
+from isaaclab_visualizers.kit import KitBackendCfg
 
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.configclass import configclass
+from isaaclab.visualizers import VisualizerCfg, WindowCfg
 
 import instinctlab.tasks.parkour.mdp as mdp
 from instinctlab.assets.unitree_g1 import (
@@ -140,12 +141,14 @@ class G1ParkourRoughEnvCfg_PLAY(G1ParkourRoughEnvCfg):
         self.scene.terrain.terrain_generator = ROUGH_TERRAINS_CFG_PLAY
         # make a smaller scene for play
         self.scene.num_envs = 10
-        self.sim.default_visualizer_cfg = KitVisualizerCfg(
-            eye=(4.0, 0.75, 1.0),
-            lookat=(0.0, 0.75, 0.0),
-            origin_type="asset",
-            origin_track_path="robot",
-        )
+        self.sim.visualizer_cfgs = [
+            VisualizerCfg(
+                backend=KitBackendCfg(origin_type="asset", origin_track_path="robot"),
+                eye=(4.0, 0.75, 1.0),
+                lookat=(0.0, 0.75, 0.0),
+                window=WindowCfg(size=(1280, 720)),
+            ),
+        ]
 
         self.scene.env_spacing = 2.5
         self.episode_length_s = 10

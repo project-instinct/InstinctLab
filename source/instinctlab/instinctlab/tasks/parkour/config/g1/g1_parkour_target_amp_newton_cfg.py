@@ -5,7 +5,7 @@ from isaaclab.utils.configclass import configclass
 
 from instinctlab.tasks.parkour.config.g1.g1_parkour_target_amp_cfg import G1ParkourEnvCfg, G1ParkourEnvCfg_PLAY
 from instinctlab.tasks.parkour.config.parkour_env_cfg import SceneCfg
-from instinctlab.tasks.utils.newton import InstinctNewtonVisualizerCfg, newton_sim_cfg
+from instinctlab.tasks.utils.newton import InstinctNewtonBackendCfg, InstinctNewtonVisualizerCfg, newton_sim_cfg
 
 
 @configclass
@@ -27,7 +27,5 @@ class G1ParkourNewtonEnvCfg_PLAY(G1ParkourEnvCfg_PLAY):
     def __post_init__(self):
         super().__post_init__()
         self.sim.visualizer_cfgs = [
-            InstinctNewtonVisualizerCfg(
-                follow_body=True,
-            )
+            InstinctNewtonVisualizerCfg(backend=InstinctNewtonBackendCfg(follow_body=True)),
         ]

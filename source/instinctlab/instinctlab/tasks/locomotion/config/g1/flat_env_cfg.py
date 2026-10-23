@@ -1,7 +1,7 @@
 import math
 from dataclasses import MISSING
 
-from isaaclab_visualizers.kit import KitVisualizerCfg
+from isaaclab_visualizers.kit import KitBackendCfg
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
@@ -19,6 +19,7 @@ from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.configclass import configclass
 from isaaclab.utils.noise import UniformNoiseCfg as Unoise
+from isaaclab.visualizers import VisualizerCfg, WindowCfg
 
 import instinctlab.envs.mdp as instinct_mdp
 import instinctlab.tasks.locomotion.mdp as locomotion_mdp
@@ -369,12 +370,14 @@ class G1FlatEnvCfg(InstinctLabRLEnvCfg):
     curriculum: G1FlatCurriculumCfg = G1FlatCurriculumCfg()
 
     def __post_init__(self):
-        self.sim.default_visualizer_cfg = KitVisualizerCfg(
-            eye=(2.0, 2.0, 0.5),
-            lookat=(0.0, 0.0, 0.0),
-            origin_type="asset",
-            origin_track_path="robot",
-        )
+        self.sim.visualizer_cfgs = [
+            VisualizerCfg(
+                backend=KitBackendCfg(origin_type="asset", origin_track_path="robot"),
+                eye=(2.0, 2.0, 0.5),
+                lookat=(0.0, 0.0, 0.0),
+                window=WindowCfg(size=(1280, 720)),
+            ),
+        ]
         joint_order = list(G1_29DOF_POLICY_JOINT_ORDER_V1)
         set_cfg_joint_order(self.actions.joint_pos, joint_order)
         self.observations.policy.joint_pos.params["asset_cfg"] = set_cfg_joint_order(

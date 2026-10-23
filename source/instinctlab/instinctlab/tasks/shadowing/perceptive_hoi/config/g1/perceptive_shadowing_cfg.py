@@ -1,7 +1,7 @@
 import numpy as np
 import os
 
-from isaaclab_visualizers.kit import KitVisualizerCfg
+from isaaclab_visualizers.kit import KitBackendCfg
 
 import isaaclab.envs.mdp as mdp
 import isaaclab.sim as sim_utils
@@ -10,6 +10,7 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors.ray_caster import MultiMeshRayCasterCfg
 from isaaclab.sim.schemas import schemas_cfg
 from isaaclab.utils.configclass import configclass
+from isaaclab.visualizers import VisualizerCfg, WindowCfg
 
 import instinctlab.envs.mdp as instinct_mdp
 import instinctlab.tasks.shadowing.mdp as shadowing_mdp
@@ -200,12 +201,14 @@ class G1PerceptiveHoiShadowingEnvCfg_PLAY(G1PerceptiveHoiShadowingEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        self.sim.default_visualizer_cfg = KitVisualizerCfg(
-            eye=(1.5, 0.0, 1.5),
-            lookat=(0.0, 0.0, 0.0),
-            origin_type="asset",
-            origin_track_path="robot",
-        )
+        self.sim.visualizer_cfgs = [
+            VisualizerCfg(
+                backend=KitBackendCfg(origin_type="asset", origin_track_path="robot"),
+                eye=(1.5, 0.0, 1.5),
+                lookat=(0.0, 0.0, 0.0),
+                window=WindowCfg(size=(1280, 720)),
+            ),
+        ]
 
         # deactivate adaptive sampling and start from the 0.0s of the motion
         MOTION_NAME = list(self.scene.motion_reference.motion_buffers.keys())[0]

@@ -4,7 +4,6 @@ import re
 from typing import TYPE_CHECKING
 
 import warp as wp
-from isaaclab_newton.physics import NewtonManager
 
 from instinctlab.sensors.volume_points.volume_points import VolumePointsBase
 
@@ -68,10 +67,10 @@ class NewtonVolumePoints(VolumePointsBase):
 
     def _register_body_sites(self) -> None:
         identity = wp.transform(wp.vec3(0.0, 0.0, 0.0), wp.quat(0.0, 0.0, 0.0, 1.0))
-        self._site_label = NewtonManager.cl_register_site(self._body_pattern, identity)
+        self._site_label = self._backend_manager.cl_register_site(self._body_pattern, identity)
 
     def _initialize_backend_impl(self) -> None:
-        site_map = NewtonManager._cl_site_index_map
+        site_map = self._backend_manager._cl_site_index_map
         if self._site_label not in site_map:
             raise ValueError(
                 f"VolumePoints body site '{self._site_label}' for '{self._body_pattern}' was not registered."
@@ -91,7 +90,7 @@ class NewtonVolumePoints(VolumePointsBase):
         self._num_bodies = next(iter(body_counts))
         site_indices = [site_idx for world_sites in per_world for site_idx in world_sites]
         self._site_indices = wp.array(site_indices, dtype=wp.int32, device=self._device)
-        self._newton_model = NewtonManager._model
+        self._newton_model = self._backend_manager.get_model()
         if self._newton_model is None:
             raise RuntimeError("Newton simulation model is not initialized.")
 
@@ -100,7 +99,7 @@ class NewtonVolumePoints(VolumePointsBase):
         self._body_names = [self._newton_model.body_label[body_id].split("/")[-1] for body_id in first_world_body_ids]
 
     def _refresh_body_state(self, env_mask: wp.array, env_ids: torch.Tensor) -> None:
-        state = NewtonManager._state_0
+        state = self._backend_manager.get_state_0()
         if self._newton_model is None or state is None:
             raise RuntimeError("Newton volume-points state is not initialized.")
 
@@ -130,6 +129,6 @@ class NewtonVolumePoints(VolumePointsBase):
         return self._newton_model is not None and self._site_indices is not None
 
     def _invalidate_backend_impl(self) -> None:
+        # The site request lives in the builder, which survives hard resets; only model-derived handles are dropped.
         self._site_indices = None
         self._newton_model = None
-        self._register_body_sites()

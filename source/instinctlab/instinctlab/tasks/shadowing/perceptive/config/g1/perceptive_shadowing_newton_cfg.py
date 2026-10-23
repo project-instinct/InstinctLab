@@ -11,7 +11,7 @@ from instinctlab.tasks.shadowing.perceptive.config.g1.perceptive_shadowing_cfg i
     motion_reference_cfg,
 )
 from instinctlab.tasks.shadowing.perceptive.perceptive_env_cfg import PerceptiveShadowingSceneCfg
-from instinctlab.tasks.utils.newton import InstinctNewtonVisualizerCfg, newton_sim_cfg
+from instinctlab.tasks.utils.newton import InstinctNewtonBackendCfg, InstinctNewtonVisualizerCfg, newton_sim_cfg
 
 
 @configclass
@@ -50,4 +50,8 @@ class G1PerceptiveNewtonEnvCfg_PLAY(G1PerceptiveShadowingEnvCfg_PLAY):
 
     def __post_init__(self):
         super().__post_init__()
-        self.sim.visualizer_cfgs = [InstinctNewtonVisualizerCfg(show_contacts=True, show_visual=True, follow_body=True)]
+        self.sim.visualizer_cfgs = [
+            InstinctNewtonVisualizerCfg(
+                backend=InstinctNewtonBackendCfg(show_contacts=True, show_visual=True, follow_body=True),
+            ),
+        ]

@@ -1,11 +1,12 @@
 import os
 import yaml
 
-from isaaclab_visualizers.kit import KitVisualizerCfg
+from isaaclab_visualizers.kit import KitBackendCfg
 
 import isaaclab.envs.mdp as mdp
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.configclass import configclass
+from isaaclab.visualizers import VisualizerCfg, WindowCfg
 
 import instinctlab.envs.mdp as instinct_mdp
 import instinctlab.tasks.shadowing.beyondmimic.beyondmimic_env_cfg as beyondmimic_cfg
@@ -192,12 +193,14 @@ class G1BeyondMimicPlaneEnvCfg_PLAY(G1BeyondMimicPlaneEnvCfg):
         # post init of parent
         super().__post_init__()
 
-        self.sim.default_visualizer_cfg = KitVisualizerCfg(
-            eye=(4.0, 0.75, 1.0),
-            lookat=(0.0, 0.75, 0.0),
-            origin_type="asset",
-            origin_track_path="robot",
-        )
+        self.sim.visualizer_cfgs = [
+            VisualizerCfg(
+                backend=KitBackendCfg(origin_type="asset", origin_track_path="robot"),
+                eye=(4.0, 0.75, 1.0),
+                lookat=(0.0, 0.75, 0.0),
+                window=WindowCfg(size=(1280, 720)),
+            ),
+        ]
 
         # spawn the robot randomly in the grid (instead of their terrain levels)
         self.scene.terrain.max_init_terrain_level = None

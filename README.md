@@ -84,6 +84,11 @@ Use the full source SHAs rather than the floating branch heads when reproducing 
     python scripts/instinct_rl/train.py --task=Instinct-Shadowing-WholeBody-Plane-G1-Play-v0 --viz none
     ```
 
+### Unsupported combinations
+
+- Physics backend `ovphysx`: only `physx` and `newton` are supported. Selecting `ovphysx` (`--physics ovphysx`) raises
+  `NotImplementedError` from `instinctlab.utils.backend_dispatch` instead of being mapped to PhysX.
+
 ## Documentation of Critical Components
 
 - [Instinct-RL Documentation](https://github.com/project-instinct/instinct_rl/blob/main/README.md)

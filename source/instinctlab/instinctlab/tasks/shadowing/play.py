@@ -97,7 +97,7 @@ def _get_kit_visualizer(env):
     if sim is None:
         return None
     for viz in getattr(sim, "visualizers", []):
-        if getattr(getattr(viz, "cfg", None), "visualizer_type", None) == "kit":
+        if getattr(getattr(getattr(viz, "cfg", None), "backend", None), "visualizer_type", None) == "kit":
             return viz
     return None
 
@@ -259,8 +259,8 @@ def _run_play(env_cfg, agent_cfg, log_dir: str, resume_path: str):
 
         if args_cli.cam_rotate_speed is not None:
             # VisualizerCfg eye/lookat are offsets from the controller's current asset-root origin.
-            lookat = np.asarray(env_cfg.sim.default_visualizer_cfg.lookat)
-            eye_offset = np.asarray(env_cfg.sim.default_visualizer_cfg.eye) - lookat
+            lookat = np.asarray(kit_visualizer.cfg.lookat)
+            eye_offset = np.asarray(kit_visualizer.cfg.eye) - lookat
             angle = args_cli.cam_rotate_speed * timestep * env.unwrapped.step_dt
             rotmat = np.array(
                 [
