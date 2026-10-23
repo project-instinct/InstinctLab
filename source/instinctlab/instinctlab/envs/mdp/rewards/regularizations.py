@@ -148,7 +148,7 @@ class action_rate_direction_switch(ManagerTermBase):
         self._last_action_direction = torch.zeros_like(env.action_manager.action)  # +1 or -1
         self._action_direction_switch_count = torch.zeros_like(env.action_manager.action, dtype=torch.float)
 
-    def reset(self, env_ids: Sequence[int] | None = None) -> None:
+    def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
         self._last_action[env_ids] = 0.0
         self._last_action_direction[env_ids] = 0.0
         self._action_direction_switch_count[env_ids] = 0.0
@@ -191,7 +191,7 @@ class action_rate_direction_consistent(ManagerTermBase):
         self._last_action_direction = torch.zeros_like(env.action_manager.action)  # +1 or -1
         self._action_rate_direction_consistency_count = torch.zeros_like(env.action_manager.action, dtype=torch.float)
 
-    def reset(self, env_ids: Sequence[int] | None = None) -> None:
+    def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
         self._last_action[env_ids] = 0.0
         self._last_action_direction[env_ids] = 0.0
         self._action_rate_direction_consistency_count[env_ids] = 0.0
@@ -355,7 +355,7 @@ class joint_torques_direction_switch(ManagerTermBase):
             self.asset.data.applied_torque.torch[:, self.asset_cfg.joint_ids], dtype=torch.float
         )  # (batch_size, num_joints)
 
-    def reset(self, env_ids: Sequence[int] | None = None) -> None:
+    def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
         self._last_torque_direction[env_ids] = 0.0
         self._torque_direction_switch_count[env_ids] = 0.0
 
@@ -421,7 +421,7 @@ class joint_acc_l2_step(ManagerTermBase):
         self._last_joint_vel[:] = self.asset.data.joint_vel.torch
         return joint_acc_err
 
-    def reset(self, env_ids: Sequence[int] | slice):
+    def reset(self, env_ids: torch.Tensor | slice):
         self._last_joint_vel[env_ids] = 0.0
 
 
@@ -496,7 +496,7 @@ class joint_acc_gauss_step(ManagerTermBase):
         self._last_joint_vel[:] = self.asset.data.joint_vel.torch
         return joint_acc_err
 
-    def reset(self, env_ids: Sequence[int] | slice):
+    def reset(self, env_ids: torch.Tensor | slice):
         self._last_joint_vel[env_ids] = 0.0
 
 
@@ -517,7 +517,7 @@ class joint_acc_direction_switch(ManagerTermBase):
             self.asset.data.joint_vel.torch[:, self.asset_cfg.joint_ids], dtype=torch.float
         )
 
-    def reset(self, env_ids: Sequence[int] | None = None) -> None:
+    def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
         self._last_vel[env_ids] = 0.0
         self._last_acc_direction[env_ids] = 0.0
         self._joint_acc_direction_switch_count[env_ids] = 0.0
@@ -596,7 +596,7 @@ class joint_vel_direction_switch(ManagerTermBase):
             self.asset.data.joint_vel.torch[:, self.asset_cfg.joint_ids], dtype=torch.float
         )
 
-    def reset(self, env_ids: Sequence[int] | None = None) -> None:
+    def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
         self._last_vel_direction[env_ids] = 0.0
         self._joint_vel_direction_switch_count[env_ids] = 0.0
 

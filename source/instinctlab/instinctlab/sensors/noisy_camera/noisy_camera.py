@@ -37,11 +37,13 @@ class NoisyCameraMixin:
         self.build_noise_pipeline()
         self.build_history_buffers()
 
-    def reset(self, env_ids: Sequence[int] | None = None, env_mask: wp.array | None = None):
+    def reset(self, env_ids: torch.Tensor | slice | None = None, env_mask: wp.array | None = None):
         """Reset the sensor, noise pipeline, and history buffers."""
         super().reset(env_ids, env_mask)
         if env_ids is None and env_mask is not None:
             env_ids = wp.to_torch(env_mask).nonzero(as_tuple=False).squeeze(-1)
+        elif isinstance(env_ids, slice):
+            env_ids = torch.arange(self.num_instances, device=self.device)[env_ids]
         self.reset_noise_pipeline(env_ids)
         self.reset_history_buffers(env_ids)
 
@@ -86,11 +88,12 @@ class NoisyCameraMixin:
         """Return the zero-copy Torch view used by the noise and history algorithms."""
         return self._data.output[data_type].torch
 
-    def apply_noise_pipeline(self, data: torch.Tensor, env_ids: torch.Tensor | Sequence[int]) -> torch.Tensor:
+    def apply_noise_pipeline(self, data: torch.Tensor, env_ids: torch.Tensor | slice | Sequence[int]) -> torch.Tensor:
         """Apply the configured noise pipeline to data selected by ``env_ids``.
 
         Args:
-            data: Selected camera data. Images have shape ``(len(env_ids), H, W, C)``.
+            data: Selected camera data. Images have shape ``(N, H, W, C)``, where ``N`` is the number of
+                selected environments.
             env_ids: Environment IDs corresponding to the first data dimension.
         """
         data = data.clone()
@@ -99,14 +102,14 @@ class NoisyCameraMixin:
 
         return data
 
-    def apply_noise_pipeline_to_all_data_types(self, env_ids: torch.Tensor | Sequence[int]):
+    def apply_noise_pipeline_to_all_data_types(self, env_ids: torch.Tensor | slice | Sequence[int]):
         """Apply the noise pipeline to all data types."""
         for data_type in self.cfg.data_types:
             self._output_as_torch(f"{data_type}_noised")[env_ids] = self.apply_noise_pipeline(
                 self._output_as_torch(data_type)[env_ids], env_ids=env_ids
             )
 
-    def reset_noise_pipeline(self, env_ids: Sequence[int] | None = None):
+    def reset_noise_pipeline(self, env_ids: torch.Tensor | slice | Sequence[int] | None = None):
         """Reset the noise pipeline for the specified environment IDs."""
         for noise_cfg in self.noise_pipeline:
             if hasattr(noise_cfg.func, "reset"):
@@ -131,7 +134,7 @@ class NoisyCameraMixin:
             channel_dtype = wp.types.vector(length=output.shape[-1], dtype=wp.dtype_from_torch(output.dtype))
             self._data.output[f"{data_type}_history"] = ProxyArray(wp.from_torch(history_output, dtype=channel_dtype))
 
-    def update_history_buffers(self, env_ids: torch.Tensor | Sequence[int]):
+    def update_history_buffers(self, env_ids: torch.Tensor | slice | Sequence[int]):
         """Append the history buffers for the specified data types and update the result in self._data.output.
         Only configured data types will be appended, so only env_ids are needed. Please call this function after all
         outputs are computed.
@@ -142,7 +145,7 @@ class NoisyCameraMixin:
                 data_type
             ].get_by_batch_ids(env_ids)
 
-    def reset_history_buffers(self, env_ids: torch.Tensor | Sequence[int] | None):
+    def reset_history_buffers(self, env_ids: torch.Tensor | slice | Sequence[int] | None):
         """Reset the history buffers for the specified data types."""
         for data_type in self.cfg.data_histories:
             self.output_history_buffers[data_type].reset(env_ids)

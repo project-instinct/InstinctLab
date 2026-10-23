@@ -3,7 +3,6 @@ from __future__ import annotations
 import inspect
 import os
 import yaml
-from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import isaaclab.utils.math as math_utils
@@ -42,12 +41,12 @@ class StayStillMotion(MotionBuffer):
     def num_trajectories(self) -> int:
         return self.cfg.pseudo_num_trajectories
 
-    def reset(self, env_ids: Sequence[int] | torch.Tensor, symmetric_augmentation_mask_buffer: torch.Tensor) -> None:
+    def reset(self, env_ids: torch.Tensor, symmetric_augmentation_mask_buffer: torch.Tensor) -> None:
         pass
 
     def fill_init_reference_state(
         self,
-        env_ids: Sequence[int] | torch.Tensor,
+        env_ids: torch.Tensor,
         env_origins: torch.Tensor,
         state_buffer: MotionReferenceState,
     ) -> None:
@@ -58,7 +57,7 @@ class StayStillMotion(MotionBuffer):
         state_buffer.base_pos_w[env_ids] = env_origins[env_ids]
         state_buffer.base_pos_w[env_ids, 2] += self.cfg.resting_pose_spawn_height_offset
         state_buffer.base_quat_w[env_ids] = torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device).expand(
-            len(env_ids), -1
+            env_ids.numel(), -1
         )
         state_buffer.base_lin_vel_w[env_ids] = 0.0
         state_buffer.base_ang_vel_w[env_ids] = 0.0

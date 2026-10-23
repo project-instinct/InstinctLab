@@ -47,10 +47,12 @@ class ResetToFallOrDefault(ManagerTermBase):
     def __call__(
         self,
         env: ManagerBasedEnv,
-        env_ids: torch.Tensor,
+        env_ids: torch.Tensor | slice,
         reset_to_fall_prob: float = 0.15,
         init_reset_difficulty: float = 0.0,
     ):
+        if isinstance(env_ids, slice):
+            env_ids = torch.arange(env.num_envs, device=env.device)[env_ids]
         if len(env_ids) == 0:
             return
 
@@ -151,7 +153,7 @@ class ResetToFallOrReference(ResetToFallOrDefault):
     def __call__(
         self,
         env: ManagerBasedEnv,
-        env_ids: torch.Tensor,
+        env_ids: torch.Tensor | slice,
         asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
         motion_ref_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference"),
         reset_to_fall_prob: float = 0.15,

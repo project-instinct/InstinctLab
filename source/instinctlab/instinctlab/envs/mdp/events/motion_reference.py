@@ -32,7 +32,7 @@ def match_motion_ref_with_scene(
 
 def reset_robot_state_by_reference(
     env: ManagerBasedEnv,
-    env_ids: torch.Tensor,
+    env_ids: torch.Tensor | slice,
     motion_ref_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference"),
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     position_offset: list = [0.0, 0.0, 0.1],
@@ -60,6 +60,9 @@ def reset_robot_state_by_reference(
     """
     asset: RigidObject | Articulation = env.scene[asset_cfg.name]
     motion_ref: MotionReferenceManagerBase = env.scene[motion_ref_cfg.name]
+
+    if isinstance(env_ids, slice):
+        env_ids = torch.arange(env.num_envs, device=env.device)[env_ids]
 
     # reset the motion reference object
     # motion reference (as sensor) is already reset(ed) in scene.reset(...)
@@ -290,7 +293,7 @@ def _apply_rigid_object_states(
 
 def reset_rigid_objects_state_by_reference(
     env: ManagerBasedEnv,
-    env_ids: torch.Tensor,
+    env_ids: torch.Tensor | slice,
     motion_ref_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference"),
     rigid_object_collection_cfg: SceneEntityCfg | None = None,
 ):
@@ -299,6 +302,8 @@ def reset_rigid_objects_state_by_reference(
     This function intentionally uses object index order and ignores object-name matching.
     """
     motion_ref: MotionReferenceManagerBase = env.scene[motion_ref_cfg.name]
+    if isinstance(env_ids, slice):
+        env_ids = torch.arange(env.num_envs, device=env.device)[env_ids]
     init_state = motion_ref.get_init_reference_state(env_ids)
 
     if not isinstance(init_state, HoiMotionReferenceState):
@@ -309,7 +314,7 @@ def reset_rigid_objects_state_by_reference(
         return
 
     # init_state is already indexed by env_ids (get_init_reference_state returns state[env_ids]),
-    # so its tensors have shape [len(env_ids), ...] with row i mapping to env_ids[i].
+    # so its tensors have shape [num_selected_envs, ...] with row i mapping to env_ids[i].
     # Do NOT index again with env_ids—that treats env IDs (e.g. 2) as positional indices
     # and causes out-of-bounds when a subset of envs reset (e.g. env_ids=[2] → tensor has 1 row).
     env_ids_t = torch.as_tensor(env_ids, device=init_state.object_pos_w.device)

@@ -5,8 +5,10 @@
 
 from __future__ import annotations
 
+import numpy as np
 import os
 import trimesh
+import xml.etree.ElementTree as ET
 from typing import TYPE_CHECKING
 
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
@@ -194,6 +196,74 @@ def _flatten_urdf_geometry(usd_path: str, replace_cylinders_with_capsules: bool 
     return flat_usd_path
 
 
+def _check_urdf_inertia(usd_path: str, urdf_path: str, rtol: float = 1e-4) -> None:
+    """Raise if a converted link's inertia differs from the URDF tensor.
+
+    The simulator rebuilds the tensor as ``R @ diag(diagonalInertia) @ R.T`` with ``R`` from ``physics:principalAxes``.
+    The Isaac Sim 6.0.1 importer wrote ``R.T`` instead, which silently rotated every link inertia. Links that absorb
+    fixed-joint children are skipped, since the importer merges the children's inertia into them.
+    """
+    root = ET.parse(urdf_path).getroot()
+    fixed_parent = {
+        joint.find("child").get("link"): joint.find("parent").get("link")
+        for joint in root.iter("joint")
+        if joint.get("type") == "fixed"
+    }
+    urdf_inertia: dict[str, np.ndarray] = {}
+    for link in root.iter("link"):
+        inertial = link.find("inertial")
+        if inertial is None or inertial.find("inertia") is None:
+            continue
+        a = {key: float(value) for key, value in inertial.find("inertia").attrib.items()}
+        tensor = np.array(
+            [
+                [a["ixx"], a["ixy"], a["ixz"]],
+                [a["ixy"], a["iyy"], a["iyz"]],
+                [a["ixz"], a["iyz"], a["izz"]],
+            ]
+        )
+        origin = inertial.find("origin")
+        roll, pitch, yaw = (float(v) for v in (origin.get("rpy", "0 0 0") if origin is not None else "0 0 0").split())
+        # URDF rpy is the fixed-axis rotation Rz(yaw) @ Ry(pitch) @ Rx(roll) of the inertial frame in the link frame
+        cr, sr, cp, sp, cy, sy = np.cos(roll), np.sin(roll), np.cos(pitch), np.sin(pitch), np.cos(yaw), np.sin(yaw)
+        rpy = np.array([[cy, -sy, 0], [sy, cy, 0], [0, 0, 1]]) @ np.array([[cp, 0, sp], [0, 1, 0], [-sp, 0, cp]])
+        rpy = rpy @ np.array([[1, 0, 0], [0, cr, -sr], [0, sr, cr]])
+        urdf_inertia[link.get("name")] = rpy @ tensor @ rpy.T
+    merged = set()
+    for child in fixed_parent:
+        if child in urdf_inertia:
+            link = child
+            while link in fixed_parent:
+                link = fixed_parent[link]
+            merged.add(link)
+
+    mismatches = []
+    stage = Usd.Stage.Open(usd_path)
+    for prim in stage.Traverse():
+        name = prim.GetName()
+        if not prim.HasAPI(UsdPhysics.MassAPI) or name not in urdf_inertia or name in merged:
+            continue
+        axes = prim.GetAttribute("physics:principalAxes").Get()
+        moments = np.array(prim.GetAttribute("physics:diagonalInertia").Get(), dtype=float)
+        w, x, y, z = np.array([axes.GetReal(), *axes.GetImaginary()]) / axes.GetLength()
+        rotation = np.array(
+            [
+                [1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)],
+                [2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)],
+                [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)],
+            ]
+        )
+        rebuilt = rotation @ np.diag(moments) @ rotation.T
+        error = np.abs(rebuilt - urdf_inertia[name]).max() / max(np.abs(moments).max(), 1e-12)
+        if error > rtol:
+            mismatches.append(f"{name} (relative error {error:.2e})")
+    if mismatches:
+        raise RuntimeError(
+            f"Converted inertia of '{usd_path}' does not match '{urdf_path}' for: {', '.join(mismatches)}."
+            " Check physics:principalAxes written by the URDF importer."
+        )
+
+
 @clone
 def spawn_from_urdf(
     prim_path: str,
@@ -213,6 +283,7 @@ def spawn_from_urdf(
     converter_cfg = cfg.replace(replace_cylinders_with_capsules=False)
     urdf_loader = converters.UrdfConverter(converter_cfg)
     flat_usd_path = _flatten_urdf_geometry(urdf_loader.usd_path, cfg.replace_cylinders_with_capsules)
+    _check_urdf_inertia(flat_usd_path, cfg.asset_path)
     if getattr(cfg, "asset_cache_enabled", True):
         flat_usd_path = str(asset_cache.publish_asset_cache(cfg, flat_usd_path))
     return spawn_from_usd_file(prim_path, flat_usd_path, cfg, translation, orientation, **kwargs)

@@ -4,7 +4,6 @@ import inspect
 import os
 import pickle as pkl
 import yaml
-from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import isaaclab.utils.math as math_utils
@@ -20,7 +19,6 @@ if TYPE_CHECKING:
 import numpy as np
 import torch
 import torch.multiprocessing as mp
-from typing import Sequence
 
 import pytorch_kinematics as pk
 import warp as wp
@@ -180,20 +178,20 @@ class AmassMotion(MotionBuffer):
 
         return return_
 
-    def reset(self, env_ids: Sequence[int] | torch.Tensor, symmetric_augmentation_mask_buffer: torch.Tensor) -> None:
+    def reset(self, env_ids: torch.Tensor, symmetric_augmentation_mask_buffer: torch.Tensor) -> None:
         self._sample_assigned_env_starting_stub(env_ids)
         # sample symmetric augmentation mask. In AMASS, all motions are able to be augmented.
         symmetric_augmentation_mask_buffer[env_ids] = torch.randint(
             0,
             2,
-            (len(env_ids),),
+            (env_ids.numel(),),
             device=self.output_device,
             dtype=torch.bool,
         )
 
     def fill_init_reference_state(
         self,
-        env_ids: Sequence[int] | torch.Tensor,
+        env_ids: torch.Tensor,
         env_origins: torch.Tensor,
         state_buffer: MotionReferenceState,
     ) -> None:
@@ -251,7 +249,7 @@ class AmassMotion(MotionBuffer):
 
     def fill_motion_data(
         self,
-        env_ids: Sequence[int] | torch.Tensor,
+        env_ids: torch.Tensor,
         sample_timestamp: torch.Tensor,
         env_origins: torch.Tensor,
         data_buffer: MotionReferenceData,
@@ -262,7 +260,7 @@ class AmassMotion(MotionBuffer):
         frame_selections = torch.round(
             (self._motion_buffer_start_time_s[assigned_ids].unsqueeze(-1) + sample_timestamp.to(self.buffer_device))
             * self._all_motion_sequences.framerate[self._assigned_env_motion_selection[assigned_ids]].unsqueeze(-1)
-        )  # shape [len(env_ids), num_frames]
+        )  # shape [num_env_ids, num_frames]
 
         # check if the sample_frame_idx is out of range
         data_buffer.validity[env_ids] = (
@@ -285,7 +283,7 @@ class AmassMotion(MotionBuffer):
         # flattened indexing to get the data from all motion sequences
         assigned_ids_across_frame = assigned_ids.unsqueeze(-1).repeat(
             1, frame_selections.shape[1]
-        )  # shape [len(env_ids), num_frames]
+        )  # shape [num_env_ids, num_frames]
         assigned_ids_across_frame_ = assigned_ids_across_frame.flatten()
         frame_selections_ = frame_selections.flatten()
 
@@ -295,7 +293,7 @@ class AmassMotion(MotionBuffer):
                 self._assigned_env_motion_selection[assigned_ids_across_frame_],
                 frame_selections_,
             ]
-            .reshape(len(env_ids), *data_buffer.joint_pos.shape[1:])
+            .reshape(env_ids.numel(), *data_buffer.joint_pos.shape[1:])
             .to(self.output_device)
         )
         data_buffer.joint_vel[env_ids] = (
@@ -303,7 +301,7 @@ class AmassMotion(MotionBuffer):
                 self._assigned_env_motion_selection[assigned_ids_across_frame_],
                 frame_selections_,
             ]
-            .reshape(len(env_ids), *data_buffer.joint_vel.shape[1:])
+            .reshape(env_ids.numel(), *data_buffer.joint_vel.shape[1:])
             .to(self.output_device)
         )
         # link_pos_b and link_quat_b
@@ -312,7 +310,7 @@ class AmassMotion(MotionBuffer):
                 self._assigned_env_motion_selection[assigned_ids_across_frame_],
                 frame_selections_,
             ]
-            .reshape(len(env_ids), *data_buffer.link_pos_b.shape[1:])
+            .reshape(env_ids.numel(), *data_buffer.link_pos_b.shape[1:])
             .to(self.output_device)
         )
         data_buffer.link_quat_b[env_ids] = (
@@ -320,7 +318,7 @@ class AmassMotion(MotionBuffer):
                 self._assigned_env_motion_selection[assigned_ids_across_frame_],
                 frame_selections_,
             ]
-            .reshape(len(env_ids), *data_buffer.link_quat_b.shape[1:])
+            .reshape(env_ids.numel(), *data_buffer.link_quat_b.shape[1:])
             .to(self.output_device)
         )
         data_buffer.link_pos_w[env_ids] = (
@@ -328,7 +326,7 @@ class AmassMotion(MotionBuffer):
                 self._assigned_env_motion_selection[assigned_ids_across_frame_],
                 frame_selections_,
             ]
-            .reshape(len(env_ids), *data_buffer.link_pos_w.shape[1:])
+            .reshape(env_ids.numel(), *data_buffer.link_pos_w.shape[1:])
             .to(self.output_device)
         )
         data_buffer.link_quat_w[env_ids] = (
@@ -336,7 +334,7 @@ class AmassMotion(MotionBuffer):
                 self._assigned_env_motion_selection[assigned_ids_across_frame_],
                 frame_selections_,
             ]
-            .reshape(len(env_ids), *data_buffer.link_quat_w.shape[1:])
+            .reshape(env_ids.numel(), *data_buffer.link_quat_w.shape[1:])
             .to(self.output_device)
         )
         # link_lin_vel_b and link_ang_vel_b
@@ -345,7 +343,7 @@ class AmassMotion(MotionBuffer):
                 self._assigned_env_motion_selection[assigned_ids_across_frame_],
                 frame_selections_,
             ]
-            .reshape(len(env_ids), *data_buffer.link_lin_vel_b.shape[1:])
+            .reshape(env_ids.numel(), *data_buffer.link_lin_vel_b.shape[1:])
             .to(self.output_device)
         )
         data_buffer.link_ang_vel_b[env_ids] = (
@@ -353,7 +351,7 @@ class AmassMotion(MotionBuffer):
                 self._assigned_env_motion_selection[assigned_ids_across_frame_],
                 frame_selections_,
             ]
-            .reshape(len(env_ids), *data_buffer.link_ang_vel_b.shape[1:])
+            .reshape(env_ids.numel(), *data_buffer.link_ang_vel_b.shape[1:])
             .to(self.output_device)
         )
         # link_lin_vel_w and link_ang_vel_w
@@ -362,7 +360,7 @@ class AmassMotion(MotionBuffer):
                 self._assigned_env_motion_selection[assigned_ids_across_frame_],
                 frame_selections_,
             ]
-            .reshape(len(env_ids), *data_buffer.link_lin_vel_w.shape[1:])
+            .reshape(env_ids.numel(), *data_buffer.link_lin_vel_w.shape[1:])
             .to(self.output_device)
         )
         data_buffer.link_ang_vel_w[env_ids] = (
@@ -370,7 +368,7 @@ class AmassMotion(MotionBuffer):
                 self._assigned_env_motion_selection[assigned_ids_across_frame_],
                 frame_selections_,
             ]
-            .reshape(len(env_ids), *data_buffer.link_ang_vel_w.shape[1:])
+            .reshape(env_ids.numel(), *data_buffer.link_ang_vel_w.shape[1:])
             .to(self.output_device)
         )
 
@@ -378,19 +376,19 @@ class AmassMotion(MotionBuffer):
         base_pos_w = self._all_motion_sequences.base_pos_w[
             self._assigned_env_motion_selection[assigned_ids_across_frame_],
             frame_selections_,
-        ].reshape(len(env_ids), frame_selections.shape[1], 3)
+        ].reshape(env_ids.numel(), frame_selections.shape[1], 3)
         base_lin_vel_w = self._all_motion_sequences.base_lin_vel_w[
             self._assigned_env_motion_selection[assigned_ids_across_frame_],
             frame_selections_,
-        ].reshape(len(env_ids), frame_selections.shape[1], 3)
+        ].reshape(env_ids.numel(), frame_selections.shape[1], 3)
         base_quat_w = self._all_motion_sequences.base_quat_w[
             self._assigned_env_motion_selection[assigned_ids_across_frame_],
             frame_selections_,
-        ].reshape(len(env_ids), frame_selections.shape[1], 4)
+        ].reshape(env_ids.numel(), frame_selections.shape[1], 4)
         base_ang_vel_w = self._all_motion_sequences.base_ang_vel_w[
             self._assigned_env_motion_selection[assigned_ids_across_frame_],
             frame_selections_,
-        ].reshape(len(env_ids), frame_selections.shape[1], 3)
+        ].reshape(env_ids.numel(), frame_selections.shape[1], 3)
         data_buffer.base_pos_w[env_ids] = base_pos_w.to(self.output_device)
         data_buffer.base_lin_vel_w[env_ids] = base_lin_vel_w.to(self.output_device)
         data_buffer.base_quat_w[env_ids] = base_quat_w.to(self.output_device)
@@ -414,7 +412,7 @@ class AmassMotion(MotionBuffer):
         data_buffer.link_pos_mask[env_ids] = True
         data_buffer.link_rot_mask[env_ids] = True
 
-    def get_current_motion_identifiers(self, env_ids: Sequence[int] | torch.Tensor | None = None) -> list[str]:
+    def get_current_motion_identifiers(self, env_ids: torch.Tensor | None = None) -> list[str]:
         """Get the identifiers of the motion files for each env.
         Args:
             env_ids: The env IDs to get the motion identifiers for.
@@ -436,7 +434,7 @@ class AmassMotion(MotionBuffer):
 
     def update_motion_weights(
         self,
-        env_ids: Sequence[int] | torch.Tensor | None = None,
+        env_ids: torch.Tensor | None = None,
         weight_ratio: float | torch.Tensor = 1.0,
     ) -> None:
         """Update the motion weights for sampling.
@@ -814,7 +812,7 @@ class AmassMotion(MotionBuffer):
     Internal helper functions (for sampling motion files).
     """
 
-    def _sample_assigned_env_starting_stub(self, env_ids: Sequence[int] | torch.Tensor | None = None) -> None:
+    def _sample_assigned_env_starting_stub(self, env_ids: torch.Tensor | None = None) -> None:
         """Sample motion file id and start time for the assigned envs.
         By stub, it means the necessary information to sample the motion data for the assigned envs.
         """
@@ -845,7 +843,7 @@ class AmassMotion(MotionBuffer):
                 f"Unsupported env starting stub sampling method: {self.cfg.env_starting_stub_sampling_strategy}"
             )
 
-    def _sample_assigned_env_motion_selection(self, assigned_ids: Sequence[int] | torch.Tensor) -> None:
+    def _sample_assigned_env_motion_selection(self, assigned_ids: torch.Tensor) -> None:
         """Resample the motion selection for the buffer, build the motion selection if not built.
         This samples the env_motion_selection independent from the start time.
         """
@@ -857,7 +855,7 @@ class AmassMotion(MotionBuffer):
             replacement=True,
         ).to(self.buffer_device)
 
-    def _sample_env_motion_start_time(self, assigned_ids: Sequence[int] | torch.Tensor) -> None:
+    def _sample_env_motion_start_time(self, assigned_ids: torch.Tensor) -> None:
         """Sample the start time for the assigned envs. (at reset)
         This samples the start time for the assigned envs, which is independent from the motion selection.
         """
@@ -893,7 +891,7 @@ class AmassMotion(MotionBuffer):
                 motion_ids, self._motion_bin_weights, self.buffer_device, self.cfg.motion_bin_length_s
             )
 
-    def _sample_as_concat_motion_bins(self, assigned_ids: Sequence[int] | torch.Tensor) -> None:
+    def _sample_as_concat_motion_bins(self, assigned_ids: torch.Tensor) -> None:
         """Sample the motion file id and start time for the assigned envs as if all motions are concatenated into a single motion."""
         flattened_bin_ids = torch.multinomial(
             self._motion_bin_weights._concatenated_tensor,
@@ -912,6 +910,6 @@ class AmassMotion(MotionBuffer):
     Internal helper functions (Others).
     """
 
-    def _get_motion_based_origin(self, env_origins: torch.Tensor, env_ids: Sequence[int] | torch.Tensor):
+    def _get_motion_based_origin(self, env_origins: torch.Tensor, env_ids: torch.Tensor):
         """Update the base position with origin, or use the env_origins from caller directly."""
         return env_origins[env_ids]

@@ -123,7 +123,7 @@ class ShadowingCommandBase(CommandTerm):
         """Update the metrics based on the motion reference and time."""
         pass
 
-    def _resample_command(self, env_ids: Sequence[int]):
+    def _resample_command(self, env_ids: torch.Tensor | slice):
         """Does not depend on the command term. self._command always depend on motion reference."""
         pass
 
@@ -141,8 +141,12 @@ class ShadowingCommandBase(CommandTerm):
         if getattr(self, "_visualizer", None) is not None:
             self._compute_debug_vis_data()
 
-    def reset(self, env_ids: Sequence[int] | None = None):
+    def reset(self, env_ids: torch.Tensor | slice | None = None):
         """Reset the command term for the given environment indices."""
+        if env_ids is None:
+            env_ids = slice(None)
+        if isinstance(env_ids, slice):
+            env_ids = torch.arange(self.num_envs, device=self.device)[env_ids]
         self._update_command_by_env_ids(env_ids)
         return {}  # no metrics to return, override if needed.
 

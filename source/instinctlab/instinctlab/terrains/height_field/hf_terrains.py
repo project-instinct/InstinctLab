@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from . import hf_terrains_cfg
 
 from . import hf_terrains_cfg
-from .utils import generate_wall
+from .utils import generate_wall, terrain_origin
 
 
 def generate_perlin_noise(difficulty: float, cfg: hf_terrains_cfg.PerlinPlaneTerrainCfg) -> np.ndarray:
@@ -40,16 +40,21 @@ def generate_perlin_noise(difficulty: float, cfg: hf_terrains_cfg.PerlinPlaneTer
 
 @generate_wall
 @height_field_to_mesh
-def perlin_plane_terrain(difficulty: float, cfg: hf_terrains_cfg.PerlinPlaneTerrainCfg) -> np.ndarray:
-    return generate_perlin_noise(
+def perlin_plane_terrain(
+    difficulty: float, cfg: hf_terrains_cfg.PerlinPlaneTerrainCfg
+) -> tuple[np.ndarray, np.ndarray]:
+    height_field = generate_perlin_noise(
         difficulty=difficulty,
-        cfg=cfg,
-    )  # type: ignore[return-value, arg-type]
+        cfg=cfg,  # type: ignore[arg-type]
+    )
+    return height_field, terrain_origin(height_field, cfg)
 
 
 @generate_wall
 @height_field_to_mesh
-def perlin_pyramid_sloped_terrain(difficulty: float, cfg: hf_terrains_cfg.PerlinPyramidSlopedTerrainCfg) -> np.ndarray:
+def perlin_pyramid_sloped_terrain(
+    difficulty: float, cfg: hf_terrains_cfg.PerlinPyramidSlopedTerrainCfg
+) -> tuple[np.ndarray, np.ndarray]:
     """Generate a terrain with a truncated pyramid structure.
 
     The terrain is a pyramid-shaped sloped surface with a slope of :obj:`slope` that trims into a flat platform
@@ -126,12 +131,15 @@ def perlin_pyramid_sloped_terrain(difficulty: float, cfg: hf_terrains_cfg.Perlin
         hf_raw += perlin_noise
 
     # round off the heights to the nearest vertical step
-    return np.rint(hf_raw).astype(np.int16)
+    height_field = np.rint(hf_raw).astype(np.int16)
+    return height_field, terrain_origin(height_field, cfg)
 
 
 @generate_wall
 @height_field_to_mesh
-def perlin_pyramid_stairs_terrain(difficulty: float, cfg: hf_terrains_cfg.PerlinPyramidStairsTerrainCfg) -> np.ndarray:
+def perlin_pyramid_stairs_terrain(
+    difficulty: float, cfg: hf_terrains_cfg.PerlinPyramidStairsTerrainCfg
+) -> tuple[np.ndarray, np.ndarray]:
     """Generate a terrain with a pyramid stair pattern.
 
     The terrain is a pyramid stair pattern which trims to a flat platform at the center of the terrain.
@@ -201,14 +209,15 @@ def perlin_pyramid_stairs_terrain(difficulty: float, cfg: hf_terrains_cfg.Perlin
         hf_raw += perlin_noise
 
     # round off the heights to the nearest vertical step
-    return np.rint(hf_raw).astype(np.int16)
+    height_field = np.rint(hf_raw).astype(np.int16)
+    return height_field, terrain_origin(height_field, cfg)
 
 
 @generate_wall
 @height_field_to_mesh
 def perlin_discrete_obstacles_terrain(
     difficulty: float, cfg: hf_terrains_cfg.PerlinDiscreteObstaclesTerrainCfg
-) -> np.ndarray:
+) -> tuple[np.ndarray, np.ndarray]:
     """Generate a terrain with randomly generated obstacles as pillars with positive and negative heights.
 
     The terrain is a flat platform at the center of the terrain with randomly generated obstacles as pillars
@@ -297,12 +306,13 @@ def perlin_discrete_obstacles_terrain(
         # add perlin noise to the terrain
         hf_raw += perlin_noise
 
-    return np.rint(hf_raw).astype(np.int16)
+    height_field = np.rint(hf_raw).astype(np.int16)
+    return height_field, terrain_origin(height_field, cfg)
 
 
 @generate_wall
 @height_field_to_mesh
-def perlin_wave_terrain(difficulty: float, cfg: hf_terrains_cfg.PerlinWaveTerrainCfg) -> np.ndarray:
+def perlin_wave_terrain(difficulty: float, cfg: hf_terrains_cfg.PerlinWaveTerrainCfg) -> tuple[np.ndarray, np.ndarray]:
     r"""Generate a terrain with a wave pattern.
 
     The terrain is a flat platform at the center of the terrain with a wave pattern. The wave pattern
@@ -373,14 +383,15 @@ def perlin_wave_terrain(difficulty: float, cfg: hf_terrains_cfg.PerlinWaveTerrai
         # add perlin noise to the terrain
         hf_raw += perlin_noise
 
-    return np.rint(hf_raw).astype(np.int16)
+    height_field = np.rint(hf_raw).astype(np.int16)
+    return height_field, terrain_origin(height_field, cfg)
 
 
 @generate_wall
 @height_field_to_mesh
 def perlin_stepping_stones_terrain(
     difficulty: float, cfg: hf_terrains_cfg.PerlinSteppingStonesTerrainCfg
-) -> np.ndarray:
+) -> tuple[np.ndarray, np.ndarray]:
     """Generate a terrain with a stepping stones pattern.
 
     The terrain is a stepping stones pattern which trims to a flat platform at the center of the terrain.
@@ -477,7 +488,8 @@ def perlin_stepping_stones_terrain(
         # add perlin noise to the terrain
         hf_raw += perlin_noise
 
-    return np.rint(hf_raw).astype(np.int16)
+    height_field = np.rint(hf_raw).astype(np.int16)
+    return height_field, terrain_origin(height_field, cfg)
 
 
 # -- Newly added terrains for parkour -- #
@@ -485,7 +497,9 @@ def perlin_stepping_stones_terrain(
 
 @generate_wall
 @height_field_to_mesh
-def perlin_parapet_terrain(difficulty: float, cfg: hf_terrains_cfg.PerlinParapetTerrainCfg) -> np.ndarray:
+def perlin_parapet_terrain(
+    difficulty: float, cfg: hf_terrains_cfg.PerlinParapetTerrainCfg
+) -> tuple[np.ndarray, np.ndarray]:
     """Generate a terrain with a parapet pattern.
 
     The terrain is a parapets pattern standing out from the ground.
@@ -554,12 +568,15 @@ def perlin_parapet_terrain(difficulty: float, cfg: hf_terrains_cfg.PerlinParapet
         hf_raw += perlin_noise
 
     # round off the heights to the nearest vertical step
-    return np.rint(hf_raw).astype(np.int16)
+    height_field = np.rint(hf_raw).astype(np.int16)
+    return height_field, terrain_origin(height_field, cfg)
 
 
 @generate_wall
 @height_field_to_mesh
-def perlin_gutter_terrain(difficulty: float, cfg: hf_terrains_cfg.PerlinGutterTerrainCfg):
+def perlin_gutter_terrain(
+    difficulty: float, cfg: hf_terrains_cfg.PerlinGutterTerrainCfg
+) -> tuple[np.ndarray, np.ndarray]:
     """Generate a terrain with a gutter pattern.
 
     The terrain is a gutter pattern sinking down from the ground.
@@ -614,12 +631,15 @@ def perlin_gutter_terrain(difficulty: float, cfg: hf_terrains_cfg.PerlinGutterTe
         hf_raw += perlin_noise
 
     # round off the heights to the nearest vertical step
-    return np.rint(hf_raw).astype(np.int16)
+    height_field = np.rint(hf_raw).astype(np.int16)
+    return height_field, terrain_origin(height_field, cfg)
 
 
 @generate_wall
 @height_field_to_mesh
-def perlin_stairs_up_down_terrain(difficulty: float, cfg: hf_terrains_cfg.PerlinStairsUpDownTerrainCfg):
+def perlin_stairs_up_down_terrain(
+    difficulty: float, cfg: hf_terrains_cfg.PerlinStairsUpDownTerrainCfg
+) -> tuple[np.ndarray, np.ndarray]:
     """Generate a terrain with stairs going up and down."""
     # resolve terrain configuration
     if isinstance(cfg.per_step_height, (list, tuple)):
@@ -688,12 +708,15 @@ def perlin_stairs_up_down_terrain(difficulty: float, cfg: hf_terrains_cfg.Perlin
         hf_raw += perlin_noise
 
     # round off the heights to the nearest vertical step
-    return np.rint(hf_raw).astype(np.int16)
+    height_field = np.rint(hf_raw).astype(np.int16)
+    return height_field, terrain_origin(height_field, cfg)
 
 
 @generate_wall
 @height_field_to_mesh
-def perlin_stairs_down_up_terrain(difficulty: float, cfg: hf_terrains_cfg.PerlinStairsDownUpTerrainCfg):
+def perlin_stairs_down_up_terrain(
+    difficulty: float, cfg: hf_terrains_cfg.PerlinStairsDownUpTerrainCfg
+) -> tuple[np.ndarray, np.ndarray]:
     """Generate a terrain with stairs going down and up."""
     # resolve terrain configuration
     if isinstance(cfg.per_step_height, (list, tuple)):
@@ -763,12 +786,13 @@ def perlin_stairs_down_up_terrain(difficulty: float, cfg: hf_terrains_cfg.Perlin
         hf_raw += perlin_noise
 
     # round off the heights to the nearest vertical step
-    return np.rint(hf_raw).astype(np.int16)
+    height_field = np.rint(hf_raw).astype(np.int16)
+    return height_field, terrain_origin(height_field, cfg)
 
 
 @generate_wall
 @height_field_to_mesh
-def perlin_tilt_terrain(difficulty: float, cfg: hf_terrains_cfg.PerlinTiltTerrainCfg):
+def perlin_tilt_terrain(difficulty: float, cfg: hf_terrains_cfg.PerlinTiltTerrainCfg) -> tuple[np.ndarray, np.ndarray]:
     """Generate a terrain with a tilt pattern.
 
     The terrain is a tilted plane with a slope that increases with difficulty.
@@ -858,12 +882,15 @@ def perlin_tilt_terrain(difficulty: float, cfg: hf_terrains_cfg.PerlinTiltTerrai
         hf_raw += perlin_noise
 
     # round off the heights to the nearest vertical step
-    return np.rint(hf_raw).astype(np.int16)
+    height_field = np.rint(hf_raw).astype(np.int16)
+    return height_field, terrain_origin(height_field, cfg)
 
 
 @generate_wall
 @height_field_to_mesh
-def perlin_tilted_ramp_terrain(difficulty: float, cfg: hf_terrains_cfg.PerlinTiltedRampTerrainCfg):
+def perlin_tilted_ramp_terrain(
+    difficulty: float, cfg: hf_terrains_cfg.PerlinTiltedRampTerrainCfg
+) -> tuple[np.ndarray, np.ndarray]:
     """Generate a terrain with a tilted ramp pattern."""
 
     # resolve terrain configuration
@@ -983,12 +1010,15 @@ def perlin_tilted_ramp_terrain(difficulty: float, cfg: hf_terrains_cfg.PerlinTil
         hf_raw += perlin_noise
 
     # round off the heights to the nearest vertical step
-    return np.rint(hf_raw).astype(np.int16)
+    height_field = np.rint(hf_raw).astype(np.int16)
+    return height_field, terrain_origin(height_field, cfg)
 
 
 @generate_wall
 @height_field_to_mesh
-def perlin_slope_terrain(difficulty: float, cfg: hf_terrains_cfg.PerlinSlopeUpDownTerrainCfg) -> np.ndarray:
+def perlin_slope_terrain(
+    difficulty: float, cfg: hf_terrains_cfg.PerlinSlopeUpDownTerrainCfg
+) -> tuple[np.ndarray, np.ndarray]:
     """Generate a terrain with a slope going up and down."""
     # resolve terrain configuration
     if isinstance(cfg.slope_angle, (list, tuple)):
@@ -1054,12 +1084,15 @@ def perlin_slope_terrain(difficulty: float, cfg: hf_terrains_cfg.PerlinSlopeUpDo
         hf_raw += perlin_noise
 
     # round off the heights to the nearest vertical step
-    return np.rint(hf_raw).astype(np.int16)
+    height_field = np.rint(hf_raw).astype(np.int16)
+    return height_field, terrain_origin(height_field, cfg)
 
 
 @generate_wall
 @height_field_to_mesh
-def perlin_cross_stone_terrain(difficulty: float, cfg: hf_terrains_cfg.PerlinCrossStoneTerrainCfg) -> np.ndarray:
+def perlin_cross_stone_terrain(
+    difficulty: float, cfg: hf_terrains_cfg.PerlinCrossStoneTerrainCfg
+) -> tuple[np.ndarray, np.ndarray]:
     """Generate a terrain with a cross stone pattern."""
     # resolve terrain configuration
     stone_size = cfg.stone_size
@@ -1237,12 +1270,15 @@ def perlin_cross_stone_terrain(difficulty: float, cfg: hf_terrains_cfg.PerlinCro
         hf_raw += perlin_noise
 
     # round off the heights to the nearest vertical step
-    return np.rint(hf_raw).astype(np.int16)
+    height_field = np.rint(hf_raw).astype(np.int16)
+    return height_field, terrain_origin(height_field, cfg)
 
 
 @generate_wall
 @height_field_to_mesh
-def perlin_square_gap_terrain(difficulty: float, cfg: hf_terrains_cfg.PerlinSquareGapTerrainCfg) -> np.ndarray:
+def perlin_square_gap_terrain(
+    difficulty: float, cfg: hf_terrains_cfg.PerlinSquareGapTerrainCfg
+) -> tuple[np.ndarray, np.ndarray]:
     """Generate a terrain with a square gap pattern."""
     # resolve terrain configuration
     gap_distance = cfg.gap_distance_range[0] + difficulty * (cfg.gap_distance_range[1] - cfg.gap_distance_range[0])
@@ -1319,4 +1355,5 @@ def perlin_square_gap_terrain(difficulty: float, cfg: hf_terrains_cfg.PerlinSqua
         hf_raw += perlin_noise
 
     # round off the heights to the nearest vertical step
-    return np.rint(hf_raw).astype(np.int16)
+    height_field = np.rint(hf_raw).astype(np.int16)
+    return height_field, terrain_origin(height_field, cfg)

@@ -28,7 +28,7 @@ class ImageNoiseCfg(NoiseCfg):
     func: Callable[[torch.Tensor, NoiseCfg, torch.Tensor], torch.Tensor] | type[ImageNoiseModel] = ImageNoiseModel
     """ The callable function to apply noise to the image.
     The function should take two arguments:
-        - the image in shape (N_, H, W, C) where N_ = len(env_ids)
+        - the image in shape (N_, H, W, C) where N_ is the number of selected environments
         - the cfg object (as this configclass's object).
         - the env_ids tensor for specifying the environment ids
     """

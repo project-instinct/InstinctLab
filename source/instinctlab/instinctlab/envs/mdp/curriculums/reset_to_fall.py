@@ -7,7 +7,7 @@ The event term resolved by ``event_name`` must be a
 from __future__ import annotations
 
 import torch
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from gilab.envs.mdp.events.reset_to_fall import ResetToFallOrDefault
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 def update_reset_fall_difficulty(
     env: ManagerBasedRLEnv,
-    env_ids: Sequence[int],
+    env_ids: torch.Tensor | slice,
     event_name: str = "reset_robot",
     difficulty_step_size: float = 0.1,
 ) -> torch.Tensor:
@@ -28,6 +28,9 @@ def update_reset_fall_difficulty(
     """
     if not hasattr(env, "reset_time_outs") or not hasattr(env, "reset_terminated"):
         return torch.tensor(0.0)
+
+    if isinstance(env_ids, slice):
+        env_ids = torch.arange(env.num_envs, device=env.device)[env_ids]
 
     time_outs = env.reset_time_outs[env_ids]
     terminates = env.reset_terminated[env_ids]
@@ -51,7 +54,7 @@ def update_reset_fall_difficulty(
 
 def update_reset_fall_difficulty_by_termination_terms(
     env: ManagerBasedRLEnv,
-    env_ids: Sequence[int],
+    env_ids: torch.Tensor | slice,
     event_name: str = "reset_robot",
     difficulty_step_size: float = 0.1,
     prevent_increase_timeout_terms: list[str] = [],
@@ -66,6 +69,9 @@ def update_reset_fall_difficulty_by_termination_terms(
     """
     if not hasattr(env, "reset_time_outs") or not hasattr(env, "reset_terminated"):
         return torch.tensor(0.0)
+
+    if isinstance(env_ids, slice):
+        env_ids = torch.arange(env.num_envs, device=env.device)[env_ids]
 
     term_mgr = env.termination_manager
 

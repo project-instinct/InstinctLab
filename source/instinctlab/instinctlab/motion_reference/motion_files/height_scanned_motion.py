@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import torch
 import torch.nn.functional as F
-from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from instinctlab.motion_reference.motion_files.amass_motion import AmassMotion
@@ -36,7 +35,7 @@ class HeightScannedMotion(AmassMotion):
 
     def fill_init_reference_state(
         self,
-        env_ids: Sequence[int] | torch.Tensor,
+        env_ids: torch.Tensor,
         env_origins: torch.Tensor,
         state_buffer: MotionReferenceState,
     ) -> None:
@@ -62,7 +61,7 @@ class HeightScannedMotion(AmassMotion):
 
     def fill_motion_data(
         self,
-        env_ids: Sequence[int] | torch.Tensor,
+        env_ids: torch.Tensor,
         sample_timestamp: torch.Tensor,
         env_origins: torch.Tensor,
         data_buffer: MotionReferenceData,
@@ -94,7 +93,7 @@ class HeightScannedMotion(AmassMotion):
         link_pos_w[..., 2] += height_offset.unsqueeze(-1)
         data_buffer.link_pos_w[env_ids] = link_pos_w
 
-    def _sample_heights(self, query_xy: torch.Tensor, env_ids: Sequence[int] | torch.Tensor) -> torch.Tensor:
+    def _sample_heights(self, query_xy: torch.Tensor, env_ids: torch.Tensor) -> torch.Tensor:
         """Sample terrain height at query XY positions.
 
         Args:

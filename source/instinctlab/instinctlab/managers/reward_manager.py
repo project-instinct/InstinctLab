@@ -8,6 +8,7 @@ from prettytable import PrettyTable
 from typing import TYPE_CHECKING
 
 from isaaclab.managers import ManagerTermBase, RewardManager, RewardTermCfg
+from isaaclab.utils import index_fill_
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -95,10 +96,10 @@ class MultiRewardManager(RewardManager):
     Operations.
     """
 
-    def reset(self, env_ids: Sequence[int] | None = None) -> dict[str, torch.Tensor]:
+    def reset(self, env_ids: torch.Tensor | slice | None = None) -> dict[str, torch.Tensor]:
         # resolve environment ids
         if env_ids is None:
-            env_ids = range(self.num_envs)
+            env_ids = slice(None)
         # store information
         extras = {}
         for key in self._episode_sums.keys():
@@ -109,7 +110,7 @@ class MultiRewardManager(RewardManager):
                 self._episode_sums[key][env_ids] / self._env.episode_length_buf[env_ids]
             )
             # reset episodic sum
-            self._episode_sums[key][env_ids] = 0.0
+            index_fill_(self._episode_sums[key], env_ids, 0.0)
         # reset all the reward terms
         for group_class_term_cfg in self.__group_class_term_cfgs.values():
             for term_cfg in group_class_term_cfg:

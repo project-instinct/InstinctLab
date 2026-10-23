@@ -266,10 +266,9 @@ class HoiMotionReferenceData(MotionReferenceData):
         return_.object_quat_w[:, :, :, 3] = 1.0
         return return_
 
-    def reset(self, env_ids: Sequence[int] | torch.Tensor) -> None:
+    def reset(self, env_ids: torch.Tensor | slice) -> None:
         """Reset the motion reference data for the given env_ids. Zeros tensors and marks as invalid."""
         super().reset(env_ids)
-        env_ids = torch.as_tensor(env_ids, device=self.validity.torch.device)
         parent_field_names = {f.name for f in fields(MotionReferenceData)}
         for field in fields(self):
             if field.name in parent_field_names:
@@ -331,7 +330,7 @@ class HoiMotionReferenceState(MotionReferenceState):
         return_.object_quat_w[:, :, 3] = 1.0
         return return_
 
-    def __getitem__(self, idx: Sequence[int] | torch.Tensor | None):
+    def __getitem__(self, idx: torch.Tensor | slice | None):
         if idx is None:
             return self
 

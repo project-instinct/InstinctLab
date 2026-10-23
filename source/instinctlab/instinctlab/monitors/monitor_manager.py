@@ -51,7 +51,7 @@ class MonitorTerm(ManagerTermBase):
         """Called after each environment step to acquire data from the environment."""
         pass
 
-    def reset_idx(self, env_ids: Sequence[int] | slice):
+    def reset_idx(self, env_ids: torch.Tensor | slice):
         # placeholder
         pass
 
@@ -126,7 +126,7 @@ class MonitorManager(ManagerBase):
                 monitor_infos[f"Step_Monitor/{term_name}_{key}"] = value
         return monitor_infos
 
-    def reset(self, env_ids: Sequence[int], is_episode=False):
+    def reset(self, env_ids: torch.Tensor | slice, is_episode=False):
         monitor_infos = dict()
         for term_name, term in self._terms.items():
             if isinstance(term, MonitorTerm):
