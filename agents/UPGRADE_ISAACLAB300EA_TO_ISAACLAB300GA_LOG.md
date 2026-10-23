@@ -31,6 +31,16 @@ Restored to EA behavior in InstinctLab: terrain origins and the parkour height-f
 
 Not validated: distributed training; hosts with NVIDIA drivers older than 580 (the image's PyTorch is built for CUDA 13.0).
 
+Training at scale (marsbrain, RTX 4090 D 24 GB, 20 iterations then resume +5):
+
+| Task | PhysX | Newton |
+|---|---|---|
+| Parkour | 4096 envs OK | 4096 envs OK |
+| Perceptive shadowing | 4096 envs OK with `env.sim.physics.gpu_max_rigid_contact_count=67108864` (the cfg's `2**27` leaves no memory for the depth encoder) | 4096 envs OK |
+| Perceptive HOI | 2048 envs OK; resume needs `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` | 4096 envs stalls after the first iteration; 1024 envs OK |
+
+Open: Q2, HOI exceeds its cfg capacities at scale (Newton triangle pairs about 3.3M against a 2.5M cap at 4096 envs; PhysX collision stack overflow at 2048 envs). EA never ran HOI at that scale, so there is no baseline.
+
 ## 2026-10-23: URDF link inertia, EA importer bug fixed on main
 
 ### Finding
