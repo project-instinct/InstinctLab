@@ -20,7 +20,8 @@ class OmomoMotionCfg(AmassMotionCfg):
 
     supported_file_endings: Sequence[str] = ["retargeted.npz", "retargetted.npz"]
     """ At initialization stage, OmomoMotion will walk through `cfg.path` and collect all files ending with
-    `supported_file_endings`
+    `supported_file_endings`. `path` is the dataset root (the OMOMO default is `~/Datasets/OMOMO/retargeted`) and is
+    expanded when the file list is built, so overriding it after construction still resolves.
     """
 
     object_interpolate_func: Callable[..., tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]] | None = None

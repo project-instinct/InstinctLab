@@ -501,30 +501,32 @@ class AmassMotion(MotionBuffer):
 
     def _refresh_motion_file_list(self):
         """Refresh the motion files list and motion weights from the file system."""
+        # Expand here, not in __post_init__: CLI/Hydra overrides do not re-run __post_init__.
+        dataset_path = os.path.expanduser(self.cfg.path)
         # search through all the files in the directory and record the files ending with "_poses.npz"
         if self.cfg.filtered_motion_selection_filepath is not None:
             if self.cfg.subset_selection is not None:
                 print("Warning: subset_selection is ignored when filtered_motion_files is provided.")
-            with open(self.cfg.filtered_motion_selection_filepath) as f:
+            with open(os.path.expanduser(self.cfg.filtered_motion_selection_filepath)) as f:
                 yaml_data = yaml.safe_load(f)
             all_motion_files = yaml_data["selected_files"]
             for i, motion_file in enumerate(all_motion_files):
-                all_motion_files[i] = os.path.join(self.cfg.path, motion_file)
+                all_motion_files[i] = os.path.join(dataset_path, motion_file)
         elif self.cfg.subset_selection is not None:
             all_motion_files = []
             for subset, subjects in self.cfg.subset_selection.items():
                 if subjects is None:
                     # all subjects in the subset
-                    subjects = os.listdir(os.path.join(self.cfg.path, subset))
+                    subjects = os.listdir(os.path.join(dataset_path, subset))
                 for subject in subjects:
-                    for root, _, files in os.walk(os.path.join(self.cfg.path, subset, subject)):
+                    for root, _, files in os.walk(os.path.join(dataset_path, subset, subject)):
                         for file in files:
                             for endings in self.cfg.supported_file_endings:
                                 if file.endswith(endings):
                                     all_motion_files.append(os.path.join(root, file))
         else:
             all_motion_files = []
-            for root, _, files in os.walk(self.cfg.path, followlinks=True):
+            for root, _, files in os.walk(dataset_path, followlinks=True):
                 for file in files:
                     for endings in self.cfg.supported_file_endings:
                         if file.endswith(endings):

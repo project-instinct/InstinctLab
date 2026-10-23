@@ -4,10 +4,12 @@ Customized Unitree G1 asset for Isaac Sim
 
 import os
 
+from isaaclab_physx.sim.schemas import PhysxArticulationCfg, PhysxRigidBodyCfg
+
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import DelayedPDActuatorCfg, ImplicitActuatorCfg
 from isaaclab.assets import AssetBaseCfg
-from isaaclab.sim.schemas import CollisionBaseCfg, JointDriveBaseCfg
+from isaaclab.sim.schemas import UsdPhysicsCollisionCfg, UsdPhysicsDriveCfg
 from isaaclab_assets import G1_CFG
 
 from instinctlab.sim import UrdfFileCfg
@@ -542,19 +544,24 @@ G1_29DOF_TORSOBASE_POPSICLE_CFG.spawn = UrdfFileCfg(
     fix_base=False,
     self_collision=True,
     activate_contact_sensors=True,
-    joint_drive_props=JointDriveBaseCfg(ensure_drives_exist=True),
-    rigid_props=sim_utils.RigidBodyPropertiesCfg(
-        disable_gravity=False,
-        retain_accelerations=False,
-        linear_damping=0.0,
-        angular_damping=0.0,
-        max_linear_velocity=1000.0,
-        max_angular_velocity=1000.0,
-        max_depenetration_velocity=1.0,
-    ),
-    articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-        enabled_self_collisions=True, solver_position_iteration_count=8, solver_velocity_iteration_count=4
-    ),
+    joint_drive_props=[UsdPhysicsDriveCfg()],
+    ensure_drives_exist=True,
+    rigid_props=[
+        PhysxRigidBodyCfg(
+            disable_gravity=False,
+            retain_accelerations=False,
+            linear_damping=0.0,
+            angular_damping=0.0,
+            max_linear_velocity=1000.0,
+            max_angular_velocity=1000.0,
+            max_depenetration_velocity=1.0,
+        )
+    ],
+    articulation_props=[
+        PhysxArticulationCfg(
+            enabled_self_collisions=True, solver_position_iteration_count=8, solver_velocity_iteration_count=4
+        )
+    ],
 )
 G1_29DOF_TORSOBASE_POPSICLE_CFG.spawn.activate_contact_sensors = True
 G1_29DOF_TORSOBASE_POPSICLE_CFG.soft_joint_pos_limit_factor = 0.9
@@ -575,9 +582,9 @@ G1_29DOF_TORSOBASE_POPSICLE_CFG.actuators = beyondmimic_g1_29dof_actuators
 
 _G1_REFERENCE_SPAWN_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG.spawn.copy()
 _G1_REFERENCE_SPAWN_CFG.activate_contact_sensors = False
-_G1_REFERENCE_SPAWN_CFG.rigid_props = sim_utils.RigidBodyPropertiesCfg(disable_gravity=True)
-_G1_REFERENCE_SPAWN_CFG.collision_props = CollisionBaseCfg(collision_enabled=False)
-_G1_REFERENCE_SPAWN_CFG.joint_drive_props = JointDriveBaseCfg(stiffness=0.0, damping=0.0, max_force=1.0e6)
+_G1_REFERENCE_SPAWN_CFG.rigid_props = [PhysxRigidBodyCfg(disable_gravity=True)]
+_G1_REFERENCE_SPAWN_CFG.collision_props = UsdPhysicsCollisionCfg(collision_enabled=False)
+_G1_REFERENCE_SPAWN_CFG.joint_drive_props = [UsdPhysicsDriveCfg(stiffness=0.0, damping=0.0, max_force=1.0e6)]
 G1_REFERENCE_CFG = AssetBaseCfg(
     spawn=_G1_REFERENCE_SPAWN_CFG,
     init_state=AssetBaseCfg.InitialStateCfg(

@@ -24,6 +24,8 @@ class TerrainMotionCfg(AmassMotionCfg):
     metadata_yaml: str = MISSING
     """YAML file containing the motion matching configuration.
     Please refer to the `MotionMatchedTerrainCfg` for the expected structure.
+    A leading `~` is expanded when the file is read (not in `__post_init__`), like `path`, which the YAML's
+    `motion_file` entries are relative to.
     """
 
     max_origins_per_motion: int = 16

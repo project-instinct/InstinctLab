@@ -2,6 +2,8 @@ import math
 import os
 from dataclasses import MISSING
 
+from isaaclab_physx.sim.spawners.materials import PhysxRigidBodyMaterialCfg
+
 import isaaclab.envs.mdp as mdp
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
@@ -79,7 +81,7 @@ class PerceptiveHoiShadowingSceneCfg(InteractiveSceneCfg):
         prim_path="/World/ground",
         terrain_type="plane",
         terrain_generator=None,
-        physics_material=sim_utils.RigidBodyMaterialCfg(
+        physics_material=PhysxRigidBodyMaterialCfg(
             friction_combine_mode="multiply",
             restitution_combine_mode="multiply",
             static_friction=1.0,

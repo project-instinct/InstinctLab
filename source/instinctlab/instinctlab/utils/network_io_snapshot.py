@@ -231,8 +231,10 @@ def write_snapshot(env: InstinctRlVecEnvWrapper, env_cfg, agent_cfg, out_dir: st
     """Write the layout, resolved configs and rollout of a constructed environment into ``out_dir``."""
     from isaaclab.utils.io import dump_yaml
 
+    from instinctlab.utils.instinct_rl_cli import env_cfg_for_dump
+
     os.makedirs(out_dir, exist_ok=True)
-    dump_yaml(os.path.join(out_dir, "env.yaml"), env_cfg)
+    dump_yaml(os.path.join(out_dir, "env.yaml"), env_cfg_for_dump(env_cfg))
     dump_yaml(os.path.join(out_dir, "agent.yaml"), agent_cfg)
     with open(os.path.join(out_dir, "layout.yaml"), "w") as f:
         yaml.safe_dump(collect_layout(env), f, sort_keys=False)

@@ -1,22 +1,20 @@
 # Copyright (c) 2024, Instinct Lab.
 # SPDX-License-Identifier: MIT
 
-"""Spawn functions for standalone mesh files."""
+"""Spawn functions for URDF files."""
 
 from __future__ import annotations
 
 import numpy as np
 import os
-import trimesh
 import xml.etree.ElementTree as ET
 from typing import TYPE_CHECKING
 
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
 
-from isaaclab.sim import converters, schemas
+from isaaclab.sim import converters
 from isaaclab.sim.spawners.from_files.from_files import spawn_from_usd_file
-from isaaclab.sim.spawners.meshes.meshes import _spawn_mesh_geom_from_mesh
-from isaaclab.sim.utils import clone, get_current_stage
+from isaaclab.sim.utils import clone
 
 from . import asset_cache
 
@@ -289,46 +287,5 @@ def spawn_from_urdf(
     return spawn_from_usd_file(prim_path, flat_usd_path, cfg, translation, orientation, **kwargs)
 
 
-@clone
-def spawn_from_mesh(
-    prim_path: str,
-    cfg: from_files_cfg.MeshFileCfg,
-    translation: tuple[float, float, float] | None = None,
-    orientation: tuple[float, float, float, float] | None = None,
-    **kwargs,
-) -> Usd.Prim:
-    """Spawn a standalone mesh file directly without Omniverse Kit conversion."""
-    mesh = trimesh.load_mesh(cfg.asset_path, process=False)
-    if isinstance(mesh, trimesh.Scene):
-        mesh = trimesh.util.concatenate(tuple(mesh.geometry.values()))
-    if not isinstance(mesh, trimesh.Trimesh):
-        raise TypeError(f"Expected a triangle mesh at '{cfg.asset_path}', got {type(mesh).__name__}.")
-
-    stage = get_current_stage()
-    spawn_cfg = cfg.replace(collision_props=None)
-    _spawn_mesh_geom_from_mesh(
-        prim_path,
-        spawn_cfg,
-        mesh,
-        translation=translation,
-        orientation=orientation,
-        scale=cfg.scale,
-        stage=stage,
-    )
-
-    mesh_prim_path = f"{prim_path}/geometry/mesh"
-    if cfg.collision_props is not None:
-        schemas.define_collision_properties(
-            mesh_prim_path,
-            cfg.collision_props,
-            stage=stage,
-        )
-
-    if cfg.mesh_collision_props is not None:
-        schemas.define_mesh_collision_properties(
-            mesh_prim_path,
-            cfg.mesh_collision_props,
-            stage=stage,
-        )
-
-    return stage.GetPrimAtPath(prim_path)
+# spawn_from_mesh was removed: ``isaaclab.sim.spawners.from_files.spawn_from_mesh`` spawns mesh files and
+# in-memory (trimesh) meshes.

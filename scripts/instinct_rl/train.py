@@ -110,7 +110,7 @@ def main():
             runner.load(resume_path)
 
         if not args_cli.distributed or dist.get_rank() == 0:
-            dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
+            dump_yaml(os.path.join(log_dir, "params", "env.yaml"), cli.env_cfg_for_dump(env_cfg))
             dump_yaml(os.path.join(log_dir, "params", "agent.yaml"), agent_cfg)
 
         profiler = None

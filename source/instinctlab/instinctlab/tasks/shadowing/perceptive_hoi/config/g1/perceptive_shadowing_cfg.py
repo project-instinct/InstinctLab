@@ -8,7 +8,6 @@ import isaaclab.sim as sim_utils
 from isaaclab.assets import RigidObjectCfg
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors.ray_caster import MultiMeshRayCasterCfg
-from isaaclab.sim.schemas import schemas_cfg
 from isaaclab.utils.configclass import configclass
 from isaaclab.visualizers import VisualizerCfg, WindowCfg
 
@@ -29,8 +28,8 @@ from instinctlab.motion_reference import HoiMotionReferenceData, HoiMotionRefere
 from instinctlab.motion_reference.motion_files.omomo_motion_cfg import OmomoMotionCfg as OmomoMotionCfgBase
 from instinctlab.motion_reference.utils import motion_interpolate_bilinear
 from instinctlab.sensors import get_link_prim_targets
-from instinctlab.sim import MeshFileCfg
 from instinctlab.utils.config import set_cfg_joint_order
+from instinctlab.utils.mesh import load_mesh_file
 from instinctlab.utils.urdf import urdf_importer_link_prim_path
 
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
@@ -140,17 +139,20 @@ class G1PerceptiveHoiShadowingEnvCfg(perceptual_cfg.PerceptiveHoiShadowingEnvCfg
 
         # add mesh objects as scene rigid objects
         for object_name, mesh_file_path in MESH_FILE_PATHS.items():
+            # TriangleMeshCfg, not TrimeshObjectCfg: a trimesh's ``__dict__`` has a cycle (``visual.mesh``) that
+            # Isaac Lab's cfg validation and ``to_dict`` traverse, so a trimesh cannot live in an env cfg.
+            mesh = load_mesh_file(mesh_file_path)
             setattr(
                 self.scene,
                 object_name,
                 RigidObjectCfg(
                     prim_path=f"/World/envs/env_[^/]+/{object_name}",
-                    spawn=MeshFileCfg(
-                        asset_path=os.path.expanduser(mesh_file_path),
-                        mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
-                        collision_props=sim_utils.CollisionPropertiesCfg(),
-                        rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
-                        mesh_collision_props=schemas_cfg.MeshCollisionBaseCfg(mesh_approximation_name="none"),
+                    spawn=sim_utils.MeshFileCfg(
+                        mesh=sim_utils.MeshFileCfg.TriangleMeshCfg(vertices=mesh.vertices, faces=mesh.faces),
+                        mass_props=sim_utils.MassCfg(mass=1.0),
+                        collision_props=sim_utils.UsdPhysicsCollisionCfg(),
+                        rigid_props=[sim_utils.UsdPhysicsRigidBodyCfg(kinematic_enabled=True)],
+                        mesh_collision_props=sim_utils.UsdPhysicsMeshCollisionCfg(mesh_approximation_name="none"),
                         scale=MESH_FILE_SCALES[object_name],
                     ),
                 ),

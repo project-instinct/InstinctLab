@@ -272,6 +272,7 @@ def resolve_train_cfg(task: str, overrides: list[str]):
     """Compose the training env and agent configs: task defaults, then the Hydra overrides."""
     from isaaclab_tasks.utils import resolve_task_config
 
+    _reject_in_memory_meshes_with_hydra(task, overrides)
     return resolve_task_config(task, AGENT_ENTRY_POINT, overrides=with_hydra_output_suppressed(overrides))
 
 
@@ -301,6 +302,7 @@ def resolve_play_cfg(task: str, overrides: list[str], *, env_yaml: dict | None =
     from isaaclab_tasks.utils.hydra import _parse_val, _setattr, register_task
 
     if env_yaml is None and agent_yaml is None:
+        _reject_in_memory_meshes_with_hydra(task, overrides)
         return resolve_task_config(
             task, AGENT_ENTRY_POINT, play_mode=True, overrides=with_hydra_output_suppressed(overrides)
         )
@@ -383,6 +385,7 @@ def _compose_with_hydra(task: str, env_cfg, agent_cfg, hydra_args: list[str]):
     from isaaclab.utils import to_dict
     from isaaclab.utils.dict import replace_slices_with_strings, replace_strings_with_slices, update_from_dict
 
+    _reject_in_memory_meshes_with_hydra(task, hydra_args, env_cfg)
     env_cfg = replace_env_cfg_spaces_with_strings(env_cfg)
     cfg_dict = replace_slices_with_strings({"env": to_dict(env_cfg), "agent": agent_cfg.to_dict()})
     ConfigStore.instance().store(name=task, node=OmegaConf.create(cfg_dict))
@@ -478,9 +481,113 @@ def load_saved_yaml(filename: str) -> dict:
         return yaml.load(f, Loader=_Loader)
 
 
+# -- in-memory meshes in the saved config
+
+
+IN_MEMORY_MESH_PLACEHOLDER = "<in-memory mesh data: restored from the task config>"
+"""What ``params/env.yaml`` holds in place of a ``MeshFileCfg`` in-memory mesh payload.
+
+``MeshFileCfg.TrimeshObjectCfg.mesh`` is a trimesh object and ``MeshFileCfg.TriangleMeshCfg`` holds raw arrays;
+neither has a YAML representation, so saving the config masks them and :func:`load_saved_cfgs` drops the
+placeholder again: replay keeps the mesh the task config loads.
+"""
+
+
+def env_cfg_for_dump(env_cfg) -> dict:
+    """Convert *env_cfg* into a dictionary that ``dump_yaml`` can write, masking in-memory meshes."""
+    from isaaclab.utils import to_dict
+
+    masked = _find_in_memory_meshes(env_cfg)
+    for owner, field, _payload in masked:
+        setattr(owner, field, IN_MEMORY_MESH_PLACEHOLDER)
+    try:
+        return to_dict(env_cfg)
+    finally:
+        for owner, field, payload in masked:
+            setattr(owner, field, payload)
+
+
+def _find_in_memory_meshes(node, found: list | None = None, visited: set | None = None) -> list:
+    """Return ``(owner, field, payload)`` for every in-memory mesh payload below *node*.
+
+    The mesh-source cfgs are matched by class name so this module stays importable without the simulator (see the
+    module docstring); the payloads are the spawned triangle data, which no dictionary/YAML form exists for.
+    """
+    found = [] if found is None else found
+    visited = set() if visited is None else visited
+    if id(node) in visited:
+        return found
+    visited.add(id(node))
+    kind = type(node).__name__
+    if kind == "TrimeshObjectCfg":
+        found.append((node, "mesh", node.mesh))
+        return found
+    if kind == "TriangleMeshCfg":
+        found.append((node, "vertices", node.vertices))
+        found.append((node, "faces", node.faces))
+        if node.vertex_colors is not None:
+            found.append((node, "vertex_colors", node.vertex_colors))
+        return found
+    if isinstance(node, dict):
+        for value in node.values():
+            if isinstance(value, (dict, list, tuple)) or hasattr(value, "__dataclass_fields__"):
+                _find_in_memory_meshes(value, found, visited)
+        return found
+    if isinstance(node, (list, tuple)):
+        for value in node:
+            if isinstance(value, (dict, list, tuple)) or hasattr(value, "__dataclass_fields__"):
+                _find_in_memory_meshes(value, found, visited)
+        return found
+    if not hasattr(node, "__dataclass_fields__"):
+        return found
+    for value in vars(node).values():
+        if isinstance(value, (dict, list, tuple)) or hasattr(value, "__dataclass_fields__"):
+            _find_in_memory_meshes(value, found, visited)
+    return found
+
+
+def _drop_in_memory_mesh_placeholders(data):
+    """Return *data* without the masked in-memory-mesh entries, so replay keeps the task's own mesh."""
+    if isinstance(data, dict):
+        return {
+            key: _drop_in_memory_mesh_placeholders(value)
+            for key, value in data.items()
+            if not (isinstance(value, str) and value == IN_MEMORY_MESH_PLACEHOLDER)
+        }
+    if isinstance(data, list):
+        return [_drop_in_memory_mesh_placeholders(item) for item in data]
+    return data
+
+
+def _reject_in_memory_meshes_with_hydra(task: str, hydra_args: list[str], env_cfg=None) -> None:
+    """Refuse residual Hydra arguments for a task whose env cfg holds in-memory meshes.
+
+    ``register_task`` converts the composed env cfg into a dictionary for Hydra, which an in-memory mesh payload
+    has no form for. ``env.``/``agent.`` scalars are applied without that conversion, so they keep working.
+
+    Raises:
+        ValueError: If a Hydra argument is given and *env_cfg* (or the task's own env cfg) holds in-memory meshes.
+    """
+    residual = [token for token in hydra_args if _reaches_hydra(token)]
+    if not residual:
+        return
+    if env_cfg is None:
+        from isaaclab_tasks.utils.parse_cfg import load_cfg_from_registry
+
+        env_cfg = load_cfg_from_registry(task, "env_cfg_entry_point")
+    if not _find_in_memory_meshes(env_cfg):
+        return
+    raise ValueError(
+        f"Task '{task}' spawns in-memory meshes (MeshFileCfg.TrimeshObjectCfg/TriangleMeshCfg), which cannot pass"
+        f" through Hydra's config store. Pass env.<path>=<value> or agent.<path>=<value> instead of {residual}."
+    )
+
+
 def load_saved_cfgs(args_cli: argparse.Namespace, log_dir: str) -> tuple[dict | None, dict | None]:
     """Load ``params/env.yaml`` and ``params/agent.yaml`` of *log_dir* when ``--env_cfg``/``--agent_cfg`` ask."""
     env_yaml = load_saved_yaml(os.path.join(log_dir, "params", "env.yaml")) if args_cli.env_cfg else None
+    if env_yaml is not None:
+        env_yaml = _drop_in_memory_mesh_placeholders(env_yaml)
     agent_yaml = load_saved_yaml(os.path.join(log_dir, "params", "agent.yaml")) if args_cli.agent_cfg else None
     return env_yaml, agent_yaml
 

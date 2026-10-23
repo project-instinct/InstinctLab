@@ -30,8 +30,10 @@ def motion_matched_terrain(
     Returns:
         tuple: A tuple containing a list of trimesh objects and an array of poses.
     """
-    # Load the YAML file containing terrain and motion data
-    with open(cfg.metadata_yaml) as file:
+    # Load the YAML file containing terrain and motion data.
+    # The paths are expanded here so CLI/Hydra overrides that skip __post_init__ resolve too.
+    dataset_path = os.path.expanduser(cfg.path)
+    with open(os.path.expanduser(cfg.metadata_yaml)) as file:
         data = yaml.safe_load(file)
 
     # Extract terrains and motions from the YAML data
@@ -41,7 +43,7 @@ def motion_matched_terrain(
     selected_terrain = terrains[terrain_idx]
 
     terrain_file = selected_terrain["terrain_file"]
-    terrain_abspath = os.path.join(cfg.path, terrain_file)
+    terrain_abspath = os.path.join(dataset_path, terrain_file)
     terrain_mesh = trimesh.load(terrain_abspath, force="mesh")
 
     # crop terrain mesh by cfg.size

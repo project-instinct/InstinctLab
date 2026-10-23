@@ -32,10 +32,12 @@ class TerrainMotion(AmassMotion):
 
     def _refresh_motion_file_list(self):
         """Refresh the list of motion files based on the terrain configuration."""
-        with open(self.cfg.metadata_yaml) as file:
+        # Expand here, not in __post_init__: CLI/Hydra overrides do not re-run __post_init__.
+        dataset_path = os.path.expanduser(self.cfg.path)
+        with open(os.path.expanduser(self.cfg.metadata_yaml)) as file:
             self.yaml_data = yaml.safe_load(file)
 
-        self._all_motion_files = [os.path.join(self.cfg.path, f["motion_file"]) for f in self.yaml_data["motion_files"]]
+        self._all_motion_files = [os.path.join(dataset_path, f["motion_file"]) for f in self.yaml_data["motion_files"]]
         self._motion_weights = torch.tensor(
             [float(f.get("weight", 1.0)) for f in self.yaml_data["motion_files"]],
             dtype=torch.float,
