@@ -89,9 +89,14 @@ Place the three repositories side by side, with `logs` as a relative symlink int
     ```
 
     Use `isaaclab -p` for anything that starts the simulator; plain `python` is enough for `pytest` and `--help`.
+    Kitless runs (Newton, `--viz none`) may also use plain `python`.
 
 - `instinct_rl` and `instinctlab` are installed with `uv pip install -e` into the base image's `/opt/isaaclab-venv`.
   Never run an exact `uv sync` in the container: it removes these editable installs.
+- URDF robots convert to USD once per asset cache (`~/.cache/instinctlab`, a named volume). Under plain `python` the
+  image's standalone importer (`isaacsim-asset-isolated`, Isaac Lab's `importers` extra) converts without Kit; under
+  `isaaclab -p` Isaac Sim's own `isaacsim` package hides it, so a windowless Kit app converts instead. Both give the
+  same USD.
 - Source edits need no rebuild. Rebuild both images when Isaac Lab's `pyproject.toml`/`uv.lock`, or either `docker/`
   directory, changes.
 

@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import json
 import os
-from types import SimpleNamespace
+import sys
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -63,7 +64,9 @@ def test_digest_is_stable_and_tracks_the_inputs(urdf_cfg, tmp_path):
     assert asset_cache.asset_cache_digest(urdf_cfg) != digest
 
 
-def test_cold_then_warm(urdf_cfg, tmp_path):
+def test_cold_then_warm(urdf_cfg, tmp_path, monkeypatch):
+    # Without a reachable standalone importer, a cold cache forces Kit.
+    monkeypatch.setattr("isaaclab.utils.version.standalone_importers_available", lambda: False)
     assert not asset_cache.has_valid_asset_cache(urdf_cfg)
     assert asset_cache.ensure_asset_cache_kit_args(
         SimpleNamespace(robot=SimpleNamespace(spawn=urdf_cfg)), SimpleNamespace(kit_args="", require_kit=False)
@@ -103,3 +106,14 @@ def test_cache_key_uses_the_installed_versions(urdf_cfg):
     assert inputs["isaacsim_version"] == asset_cache._package_version("isaacsim")
     assert inputs["postprocessor_version"] == asset_cache.ASSET_CACHE_POSTPROCESSOR_VERSION
     assert os.path.basename(inputs["asset_path"]) == "robot.urdf"
+
+
+def test_cold_cache_stays_kitless_with_the_standalone_importer(urdf_cfg, monkeypatch):
+    monkeypatch.setattr("isaaclab.utils.version.standalone_importers_available", lambda: True)
+    monkeypatch.setitem(sys.modules, "isaacsim.asset.importer.utils.impl.physx_types", ModuleType("physx_types"))
+    launcher_args = SimpleNamespace(kit_args="", require_kit=False)
+    assert not asset_cache.has_valid_asset_cache(urdf_cfg)
+    assert not asset_cache.ensure_asset_cache_kit_args(
+        SimpleNamespace(robot=SimpleNamespace(spawn=urdf_cfg)), launcher_args
+    )
+    assert launcher_args == SimpleNamespace(kit_args="", require_kit=False)

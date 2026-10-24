@@ -249,6 +249,7 @@ def main():
     from isaaclab_tasks.utils.parse_cfg import load_cfg_from_registry
 
     import instinctlab.tasks  # noqa: F401
+    from instinctlab.sim.spawners.from_files.asset_cache import ensure_asset_cache_kit_args
 
     parser = argparse.ArgumentParser(description="Dump the network I/O layout and a fixed rollout of a task.")
     parser.add_argument("--task", type=str, required=True, help="Name of the task.")
@@ -262,6 +263,7 @@ def main():
     env_cfg.seed = args_cli.seed
     agent_cfg = load_cfg_from_registry(args_cli.task, "instinct_rl_cfg_entry_point")
 
+    ensure_asset_cache_kit_args(env_cfg, args_cli)
     with launch_simulation(env_cfg, args_cli):
         from instinctlab.utils.wrappers.instinct_rl import InstinctRlVecEnvWrapper
 

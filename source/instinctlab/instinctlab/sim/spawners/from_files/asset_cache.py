@@ -233,12 +233,26 @@ def find_uncached_asset_cfgs(env_cfg) -> list:
 
 
 def ensure_asset_cache_kit_args(env_cfg, launcher_args) -> bool:
-    """Force a windowless Kit app when a custom URDF asset cache is cold.
+    """Prepare URDF conversion for a cold asset cache; call before launching the simulation.
 
-    When the digest-scoped USD already exists, this is a no-op and normal kitless
-    Newton launches such as ``--viz none`` remain unchanged.
+    The standalone ``isaacsim-asset-isolated`` importer converts without Kit, but only where it is reachable: Isaac
+    Sim's ``python.sh`` (``isaaclab -p``) puts Isaac Sim's regular ``isaacsim`` package first, which hides the wheel's
+    ``isaacsim.asset`` portion (see :func:`isaaclab.utils.version.standalone_importers_available`). With the
+    standalone importer, the launch stays as configured (kitless on Newton or OvPhysX with ``--viz none``);
+    otherwise a windowless Kit app is forced. When the digest-scoped USD already exists, this is a no-op.
+
+    Returns:
+        Whether Kit was forced.
     """
+    from isaaclab.utils.version import standalone_importers_available
+
     if not find_uncached_asset_cfgs(env_cfg):
+        return False
+    if standalone_importers_available():
+        # Importing this module registers the importer's PhysX USD schema fallback. When that happens only inside the
+        # launched simulation, the importer's ApplyAPI("PhysxJointAPI") fails, so register it before the launch.
+        import isaacsim.asset.importer.utils.impl.physx_types  # noqa: F401
+
         return False
 
     is_dict = isinstance(launcher_args, dict)

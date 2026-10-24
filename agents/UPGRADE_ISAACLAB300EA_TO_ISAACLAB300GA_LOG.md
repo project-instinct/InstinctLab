@@ -85,3 +85,19 @@ Use main's importer output, i.e. the correct inertia. No InstinctLab code reprod
 
 - Policies trained on EA run on a physically different G1 on main. Expect a behavior change for dynamic motions; fine-tune or retrain where it matters.
 - Snapshot parity: robot rows are gated on code parity with EA's converted USD swapped in (exact match expected). Runs with main's USD are recorded, not gated, under manifest accepted difference D6.
+
+## 2026-10-24: Kit-free URDF conversion
+
+Following `agents/URDF_CONVERTER_EVALUATION.md`, the InstinctLab image adds Isaac Lab's `importers` extra (`isaacsim-asset-isolated==6.2.0.0`) through `uv sync --frozen` on Isaac Lab's lockfile, so its overrides keep torch, Newton, MuJoCo and `usd-exchange` at the image's versions (checked with `uv pip list`; `uv pip check` lists only the overridden pins).
+
+The evaluation's step 2 ("`ensure_asset_cache_kit_args` no longer needs to launch Kit") holds only for plain `python`:
+
+- Under `isaaclab -p`, Isaac Sim's `python.sh` puts Isaac Sim's regular `isaacsim` package first on `PYTHONPATH`, which hides the wheel's `isaacsim.asset` namespace portion (`isaaclab.utils.version.standalone_importers_available()` is `False`). A cold cache there still converts through a windowless Kit app.
+- Under plain `python` (kitless backends), `ensure_asset_cache_kit_args` keeps the launch kitless. It also imports the importer's PhysX schema fallback before the launch: registered later, inside the running simulation, the importer's `ApplyAPI("PhysxJointAPI")` fails.
+- The snapshot tool (`network_io_snapshot.py`) now calls the same function.
+
+Verification (`main/c11_kitless_probe`, `main/c11_layout`):
+
+- Cold cache, `python scripts/instinct_rl/train.py --task Instinct-Locomotion-Flat-G1-Newton-v0 --viz none`: no Kit launched, one iteration trained, cache written.
+- That kitless USD vs. the Kit-converted cache: 127 prims, 0 differences (`urdf_converter_eval/kitless_convert.py` diff).
+- Layout audit on the rebuilt image: 13 of 14 rows have an identical layout to the EA baseline; value differences are the recorded D6/D8/Q1 ones. Parkour Newton runs out of host memory on aorua and was checked on marsbrain.

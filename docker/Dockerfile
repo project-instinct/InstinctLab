@@ -46,6 +46,14 @@ RUN mkdir -p ${DOCKER_USER_HOME} && cp -rT /root ${DOCKER_USER_HOME} && \
 COPY --from=instinct_rl --chown=isaaclab:isaaclab . ${DOCKER_INSTINCT_WS_PATH}/instinct_rl
 COPY --chown=isaaclab:isaaclab source ${DOCKER_INSTINCT_WS_PATH}/instinctlab/source
 USER isaaclab
+# Add Isaac Lab's ``importers`` extra (the standalone ``isaacsim-asset-isolated`` URDF importer) to the base image's
+# package set, from Isaac Lab's lockfile so its overrides keep the simulator stack pinned. URDF assets then convert
+# without Kit on every backend. IMAGE_EXTRAS repeats the base image's list (docker/Dockerfile.base in Isaac Lab). Run
+# before the Instinct-RL install, which pins onnx below the lockfile's version.
+ARG IMAGE_EXTRAS="--extra sb3 --extra skrl --extra rl-games --extra rsl-rl --extra viser --extra rerun --extra mimic --extra teleop --extra test --extra tetrahedralization --extra ov"
+RUN --mount=type=cache,target=${DOCKER_USER_HOME}/.cache/uv,uid=1000,gid=1000 \
+    cd ${ISAACLAB_PATH} && \
+    uv sync --frozen --inexact ${IMAGE_EXTRAS} --extra importers --no-install-package imageio-ffmpeg
 RUN --mount=type=cache,target=${DOCKER_USER_HOME}/.cache/uv,uid=1000,gid=1000 \
     uv pip install -e ${DOCKER_INSTINCT_WS_PATH}/instinct_rl -e ${DOCKER_INSTINCT_WS_PATH}/instinctlab/source/instinctlab
 
