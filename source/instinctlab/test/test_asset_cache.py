@@ -9,8 +9,6 @@ from __future__ import annotations
 
 import json
 import os
-import sys
-from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -64,21 +62,13 @@ def test_digest_is_stable_and_tracks_the_inputs(urdf_cfg, tmp_path):
     assert asset_cache.asset_cache_digest(urdf_cfg) != digest
 
 
-def test_cold_then_warm(urdf_cfg, tmp_path, monkeypatch):
-    # Without a reachable standalone importer, a cold cache forces Kit.
-    monkeypatch.setattr("isaaclab.utils.version.standalone_importers_available", lambda: False)
+def test_cold_then_warm(urdf_cfg, tmp_path):
     assert not asset_cache.has_valid_asset_cache(urdf_cfg)
-    assert asset_cache.ensure_asset_cache_kit_args(
-        SimpleNamespace(robot=SimpleNamespace(spawn=urdf_cfg)), SimpleNamespace(kit_args="", require_kit=False)
-    )
     cached = _publish(urdf_cfg, tmp_path)
     assert cached.is_file()
     assert asset_cache.has_valid_asset_cache(urdf_cfg)
     assert asset_cache.asset_cached_usd_path(urdf_cfg) == cached
-    # Warm: no rebuild, no forced Kit, and the manifest records the digest and the input hashes.
-    assert not asset_cache.ensure_asset_cache_kit_args(
-        SimpleNamespace(robot=SimpleNamespace(spawn=urdf_cfg)), SimpleNamespace(kit_args="", require_kit=False)
-    )
+    # Warm: the manifest records the digest and the input hashes.
     metadata = json.loads((cached.parent / "instinctlab_asset.json").read_text())
     assert metadata["asset_digest"] == asset_cache.asset_cache_digest(urdf_cfg)
     assert metadata["inputs"]["files"]["urdf"]
@@ -93,27 +83,9 @@ def test_edited_cache_is_rejected(urdf_cfg, tmp_path):
     assert not asset_cache.has_valid_asset_cache(urdf_cfg)
 
 
-def test_uncached_cfgs_are_found_recursively(urdf_cfg):
-    env_cfg = SimpleNamespace(scene=SimpleNamespace(robot=SimpleNamespace(spawn=urdf_cfg)), extras={})
-    assert asset_cache.find_uncached_asset_cfgs(env_cfg) == [urdf_cfg]
-    urdf_cfg.asset_cache_enabled = False
-    assert asset_cache.find_uncached_asset_cfgs(env_cfg) == []
-
-
 def test_cache_key_uses_the_installed_versions(urdf_cfg):
     inputs = asset_cache._asset_cache_inputs(urdf_cfg)
     assert inputs["isaaclab_version"] == asset_cache._package_version("isaaclab")
     assert inputs["isaacsim_version"] == asset_cache._package_version("isaacsim")
     assert inputs["postprocessor_version"] == asset_cache.ASSET_CACHE_POSTPROCESSOR_VERSION
     assert os.path.basename(inputs["asset_path"]) == "robot.urdf"
-
-
-def test_cold_cache_stays_kitless_with_the_standalone_importer(urdf_cfg, monkeypatch):
-    monkeypatch.setattr("isaaclab.utils.version.standalone_importers_available", lambda: True)
-    monkeypatch.setitem(sys.modules, "isaacsim.asset.importer.utils.impl.physx_types", ModuleType("physx_types"))
-    launcher_args = SimpleNamespace(kit_args="", require_kit=False)
-    assert not asset_cache.has_valid_asset_cache(urdf_cfg)
-    assert not asset_cache.ensure_asset_cache_kit_args(
-        SimpleNamespace(robot=SimpleNamespace(spawn=urdf_cfg)), launcher_args
-    )
-    assert launcher_args == SimpleNamespace(kit_args="", require_kit=False)

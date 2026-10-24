@@ -45,7 +45,7 @@ Non-goal: distributed training.
 
 - Run an upstream task on OvPhysX in the container (`physics=ovphysx` or `presets=ovphysx` on a task that defines it) and confirm the wheel, kitless launch and GPU pipeline work on aorua (RTX 5070 Ti, driver 580).
 - Record what is unavailable kitless: Kit viewer, Kit video capture, RTX cameras. InstinctLab uses ray-caster cameras only, so observations are unaffected.
-- Confirm the cold-cache path on OvPhysX: with plain `python`, `train.py` converts the URDF with the standalone importer (§7 decision 3) and stays kitless.
+- Confirm the cold-cache path on OvPhysX: the URDF converts in the Kit-free child process (§7 decision 3) and the run stays kitless.
 
 Gate: an upstream task trains one iteration on OvPhysX; an InstinctLab task converts its URDF on a cold cache and then runs kitless on OvPhysX.
 
@@ -105,7 +105,7 @@ Gate: all rows pass or every difference is recorded in the manifest; no deprecat
 
 1. Task ids: separate `*-OvPhysx-v0` ids (decided). They select the backend preset and carry no other overrides.
 2. Newton: moves to the same backend preset mechanism (decided); `*-Newton-v0` ids stay and only select the preset.
-3. URDF conversion without Kit (decided): the image has Isaac Lab's `importers` extra (standalone `isaacsim-asset-isolated`), so kitless runs started with plain `python` convert a cold asset cache without Kit; under `isaaclab -p` a windowless Kit converts (Isaac Sim's `isaacsim` package hides the wheel). See `URDF_CONVERTER_EVALUATION.md` and the upgrade log.
+3. URDF conversion without Kit (decided, implemented): conversion always runs in a Kit-free child process with the standalone importer (`sim/spawners/from_files/urdf_conversion.py`), for every backend and launcher. See `URDF_CONVERTER_EVALUATION.md` and the upgrade log.
 4. OvPhysX Play viewer: `viser` by default, switchable with `--viz` (decided).
 
 ## 8. Risks

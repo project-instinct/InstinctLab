@@ -12,11 +12,10 @@ from typing import TYPE_CHECKING
 
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
 
-from isaaclab.sim import converters
 from isaaclab.sim.spawners.from_files.from_files import spawn_from_usd_file
 from isaaclab.sim.utils import clone
 
-from . import asset_cache
+from . import asset_cache, urdf_conversion
 
 if TYPE_CHECKING:
     from . import from_files_cfg
@@ -275,13 +274,8 @@ def spawn_from_urdf(
         cached_usd_path = asset_cache.asset_cached_usd_path(cfg)
         return spawn_from_usd_file(prim_path, str(cached_usd_path), cfg, translation, orientation, **kwargs)
 
-    # Isaac Sim's importer 3.0 removed this option. Keep the upstream converter
-    # cache and warning path clean, then apply the legacy geometry mapping in
-    # our post-processing step.
-    converter_cfg = cfg.replace(replace_cylinders_with_capsules=False)
-    urdf_loader = converters.UrdfConverter(converter_cfg)
-    flat_usd_path = _flatten_urdf_geometry(urdf_loader.usd_path, cfg.replace_cylinders_with_capsules)
-    _check_urdf_inertia(flat_usd_path, cfg.asset_path)
+    # Kit-free conversion (importer, flattening, inertia check) in a child process, whatever runs this one.
+    flat_usd_path = urdf_conversion.convert_urdf(cfg)
     if getattr(cfg, "asset_cache_enabled", True):
         flat_usd_path = str(asset_cache.publish_asset_cache(cfg, flat_usd_path))
     return spawn_from_usd_file(prim_path, flat_usd_path, cfg, translation, orientation, **kwargs)

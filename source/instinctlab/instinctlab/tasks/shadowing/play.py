@@ -59,8 +59,6 @@ cli.wait_for_debugger(args_cli.debug)
 
 def main():
     """Play with Instinct-RL agent."""
-    from instinctlab.sim.spawners.from_files.asset_cache import ensure_asset_cache_kit_args
-
     # Resolve the run folder from the task defaults, Hydra and the CLI before any saved YAML is layered.
     env_cfg, agent_cfg = cli.resolve_play_cfg(args_cli.task, overrides)
     cli.update_instinct_rl_cfg(agent_cfg, args_cli)
@@ -79,7 +77,6 @@ def main():
     if args_cli.y_offset is not None:
         env_cfg.events.reset_robot.params["randomize_pose_range"]["y"] = [args_cli.y_offset] * 2
 
-    ensure_asset_cache_kit_args(env_cfg, args_cli)
     cli.pre_launch_video_config(
         env_cfg,
         args_cli,

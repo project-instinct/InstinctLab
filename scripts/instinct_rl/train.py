@@ -48,8 +48,6 @@ def auto_affinity():
 
 def main():
     """Launch the configured simulator and train with Instinct-RL."""
-    from instinctlab.sim.spawners.from_files.asset_cache import ensure_asset_cache_kit_args
-
     env_cfg, agent_cfg = cli.resolve_train_cfg(args_cli.task, overrides)
     agent_cfg = cli.update_instinct_rl_cfg(agent_cfg, args_cli)
     if args_cli.num_envs is not None:
@@ -60,7 +58,6 @@ def main():
     if args_cli.distributed and args_cli.device is not None and "cpu" in args_cli.device:
         raise ValueError("Distributed training requires a CUDA device.")
 
-    ensure_asset_cache_kit_args(env_cfg, args_cli)
     cli.pre_launch_video_config(env_cfg, args_cli, video_interval=args_cli.video_interval)
     with launch_simulation(env_cfg, args_cli):
         # Import the simulator-dependent wrapper only after the simulator starts.

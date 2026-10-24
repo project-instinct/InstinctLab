@@ -19,7 +19,7 @@ from typing import Any
 ASSET_CACHE_POSTPROCESSOR_VERSION = 2
 
 _THIS_FILE = Path(__file__).resolve()
-_POSTPROCESSOR_FILES = (_THIS_FILE, _THIS_FILE.with_name("from_files.py"))
+_POSTPROCESSOR_FILES = (_THIS_FILE, _THIS_FILE.with_name("from_files.py"), _THIS_FILE.with_name("urdf_conversion.py"))
 
 
 def _sha256_file(path: Path) -> str:
@@ -197,73 +197,3 @@ def publish_asset_cache(cfg, flat_usd_path: str | Path) -> Path:
             shutil.rmtree(promotion_dir, ignore_errors=True)
 
     return cached_path
-
-
-def find_uncached_asset_cfgs(env_cfg) -> list:
-    """Return custom URDF spawn configs whose digest-scoped USD is not cached."""
-    from .from_files_cfg import UrdfFileCfg
-
-    visited: set[int] = set()
-    uncached = []
-
-    def visit(node):
-        node_id = id(node)
-        if node_id in visited:
-            return
-        visited.add(node_id)
-        if isinstance(node, UrdfFileCfg) and node.asset_cache_enabled and not has_valid_asset_cache(node):
-            uncached.append(node)
-            return
-        if isinstance(node, dict):
-            children = node.values()
-        elif isinstance(node, (list, tuple, set)):
-            children = node
-        else:
-            try:
-                children = vars(node).values()
-            except TypeError:
-                return
-        for child in children:
-            if child is None or isinstance(child, (int, float, str, bool)):
-                continue
-            visit(child)
-
-    visit(env_cfg)
-    return uncached
-
-
-def ensure_asset_cache_kit_args(env_cfg, launcher_args) -> bool:
-    """Prepare URDF conversion for a cold asset cache; call before launching the simulation.
-
-    The standalone ``isaacsim-asset-isolated`` importer converts without Kit, but only where it is reachable: Isaac
-    Sim's ``python.sh`` (``isaaclab -p``) puts Isaac Sim's regular ``isaacsim`` package first, which hides the wheel's
-    ``isaacsim.asset`` portion (see :func:`isaaclab.utils.version.standalone_importers_available`). With the
-    standalone importer, the launch stays as configured (kitless on Newton or OvPhysX with ``--viz none``);
-    otherwise a windowless Kit app is forced. When the digest-scoped USD already exists, this is a no-op.
-
-    Returns:
-        Whether Kit was forced.
-    """
-    from isaaclab.utils.version import standalone_importers_available
-
-    if not find_uncached_asset_cfgs(env_cfg):
-        return False
-    if standalone_importers_available():
-        # Importing this module registers the importer's PhysX USD schema fallback. When that happens only inside the
-        # launched simulation, the importer's ApplyAPI("PhysxJointAPI") fails, so register it before the launch.
-        import isaacsim.asset.importer.utils.impl.physx_types  # noqa: F401
-
-        return False
-
-    is_dict = isinstance(launcher_args, dict)
-    kit_args = (launcher_args.get("kit_args") if is_dict else getattr(launcher_args, "kit_args", "")) or ""
-    if "--/app/windowless=true" not in kit_args:
-        kit_args = f"{kit_args} --/app/windowless=true".strip()
-
-    if is_dict:
-        launcher_args["require_kit"] = True
-        launcher_args["kit_args"] = kit_args
-    else:
-        launcher_args.require_kit = True
-        launcher_args.kit_args = kit_args
-    return True

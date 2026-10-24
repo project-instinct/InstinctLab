@@ -22,8 +22,6 @@ cli.wait_for_debugger(args_cli.debug)
 
 def main():
     """Launch the configured simulator and play an Instinct-RL policy."""
-    from instinctlab.sim.spawners.from_files.asset_cache import ensure_asset_cache_kit_args
-
     # Resolve the run folder from the task defaults, Hydra and the CLI before any saved YAML is layered.
     env_cfg, agent_cfg = cli.resolve_play_cfg(args_cli.task, overrides)
     cli.update_instinct_rl_cfg(agent_cfg, args_cli)
@@ -36,7 +34,6 @@ def main():
     agent_cfg.load_run = args_cli.load_run
     env_cfg.log_dir = log_dir
 
-    ensure_asset_cache_kit_args(env_cfg, args_cli)
     cli.pre_launch_video_config(
         env_cfg,
         args_cli,

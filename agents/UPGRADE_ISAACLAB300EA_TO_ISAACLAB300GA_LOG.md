@@ -101,3 +101,11 @@ Verification (`main/c11_kitless_probe`, `main/c11_layout`):
 - Cold cache, `python scripts/instinct_rl/train.py --task Instinct-Locomotion-Flat-G1-Newton-v0 --viz none`: no Kit launched, one iteration trained, cache written.
 - That kitless USD vs. the Kit-converted cache: 127 prims, 0 differences (`urdf_converter_eval/kitless_convert.py` diff).
 - Layout audit on the rebuilt image: 13 of 14 rows have an identical layout to the EA baseline; value differences are the recorded D6/D8/Q1 ones. Parkour Newton runs out of host memory on aorua and was checked on marsbrain.
+
+## 2026-10-25: URDF conversion in a Kit-free child process
+
+Requirement: URDF conversion must not depend on Kit; every other component keeps its dependencies (PhysX and the Kit viewer still need Kit).
+
+- `spawn_from_urdf` converts a cold cache through `urdf_conversion.convert_urdf`: a child process of the virtual environment's Python, with the variables Isaac Sim's `python.sh` exports for Kit removed (`PYTHONPATH`, `LD_LIBRARY_PATH`, `LD_PRELOAD`, `CARB_APP_PATH`, `ISAAC_PATH`, `EXP_PATH`), runs the standalone importer, `_flatten_urdf_geometry` and `_check_urdf_inertia`. The parent publishes the result to the asset cache and spawns it, inside Kit or not.
+- This replaces the 2026-10-24 approach: `ensure_asset_cache_kit_args` (forced a windowless Kit for cold caches under `isaaclab -p`) and its calls in the train/play scripts and the snapshot tool are removed, together with the early PhysX schema registration.
+- Verification (`main/c12_subprocess`): cold-cache training of `Instinct-Locomotion-Flat-G1-v0` under `isaaclab -p` (PhysX, Kit for the simulation only), `-Newton-v0` under `isaaclab -p` (no Kit) and under `python` (no Kit) all train one iteration; each converted USD matches the Kit-converted cache (127 prims, 0 differences). `test_urdf_conversion.py` converts a two-link URDF with an `isaacsim` package shadowing PYTHONPATH as `python.sh` does; without the environment stripping that test fails with `No module named 'isaacsim.asset'`.

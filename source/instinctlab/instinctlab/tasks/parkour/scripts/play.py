@@ -65,8 +65,6 @@ def load_parkour_onnx_model(
 
 def main():
     """Play with Instinct-RL agent."""
-    from instinctlab.sim.spawners.from_files.asset_cache import ensure_asset_cache_kit_args
-
     # Resolve the run folder from the task defaults, Hydra and the CLI before any saved YAML is layered.
     env_cfg, agent_cfg = cli.resolve_play_cfg(args_cli.task, overrides)
     cli.update_instinct_rl_cfg(agent_cfg, args_cli)
@@ -115,7 +113,6 @@ def main():
         env_cfg.scene.num_envs = 1
         env_cfg.episode_length_s = 1e10
 
-    ensure_asset_cache_kit_args(env_cfg, args_cli)
     cli.pre_launch_video_config(
         env_cfg,
         args_cli,
