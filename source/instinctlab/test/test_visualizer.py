@@ -16,11 +16,8 @@ from isaaclab.utils.string import string_to_callable
 from isaaclab.visualizers import VisualizerCfg
 from isaaclab.visualizers.visualizer_cfg import migrate_visualizer_cfgs
 
-from instinctlab.tasks.utils.newton import (
-    InstinctNewtonBackendCfg,
-    InstinctNewtonGLVisualizer,
-    InstinctNewtonVisualizerCfg,
-)
+from instinctlab.tasks.utils.newton import InstinctNewtonBackendCfg, InstinctNewtonVisualizerCfg
+from instinctlab.tasks.utils.newton_visualizer import InstinctNewtonGLVisualizer
 
 
 class _FakeBodyQ:
