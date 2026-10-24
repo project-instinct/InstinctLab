@@ -31,10 +31,10 @@ class GroupedRayCasterKernelMixin:
             device=self._device,
         )
 
-        # Ray-cast against all meshes; closest hit wins via atomic_min on ray_distance.
+        # Ray-cast against all meshes; one thread per ray keeps the closest hit.
         wp.launch(
             raycast_mesh_table_min_distance_kernel,
-            dim=(self._mesh_ids_wp.shape[1], self._num_envs, self.num_rays),
+            dim=(self._num_envs, self.num_rays),
             inputs=[
                 env_mask,
                 self._mesh_ids_wp,

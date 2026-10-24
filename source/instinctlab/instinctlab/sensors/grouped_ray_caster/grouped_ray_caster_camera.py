@@ -34,7 +34,7 @@ class GroupedRayCasterCameraKernelMixin:
 
         wp.launch(
             raycast_mesh_table_min_distance_kernel,
-            dim=(self._mesh_ids_wp.shape[1], self._num_envs, self.num_rays),
+            dim=(self._num_envs, self.num_rays),
             inputs=[
                 env_mask,
                 self._mesh_ids_wp,

@@ -32,9 +32,11 @@ def raycast_mesh_table_min_distance_kernel(
 ):
     """Ray-cast every environment's mesh row, rejecting hits nearer than ``min_dist``.
 
-    Mirrors :func:`isaaclab.utils.warp.kernels.raycast_dynamic_meshes_kernel` (including its closest-hit
-    ``atomic_min`` rule) with the additional near-hit rejection. Launch with
-    ``dim=(meshes_per_env, num_envs, num_rays)``.
+    One thread owns one ray and reduces the hits of its environment's mesh row serially, so all outputs of a ray
+    describe the same (closest) intersection. Isaac Lab's :func:`~isaaclab.utils.warp.kernels.raycast_dynamic_meshes_kernel`
+    launches one thread per mesh and resolves the closest hit with ``atomic_min`` plus a read-back, which lets a
+    farther hit overwrite the position of a nearer one. Rays without an accepted hit keep the values written by
+    the preceding fill kernel; their face and mesh ids are set to -1. Launch with ``dim=(num_envs, num_rays)``.
 
     Args:
         env_mask: Boolean mask selecting which environments to process. Shape is (num_envs,).
@@ -54,28 +56,39 @@ def raycast_mesh_table_min_distance_kernel(
         ray_face_id: Hit face ids. Shape is (num_envs, num_rays).
         ray_mesh_id: Hit mesh slot. Shape is (num_envs, num_rays).
     """
-    tid_mesh_id, tid_env, tid_ray = wp.tid()
+    tid_env, tid_ray = wp.tid()
     if not env_mask[tid_env]:
         return
 
-    mesh_pose = wp.transform(mesh_positions[tid_env, tid_mesh_id], mesh_rotations[tid_env, tid_mesh_id])
-    mesh_pose_inv = wp.transform_inverse(mesh_pose)
-    direction = wp.transform_vector(mesh_pose_inv, ray_directions[tid_env, tid_ray])
-    start_pos = wp.transform_point(mesh_pose_inv, ray_starts[tid_env, tid_ray])
+    ray_start = ray_starts[tid_env, tid_ray]
+    ray_direction = ray_directions[tid_env, tid_ray]
+    closest_distance = float(max_dist)
+    closest_hit = wp.vec3f()
+    closest_normal = wp.vec3f()
+    closest_face_id = int(-1)
+    closest_mesh_id = int(-1)
 
-    mesh_query_ray_t = wp.mesh_query_ray(mesh[tid_env, tid_mesh_id], start_pos, direction, max_dist)
-    if mesh_query_ray_t.result and mesh_query_ray_t.t > min_dist:
-        wp.atomic_min(ray_distance, tid_env, tid_ray, mesh_query_ray_t.t)
-        # TODO(warp#1058): Use the return value of atomic_min to avoid the non-thread-safe equality check
-        # below, as upstream does. Ties may write normals/face-ids/mesh-ids from different meshes; the hit
-        # position is still correct because all tying threads compute the same world-space point.
-        if mesh_query_ray_t.t == ray_distance[tid_env, tid_ray]:
-            hit_pos = start_pos + mesh_query_ray_t.t * direction
-            ray_hits[tid_env, tid_ray] = wp.transform_point(mesh_pose, hit_pos)
-
+    for mesh_slot in range(mesh.shape[1]):
+        mesh_pose = wp.transform(mesh_positions[tid_env, mesh_slot], mesh_rotations[tid_env, mesh_slot])
+        mesh_pose_inv = wp.transform_inverse(mesh_pose)
+        start_local = wp.transform_point(mesh_pose_inv, ray_start)
+        direction_local = wp.transform_vector(mesh_pose_inv, ray_direction)
+        query = wp.mesh_query_ray(mesh[tid_env, mesh_slot], start_local, direction_local, max_dist)
+        if query.result and query.t > min_dist and query.t < closest_distance:
+            closest_distance = query.t
+            closest_mesh_id = mesh_slot
+            closest_hit = wp.transform_point(mesh_pose, start_local + query.t * direction_local)
             if return_normal == 1:
-                ray_normal[tid_env, tid_ray] = wp.transform_vector(mesh_pose, mesh_query_ray_t.normal)
+                closest_normal = wp.transform_vector(mesh_pose, query.normal)
             if return_face_id == 1:
-                ray_face_id[tid_env, tid_ray] = mesh_query_ray_t.face
-            if return_mesh_id == 1:
-                ray_mesh_id[tid_env, tid_ray] = wp.int16(tid_mesh_id)
+                closest_face_id = query.face
+
+    if closest_mesh_id >= 0:
+        ray_distance[tid_env, tid_ray] = closest_distance
+        ray_hits[tid_env, tid_ray] = closest_hit
+        if return_normal == 1:
+            ray_normal[tid_env, tid_ray] = closest_normal
+    if return_face_id == 1:
+        ray_face_id[tid_env, tid_ray] = closest_face_id
+    if return_mesh_id == 1:
+        ray_mesh_id[tid_env, tid_ray] = wp.int16(closest_mesh_id)
