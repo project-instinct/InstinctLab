@@ -16,6 +16,13 @@ if TYPE_CHECKING:
     from instinctlab.motion_reference.motion_reference_cfg import MotionReferenceManagerCfg
 
 
+def _dense(values: torch.Tensor) -> torch.Tensor:
+    """A copy with row-major strides: OvPhysX bindings reject strided buffers, and Warp also checks the strides of
+    size-1 dimensions, which ``torch.Tensor.contiguous`` leaves as they are (e.g. one environment sliced from a wider
+    tensor)."""
+    return values.clone(memory_format=torch.contiguous_format)
+
+
 class OvPhysxMotionReferenceManager(MotionReferenceManagerBase):
     """Motion-reference articulation access implemented with OvPhysX tensor bindings."""
 
@@ -59,10 +66,11 @@ class OvPhysxMotionReferenceManager(MotionReferenceManagerBase):
 
     def _write_backend_reference_view_state(self, root_pose_w: torch.Tensor, joint_pos: torch.Tensor) -> None:
         view = self._reference_view
-        view.set_attribute(TT.ROOT_POSE, wp.from_torch(root_pose_w.contiguous()))
-        view.set_attribute(TT.ROOT_VELOCITY, wp.from_torch(torch.zeros_like(root_pose_w[..., :6])))
-        view.set_attribute(TT.DOF_POSITION, wp.from_torch(joint_pos.contiguous()))
-        view.set_attribute(TT.DOF_VELOCITY, wp.from_torch(torch.zeros_like(joint_pos)))
+        root_velocity = torch.zeros(root_pose_w.shape[0], 6, dtype=root_pose_w.dtype, device=root_pose_w.device)
+        view.set_attribute(TT.ROOT_POSE, wp.from_torch(_dense(root_pose_w)))
+        view.set_attribute(TT.ROOT_VELOCITY, wp.from_torch(root_velocity))
+        view.set_attribute(TT.DOF_POSITION, wp.from_torch(_dense(joint_pos)))
+        view.set_attribute(TT.DOF_VELOCITY, wp.from_torch(torch.zeros_like(_dense(joint_pos))))
 
     def _invalidate_backend_impl(self) -> None:
         # OvPhysX closes the bindings of every live view when its runtime is released.

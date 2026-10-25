@@ -153,3 +153,12 @@ def test_motion_reference_articulation_access(scene):
     torch.testing.assert_close(manager.get_dof_positions(), target_joints)
     torch.testing.assert_close(manager.get_dof_velocities(), torch.zeros_like(target_joints))
     wp.synchronize()
+
+
+def test_reference_writes_use_dense_buffers():
+    # One environment sliced from a wider tensor: torch calls it contiguous, Warp and the OvPhysX binding do not.
+    from instinctlab.motion_reference.ovphysx import _dense
+
+    sliced = torch.zeros(1, 7)[..., :6]
+    assert not wp.from_torch(torch.zeros_like(sliced)).is_contiguous
+    assert wp.from_torch(_dense(sliced)).is_contiguous
