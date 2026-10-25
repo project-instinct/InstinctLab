@@ -21,6 +21,7 @@ from instinctlab.envs.manager_based_rl_env_cfg import InstinctLabRLEnvCfg
 from instinctlab.managers import MultiRewardCfg
 from instinctlab.monitors import MonitorTermCfg
 from instinctlab.motion_reference import MotionReferenceManagerCfg
+from instinctlab.tasks.utils.backends import backend_preset
 
 
 @configclass
@@ -65,7 +66,10 @@ class BeyondMimicSceneCfg(InteractiveSceneCfg):
         spawn=sim_utils.DomeLightCfg(color=(0.13, 0.13, 0.13), intensity=1000.0),
     )
     contact_forces = ContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True, force_threshold=10.0
+        prim_path="{ENV_REGEX_NS}/Robot/.*",
+        history_length=3,
+        track_air_time=True,
+        force_threshold=backend_preset(10.0, newton=None),
     )
 
     def __post_init__(self):
@@ -561,6 +565,11 @@ class BeyondMimicEnvCfg(InstinctLabRLEnvCfg):
         if self.sim.physics is None:
             from isaaclab_physx.physics import PhysxCfg
 
-            self.sim.physics = PhysxCfg(gpu_max_rigid_patch_count=10 * 2**15)
+            from instinctlab.tasks.utils.newton import newton_physics_cfg
+
+            self.sim.physics = backend_preset(
+                PhysxCfg(gpu_max_rigid_patch_count=10 * 2**15),
+                newton=newton_physics_cfg(njmax=224, nconmax=56, margin=0.0, gap=0.01),
+            )
 
         self.run_name = "BeyondMimic"

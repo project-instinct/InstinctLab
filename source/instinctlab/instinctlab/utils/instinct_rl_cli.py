@@ -284,8 +284,8 @@ def resolve_play_cfg(task: str, overrides: list[str], *, env_yaml: dict | None =
     overrides are applied on top, so Hydra still wins over the saved run. Dedicated CLI options are applied by
     the caller afterwards.
 
-    InstinctLab declares no :class:`~isaaclab_tasks.utils.hydra.PresetCfg`, so ``env.``/``agent.`` scalars are
-    applied as plain values after the YAML.
+    InstinctLab's presets are the physics backend presets (``physics=``), resolved before the YAML, so
+    ``env.``/``agent.`` scalars are applied as plain values after the YAML.
 
     Args:
         task: Task name.

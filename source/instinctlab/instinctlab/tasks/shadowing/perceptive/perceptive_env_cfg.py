@@ -24,6 +24,7 @@ from instinctlab.monitors import MonitorTermCfg
 from instinctlab.motion_reference import MotionReferenceManagerCfg
 from instinctlab.sensors import GroupedRayCasterCfg, NoisyGroupedRayCasterCameraCfg
 from instinctlab.tasks.shadowing import mdp as shadowing_mdp
+from instinctlab.tasks.utils.backends import backend_preset
 from instinctlab.terrains.terrain_generator_cfg import FiledTerrainGeneratorCfg
 from instinctlab.terrains.terrain_importer_cfg import TerrainImporterCfg
 from instinctlab.terrains.trimesh import MotionMatchedTerrainCfg
@@ -169,7 +170,10 @@ class PerceptiveShadowingSceneCfg(InteractiveSceneCfg):
         min_distance=0.05,
     )
     contact_forces = ContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True, force_threshold=10.0
+        prim_path="{ENV_REGEX_NS}/Robot/.*",
+        history_length=3,
+        track_air_time=True,
+        force_threshold=backend_preset(10.0, newton=None),
     )
 
     def __post_init__(self):
@@ -728,8 +732,13 @@ class PerceptiveShadowingEnvCfg(InstinctLabRLEnvCfg):
         if self.sim.physics is None:
             from isaaclab_physx.physics import PhysxCfg
 
-            self.sim.physics = PhysxCfg(
-                gpu_max_rigid_patch_count=10 * 2**15,
-                gpu_max_rigid_contact_count=2**27,
-                gpu_collision_stack_size=2**27,
+            from instinctlab.tasks.utils.newton import newton_physics_cfg
+
+            self.sim.physics = backend_preset(
+                PhysxCfg(
+                    gpu_max_rigid_patch_count=10 * 2**15,
+                    gpu_max_rigid_contact_count=2**27,
+                    gpu_collision_stack_size=2**27,
+                ),
+                newton=newton_physics_cfg(nconmax=128),
             )

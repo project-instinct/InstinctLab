@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg, NewtonCollisionPipelineCfg, NewtonShapeCfg
 from isaaclab_visualizers.newton import NewtonGLBackendCfg
 
-from isaaclab.sim import SimulationCfg
 from isaaclab.utils.configclass import configclass
 from isaaclab.visualizers import VisualizerCfg
 
@@ -13,41 +12,38 @@ if TYPE_CHECKING:
     from .newton_visualizer import InstinctNewtonGLVisualizer
 
 
-def newton_sim_cfg(
+def newton_physics_cfg(
     njmax: int = 384,
     nconmax: int = 192,
     margin: float = 0.001,
     gap: float = 0.01,
     use_mujoco_contacts: bool = False,
-) -> SimulationCfg:
-    """Return the shared Newton MJWarp simulation configuration."""
-    return SimulationCfg(
-        physics=NewtonCfg(
-            solver_cfg=MJWarpSolverCfg(
-                njmax=njmax,
-                nconmax=nconmax,
-                iterations=100,
-                ls_iterations=50,
-                solver="newton",
-                integrator="implicitfast",
-                cone="pyramidal",
-                impratio=1.0,
-                use_mujoco_contacts=use_mujoco_contacts,
-            ),
-            collision_cfg=(
-                None
-                if use_mujoco_contacts
-                else NewtonCollisionPipelineCfg(
-                    broad_phase="explicit",
-                    max_triangle_pairs=2_500_000,
-                )
-            ),
-            num_substeps=1,
-            debug_mode=False,
-            use_cuda_graph=True,
-            default_shape_cfg=NewtonShapeCfg(margin=margin, gap=gap),
+) -> NewtonCfg:
+    """Return the shared Newton MJWarp physics configuration."""
+    return NewtonCfg(
+        solver_cfg=MJWarpSolverCfg(
+            njmax=njmax,
+            nconmax=nconmax,
+            iterations=100,
+            ls_iterations=50,
+            solver="newton",
+            integrator="implicitfast",
+            cone="pyramidal",
+            impratio=1.0,
+            use_mujoco_contacts=use_mujoco_contacts,
         ),
-        use_newton_actuators=True,
+        collision_cfg=(
+            None
+            if use_mujoco_contacts
+            else NewtonCollisionPipelineCfg(
+                broad_phase="explicit",
+                max_triangle_pairs=2_500_000,
+            )
+        ),
+        num_substeps=1,
+        debug_mode=False,
+        use_cuda_graph=True,
+        default_shape_cfg=NewtonShapeCfg(margin=margin, gap=gap),
     )
 
 

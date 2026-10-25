@@ -16,6 +16,7 @@ from isaaclab.utils.string import string_to_callable
 from isaaclab.visualizers import VisualizerCfg
 from isaaclab.visualizers.visualizer_cfg import migrate_visualizer_cfgs
 
+from instinctlab.tasks.utils.backends import select_backend
 from instinctlab.tasks.utils.newton import InstinctNewtonBackendCfg, InstinctNewtonVisualizerCfg
 from instinctlab.tasks.utils.newton_visualizer import InstinctNewtonGLVisualizer
 
@@ -222,7 +223,7 @@ APP_CFGS = [
 
 @pytest.mark.parametrize("module_name, cfg_name, eye, lookat", APP_CFGS)
 def test_task_cfgs_configure_kit_visualizer(module_name, cfg_name, eye, lookat):
-    cfg = getattr(importlib.import_module(module_name), cfg_name)()
+    cfg = select_backend(getattr(importlib.import_module(module_name), cfg_name)(), "physx")
 
     assert cfg.sim.default_visualizer_cfg is None
     assert len(cfg.sim.visualizer_cfgs) == 1
@@ -245,14 +246,14 @@ def test_task_cfgs_configure_kit_visualizer(module_name, cfg_name, eye, lookat):
     "module_name, cfg_name",
     [
         (
-            "instinctlab.tasks.shadowing.perceptive.config.g1.perceptive_shadowing_newton_cfg",
-            "G1PerceptiveNewtonEnvCfg_PLAY",
+            "instinctlab.tasks.shadowing.perceptive.config.g1.perceptive_shadowing_cfg",
+            "G1PerceptiveShadowingEnvCfg_PLAY",
         ),
-        ("instinctlab.tasks.parkour.config.g1.g1_parkour_target_amp_newton_cfg", "G1ParkourNewtonEnvCfg_PLAY"),
+        ("instinctlab.tasks.parkour.config.g1.g1_parkour_target_amp_cfg", "G1ParkourEnvCfg_PLAY"),
     ],
 )
 def test_newton_task_cfgs_configure_instinct_visualizer(module_name, cfg_name):
-    cfg = getattr(importlib.import_module(module_name), cfg_name)()
+    cfg = select_backend(getattr(importlib.import_module(module_name), cfg_name)(), "newton")
 
     assert cfg.sim.default_visualizer_cfg is None
     visualizer_cfg = cfg.sim.visualizer_cfgs[0]
