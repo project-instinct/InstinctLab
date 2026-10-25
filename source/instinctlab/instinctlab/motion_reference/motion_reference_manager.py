@@ -16,6 +16,7 @@ from isaaclab.utils.buffers import TimestampedBuffer
 
 from instinctlab.motion_reference.motion_reference_data import MotionReferenceData, MotionReferenceState
 from instinctlab.utils.backend_dispatch import create_backend_component
+from instinctlab.utils.prims import articulation_name_order
 
 if TYPE_CHECKING:
     from instinctlab.motion_reference.motion_buffer import MotionBuffer
@@ -627,6 +628,12 @@ class MotionReferenceManagerBase(SensorBase):
     def _initialize_data(self):
         """Initialize _data for the 'sensor' output"""
         self._view = self._create_articulation_view(self.cfg.prim_path)
+        # Present the joints in the order of the robot articulation (ArticulationCfg.joint_ordering), so that ids
+        # resolved on the robot and on the motion reference index the same joints.
+        backend_names = self._view_joint_dof_names(self._view)
+        self._joint_names = articulation_name_order(self.cfg.prim_path, "joint", backend_names)
+        self._backend_joint_ids = self._permutation(backend_names, self._joint_names)
+        self._reference_joint_ids = None
         self._ALL_INDICES = torch.arange(self.count, device=self.device)
         self.isaac_joint_names = self.joint_dof_names
         self._initialize_symmetric_joint_mapping()
@@ -675,26 +682,52 @@ class MotionReferenceManagerBase(SensorBase):
         """Number of active degrees of freedom per articulation."""
         raise NotImplementedError
 
-    @property
-    def joint_dof_names(self) -> list[str]:
-        """Joint names in backend articulation order."""
+    def _view_joint_dof_names(self, view) -> list[str]:
+        """Joint names of a backend articulation view, in backend order."""
         raise NotImplementedError
 
     def get_root_transforms(self) -> torch.Tensor:
         """Read root transforms as position followed by quaternion in xyzw order."""
         raise NotImplementedError
 
-    def get_dof_positions(self) -> torch.Tensor:
-        """Read articulation joint positions."""
+    def _get_backend_dof_positions(self) -> torch.Tensor:
+        """Read articulation joint positions in backend order."""
         raise NotImplementedError
+
+    def _get_backend_dof_velocities(self) -> torch.Tensor:
+        """Read articulation joint velocities in backend order."""
+        raise NotImplementedError
+
+    def _get_backend_dof_limits(self) -> torch.Tensor:
+        """Read joint limits in ``(view, dof, lower-upper)`` layout and backend order."""
+        raise NotImplementedError
+
+    @staticmethod
+    def _permutation(source_names: list[str], target_names: list[str]) -> list[int] | None:
+        """Ids into *source_names* that give *target_names*, or None when the orders already match."""
+        if list(source_names) == list(target_names):
+            return None
+        return [list(source_names).index(name) for name in target_names]
+
+    @property
+    def joint_dof_names(self) -> list[str]:
+        """Joint names in the robot articulation's order (see :func:`~instinctlab.utils.prims.articulation_name_order`)."""
+        return list(self._joint_names)
+
+    def get_dof_positions(self) -> torch.Tensor:
+        """Read articulation joint positions in :attr:`joint_dof_names` order."""
+        values = self._get_backend_dof_positions()
+        return values if self._backend_joint_ids is None else values[:, self._backend_joint_ids]
 
     def get_dof_velocities(self) -> torch.Tensor:
-        """Read articulation joint velocities."""
-        raise NotImplementedError
+        """Read articulation joint velocities in :attr:`joint_dof_names` order."""
+        values = self._get_backend_dof_velocities()
+        return values if self._backend_joint_ids is None else values[:, self._backend_joint_ids]
 
     def get_dof_limits(self) -> torch.Tensor:
-        """Read joint limits in ``(view, dof, lower-upper)`` layout."""
-        raise NotImplementedError
+        """Read joint limits in ``(view, dof, lower-upper)`` layout and :attr:`joint_dof_names` order."""
+        values = self._get_backend_dof_limits()
+        return values if self._backend_joint_ids is None else values[:, self._backend_joint_ids]
 
     def _initialize_symmetric_joint_mapping(self):
         """Resolve configured symmetry arrays into the runtime articulation order."""
@@ -1071,6 +1104,9 @@ class MotionReferenceManagerBase(SensorBase):
         """Find the ArticulationView to serve as a motion reference visualization."""
         if hasattr(self, "_backend") and self.cfg.reference_prim_path is not None:
             self._reference_view = self._create_articulation_view(self.cfg.reference_prim_path)
+            self._reference_joint_ids = self._permutation(
+                self._joint_names, self._view_joint_dof_names(self._reference_view)
+            )
 
     def _set_reference_view_state(self):
         """Set the articulation view to the reference state for motion visualization."""
@@ -1095,7 +1131,13 @@ class MotionReferenceManagerBase(SensorBase):
         self._write_reference_view_state(root_pose_w, robot_joint_pos)
 
     def _write_reference_view_state(self, root_pose_w: torch.Tensor, joint_pos: torch.Tensor) -> None:
-        """Write visualization state through the active backend's native view."""
+        """Write visualization state, *joint_pos* in :attr:`joint_dof_names` order, to the reference view."""
+        if self._reference_joint_ids is not None:
+            joint_pos = joint_pos[:, self._reference_joint_ids]
+        self._write_backend_reference_view_state(root_pose_w, joint_pos.contiguous())
+
+    def _write_backend_reference_view_state(self, root_pose_w: torch.Tensor, joint_pos: torch.Tensor) -> None:
+        """Write visualization state, *joint_pos* in the reference view's backend order, through its native view."""
         raise NotImplementedError
 
     def _set_debug_vis_impl(self, debug_vis: bool):

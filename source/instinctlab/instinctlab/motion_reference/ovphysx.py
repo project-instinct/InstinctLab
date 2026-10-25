@@ -41,24 +41,23 @@ class OvPhysxMotionReferenceManager(MotionReferenceManagerBase):
     def max_dofs(self) -> int:
         return self._view.dof_count
 
-    @property
-    def joint_dof_names(self) -> list[str]:
-        return list(self._view.dof_names)
+    def _view_joint_dof_names(self, view) -> list[str]:
+        return list(view.dof_names)
 
     def get_root_transforms(self) -> torch.Tensor:
         return wp.to_torch(self._view.get_attribute(TT.ROOT_POSE)).reshape(self.count, 7)
 
-    def get_dof_positions(self) -> torch.Tensor:
+    def _get_backend_dof_positions(self) -> torch.Tensor:
         return wp.to_torch(self._view.get_attribute(TT.DOF_POSITION))
 
-    def get_dof_velocities(self) -> torch.Tensor:
+    def _get_backend_dof_velocities(self) -> torch.Tensor:
         return wp.to_torch(self._view.get_attribute(TT.DOF_VELOCITY))
 
-    def get_dof_limits(self) -> torch.Tensor:
+    def _get_backend_dof_limits(self) -> torch.Tensor:
         # CPU-only binding, as PhysX's ``get_dof_limits``.
         return wp.to_torch(self._view.get_attribute(TT.DOF_LIMIT)).reshape(self.count, self.max_dofs, 2)
 
-    def _write_reference_view_state(self, root_pose_w: torch.Tensor, joint_pos: torch.Tensor) -> None:
+    def _write_backend_reference_view_state(self, root_pose_w: torch.Tensor, joint_pos: torch.Tensor) -> None:
         view = self._reference_view
         view.set_attribute(TT.ROOT_POSE, wp.from_torch(root_pose_w.contiguous()))
         view.set_attribute(TT.ROOT_VELOCITY, wp.from_torch(torch.zeros_like(root_pose_w[..., :6])))

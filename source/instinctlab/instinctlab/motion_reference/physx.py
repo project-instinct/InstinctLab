@@ -38,23 +38,22 @@ class PhysxMotionReferenceManager(MotionReferenceManagerBase):
     def max_dofs(self) -> int:
         return self._view.max_dofs
 
-    @property
-    def joint_dof_names(self) -> list[str]:
-        return list(self._view.shared_metatype.dof_names)
+    def _view_joint_dof_names(self, view) -> list[str]:
+        return list(view.shared_metatype.dof_names)
 
     def get_root_transforms(self) -> torch.Tensor:
         return self._view.get_root_transforms()
 
-    def get_dof_positions(self) -> torch.Tensor:
+    def _get_backend_dof_positions(self) -> torch.Tensor:
         return self._view.get_dof_positions()
 
-    def get_dof_velocities(self) -> torch.Tensor:
+    def _get_backend_dof_velocities(self) -> torch.Tensor:
         return self._view.get_dof_velocities()
 
-    def get_dof_limits(self) -> torch.Tensor:
+    def _get_backend_dof_limits(self) -> torch.Tensor:
         return self._view.get_dof_limits()
 
-    def _write_reference_view_state(self, root_pose_w: torch.Tensor, joint_pos: torch.Tensor) -> None:
+    def _write_backend_reference_view_state(self, root_pose_w: torch.Tensor, joint_pos: torch.Tensor) -> None:
         self._reference_view.set_root_transforms(root_pose_w, indices=self.ALL_INDICES)
         self._reference_view.set_root_velocities(
             torch.zeros_like(root_pose_w[..., :6]),

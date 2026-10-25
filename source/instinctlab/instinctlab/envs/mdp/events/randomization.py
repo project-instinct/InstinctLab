@@ -271,6 +271,8 @@ def _read_native_actuator_gain(asset, attr: str) -> tuple[torch.Tensor | None, t
 
     gains = torch.zeros((num_envs, num_joints), dtype=torch.float32, device=asset.device)
     covered = torch.zeros(num_joints, dtype=torch.bool, device=asset.device)
+    public_index = {name: index for index, name in enumerate(asset.joint_names)}
+    backend_to_public = np.array([public_index[name] for name in asset.backend_joint_names], dtype=np.int64)
 
     for act in adapter.actuators:
         controller = act.controller
@@ -290,7 +292,8 @@ def _read_native_actuator_gain(asset, attr: str) -> tuple[torch.Tensor | None, t
         local_ids = local_ids[valid]
         values = values[valid]
         env_idx = torch.as_tensor(env_ids, dtype=torch.long, device=asset.device)
-        local_idx = torch.as_tensor(local_ids, dtype=torch.long, device=asset.device)
+        # controller indices count backend DOFs; ArticulationCfg.joint_ordering may give the public API another order
+        local_idx = torch.as_tensor(backend_to_public[local_ids], dtype=torch.long, device=asset.device)
         gains[env_idx, local_idx] = torch.as_tensor(values, device=asset.device)
         covered[local_idx] = True
 

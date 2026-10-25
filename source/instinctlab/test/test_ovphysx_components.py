@@ -12,6 +12,7 @@ import pytest
 pytest.importorskip("ovphysx.types", reason="ovphysx wheel not installed")
 
 import torch  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
 
 import warp as wp  # noqa: E402
 from isaaclab_ov.physics import OvPhysxCfg  # noqa: E402
@@ -22,10 +23,11 @@ from isaaclab.scene import InteractiveScene, InteractiveSceneCfg  # noqa: E402
 from isaaclab.sim import SimulationCfg, build_simulation_context  # noqa: E402
 from isaaclab.utils import configclass  # noqa: E402
 
-from instinctlab.assets.unitree_g1 import G1_29DOF_TORSOBASE_POPSICLE_CFG  # noqa: E402
+from instinctlab.assets.unitree_g1 import G1_29DOF_POLICY_JOINT_ORDER_V1, G1_29DOF_TORSOBASE_POPSICLE_CFG  # noqa: E402
 from instinctlab.motion_reference.ovphysx import OvPhysxMotionReferenceManager  # noqa: E402
 from instinctlab.sensors import Grid3dPointsGeneratorCfg, VolumePointsCfg  # noqa: E402
 from instinctlab.sensors.volume_points.ovphysx import OvPhysxVolumePoints  # noqa: E402
+from instinctlab.utils.prims import articulation_name_order  # noqa: E402
 
 NUM_ENVS = 4
 POINTS = Grid3dPointsGeneratorCfg(
@@ -36,7 +38,10 @@ POINTS = Grid3dPointsGeneratorCfg(
 @configclass
 class _SceneCfg(InteractiveSceneCfg):
     ground = AssetBaseCfg(prim_path="/World/ground", spawn=sim_utils.GroundPlaneCfg())
-    robot = G1_29DOF_TORSOBASE_POPSICLE_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+    # Reversed policy order: OvPhysX's backend order is the policy order, so this exercises the joint permutation.
+    robot = G1_29DOF_TORSOBASE_POPSICLE_CFG.replace(
+        prim_path="{ENV_REGEX_NS}/Robot", joint_ordering=tuple(reversed(G1_29DOF_POLICY_JOINT_ORDER_V1))
+    )
     feet = VolumePointsCfg(
         prim_path="{ENV_REGEX_NS}/Robot", body_names_expr=".*_ankle_roll_link", points_generator=POINTS
     )
@@ -48,6 +53,7 @@ def scene():
     sim_cfg = SimulationCfg(physics=OvPhysxCfg(), device="cuda:0", dt=0.005)
     with build_simulation_context(device="cuda:0", sim_cfg=sim_cfg) as sim:
         scene = InteractiveScene(_SceneCfg(num_envs=NUM_ENVS, env_spacing=2.5))
+        sim.register_interactive_scene(scene)
         sim.reset()
         for _ in range(5):
             scene.write_data_to_sim()
@@ -104,12 +110,18 @@ def test_volume_points_reset_and_update(scene, env_ids):
 def test_motion_reference_articulation_access(scene):
     sim, scene = scene
     robot = scene["robot"]
+    assert robot.joint_names == list(reversed(G1_29DOF_POLICY_JOINT_ORDER_V1))
     # Only the articulation access is under test, so the manager skips its sensor setup (motion data, callbacks).
     manager = object.__new__(OvPhysxMotionReferenceManager)
     manager._initialize_handle = manager._invalidate_initialize_handle = manager._prim_deletion_handle = None
     manager._sim = sim
     manager._backend_manager = sim.backend_manager
-    manager._view = manager._create_articulation_view("/World/envs/env_.*/Robot")
+    manager.cfg = SimpleNamespace(prim_path=robot.cfg.prim_path)
+    # the joint-order part of MotionReferenceManagerBase._initialize_data
+    manager._view = manager._create_articulation_view(manager.cfg.prim_path)
+    backend_names = manager._view_joint_dof_names(manager._view)
+    manager._joint_names = articulation_name_order(manager.cfg.prim_path, "joint", backend_names)
+    manager._backend_joint_ids = manager._permutation(backend_names, manager._joint_names)
 
     assert manager.count == NUM_ENVS
     assert manager.max_dofs == robot.num_joints
@@ -122,11 +134,12 @@ def test_motion_reference_articulation_access(scene):
     assert limits.shape == (NUM_ENVS, robot.num_joints, 2)
     torch.testing.assert_close(limits.to(robot.device), robot.data.joint_pos_limits.torch)
 
-    # The reference write path: state lands in the simulation for every environment.
+    # The reference write path: joint positions in the robot's order land on the right backend joints.
     manager._reference_view = manager._view
+    manager._reference_joint_ids = manager._permutation(manager._joint_names, backend_names)
     target_root = root.clone()
     target_root[:, 2] += 0.5
-    target_joints = torch.zeros_like(manager.get_dof_positions()) + 0.1
+    target_joints = torch.linspace(-0.2, 0.2, robot.num_joints, device=robot.device).repeat(NUM_ENVS, 1)
     manager._write_reference_view_state(target_root, target_joints)
     torch.testing.assert_close(manager.get_root_transforms(), target_root)
     torch.testing.assert_close(manager.get_dof_positions(), target_joints)

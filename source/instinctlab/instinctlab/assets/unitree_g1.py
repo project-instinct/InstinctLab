@@ -54,6 +54,9 @@ Changing this tuple is a breaking policy-interface change. Define a new version 
 
 
 G1_29DOF_TORSOBASE_CFG = G1_CFG.copy()
+# Every backend exposes the joints in the policy order, and so do the components that read the robot through their own
+# views (see instinctlab.utils.prims.articulation_name_order).
+G1_29DOF_TORSOBASE_CFG.joint_ordering = G1_29DOF_POLICY_JOINT_ORDER_V1
 G1_29DOF_TORSOBASE_CFG.spawn = UrdfFileCfg(
     asset_path=os.path.join(__file_dir__, "resources/unitree_g1/urdf/g1_29dof_torsobase_simplified.urdf"),
     merge_fixed_joints=True,
