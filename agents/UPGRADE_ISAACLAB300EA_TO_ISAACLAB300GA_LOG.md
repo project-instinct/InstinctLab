@@ -118,3 +118,4 @@ Implements `agents/UPGRADE_OVPHYSX_PLAN.md`; results in its §10.
 - OvPhysX implementations of the grouped ray caster and camera, noisy cameras, motion reference and volume points; `TorqueMonitorSensor` is PhysX-only and says so.
 - The shadowing command now handles a `slice(None)` joint selection, which OvPhysX produces because its joint order equals the policy order.
 - The perceptive Newton Play task now uses the training reset offset (`[0, 0, 0.05]`); before, only Newton training set it.
+- The G1 joints use the policy order on every backend (`ArticulationCfg.joint_ordering`); the motion reference reads the order from the articulation cfg. PhysX and Newton reset draws now follow that order, so their resets differ from EA value for value (manifest D10); the network I/O does not change.

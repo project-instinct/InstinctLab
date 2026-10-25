@@ -129,10 +129,11 @@ docker compose --env-file .env.base run --rm --no-deps instinctlab -c \
     "python scripts/instinct_rl/play.py --task Instinct-Perceptive-Shadowing-G1-OvPhysx-Play-v0 --load_run <run>"
 ```
 
-OvPhysX orders the joints and bodies of an articulation differently from Isaac Sim PhysX (as Newton does).
-Observations, actions and commands select joints and bodies by name in an explicit order, so the network I/O is the
-same on every backend and checkpoints play across backends. Raw articulation tensors (`robot.data.joint_pos`,
-contact-sensor bodies) follow the backend order.
+Each backend has its own native joint and body order. The G1 cfgs set `ArticulationCfg.joint_ordering` to
+`G1_29DOF_POLICY_JOINT_ORDER_V1`, so `robot.joint_names` and every joint-indexed tensor use the policy order on all
+backends; components that read the robot through their own views (the motion reference) take the order from the
+articulation cfg (`instinctlab.utils.prims.articulation_name_order`). Bodies still follow the backend order.
+Observations, actions and commands select joints and bodies by name, so the network I/O is the same on every backend.
 
 ### Validated matrix
 
