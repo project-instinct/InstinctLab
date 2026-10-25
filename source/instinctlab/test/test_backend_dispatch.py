@@ -1,7 +1,7 @@
 """Tests for :mod:`instinctlab.utils.backend_dispatch`.
 
 The tests never launch a simulator: ``SimulationContext.instance()`` is replaced by a fake so that the
-dispatch rule (exact backend names, ``ovphysx`` rejected) is pinned without Kit or USD.
+dispatch rule (exact backend names) is pinned without Kit or USD.
 """
 
 from __future__ import annotations
@@ -39,24 +39,15 @@ def _component_module(monkeypatch, module_name: str) -> types.ModuleType:
     return module
 
 
-@pytest.mark.parametrize("backend_name", ["physx", "newton"])
+@pytest.mark.parametrize("backend_name", ["physx", "newton", "ovphysx"])
 def test_supported_backends_are_returned_verbatim(monkeypatch, backend_name):
     _fake_simulation(monkeypatch, backend_name)
     assert backend_dispatch.active_physics_backend() == backend_name
 
 
-def test_ovphysx_is_rejected(monkeypatch):
-    _fake_simulation(monkeypatch, "ovphysx")
-    with pytest.raises(NotImplementedError) as excinfo:
-        backend_dispatch.active_physics_backend()
-    message = str(excinfo.value)
-    assert "ovphysx" in message
-    assert "physx" in message and "newton" in message
-
-
 def test_unknown_backend_names_the_backend_and_supported_set(monkeypatch):
     _fake_simulation(monkeypatch, "mujoco")
-    with pytest.raises(NotImplementedError, match="mujoco.*physx, newton"):
+    with pytest.raises(NotImplementedError, match="mujoco.*physx, newton, ovphysx"):
         backend_dispatch.active_physics_backend()
 
 
@@ -66,11 +57,11 @@ def test_missing_simulation_context_raises(monkeypatch):
         backend_dispatch.active_physics_backend()
 
 
-@pytest.mark.parametrize("backend_name", ["physx", "newton"])
+@pytest.mark.parametrize("backend_name", ["physx", "newton", "ovphysx"])
 def test_component_dispatch_uses_the_active_backend(monkeypatch, backend_name):
     _fake_simulation(monkeypatch, backend_name)
-    _component_module(monkeypatch, "instinctlab_test_physx_component")
-    _component_module(monkeypatch, "instinctlab_test_newton_component")
+    for name in ("physx", "newton", "ovphysx"):
+        _component_module(monkeypatch, f"instinctlab_test_{name}_component")
 
     cfg = object()
     component = backend_dispatch.create_backend_component(
@@ -78,21 +69,16 @@ def test_component_dispatch_uses_the_active_backend(monkeypatch, backend_name):
         {
             "physx": "instinctlab_test_physx_component:FakeComponent",
             "newton": "instinctlab_test_newton_component:FakeComponent",
+            "ovphysx": "instinctlab_test_ovphysx_component:FakeComponent",
         },
     )
     assert component.cfg is cfg
     assert type(component).__module__ == f"instinctlab_test_{backend_name}_component"
 
 
-def test_ovphysx_never_reaches_a_component(monkeypatch):
+def test_component_without_the_backend_names_itself_and_its_supported_set(monkeypatch):
     _fake_simulation(monkeypatch, "ovphysx")
-    with pytest.raises(NotImplementedError, match="ovphysx"):
-        backend_dispatch.create_backend_component(object(), {"physx": "instinctlab_test_physx_component:FakeComponent"})
-
-
-def test_component_without_the_backend_lists_its_supported_set(monkeypatch):
-    _fake_simulation(monkeypatch, "newton")
-    with pytest.raises(RuntimeError, match="'newton'.*Supported backends: physx"):
+    with pytest.raises(NotImplementedError, match="FakeComponent .*'ovphysx'.*Supported backends: physx"):
         backend_dispatch.create_backend_component(object(), {"physx": "instinctlab_test_physx_component:FakeComponent"})
 
 

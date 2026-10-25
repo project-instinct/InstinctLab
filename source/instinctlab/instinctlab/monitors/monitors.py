@@ -21,6 +21,7 @@ from instinctlab.motion_reference.utils import (
     get_link_position_distance,
     matching_reference_timing,
 )
+from instinctlab.utils.backend_dispatch import active_physics_backend
 from instinctlab.utils.prims import resolve_articulation_root_expression
 
 from .monitor_manager import MonitorSensor, MonitorTerm
@@ -82,6 +83,11 @@ class TorqueMonitorSensor(MonitorSensor):
 
     def _initialize_impl(self):
         super()._initialize_impl()
+        backend = active_physics_backend()
+        if backend != "physx":
+            raise NotImplementedError(
+                f"TorqueMonitorSensor needs PhysX tensor views; the '{backend}' backend has none."
+            )
         # set access to the articulation we want to monitor
         root_expr = resolve_articulation_root_expression(self.cfg.prim_path)
         self._view = self._physics_sim_view.create_articulation_view(path_expr_to_glob(root_expr))

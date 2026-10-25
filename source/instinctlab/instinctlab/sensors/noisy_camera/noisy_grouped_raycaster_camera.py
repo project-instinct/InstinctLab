@@ -16,6 +16,9 @@ class NoisyGroupedRayCasterCamera:
             cfg,
             {
                 "physx": "instinctlab.sensors.noisy_camera.physx_ray_caster_cameras:PhysxNoisyGroupedRayCasterCamera",
+                "ovphysx": (
+                    "instinctlab.sensors.noisy_camera.ovphysx_ray_caster_cameras:OvPhysxNoisyGroupedRayCasterCamera"
+                ),
                 "newton": (
                     "instinctlab.sensors.noisy_camera.newton_ray_caster_cameras:NewtonNoisyGroupedRayCasterCamera"
                 ),

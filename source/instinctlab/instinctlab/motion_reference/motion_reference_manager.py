@@ -1186,6 +1186,7 @@ class MotionReferenceManager:
             cfg,
             {
                 "physx": "instinctlab.motion_reference.physx:PhysxMotionReferenceManager",
+                "ovphysx": "instinctlab.motion_reference.ovphysx:OvPhysxMotionReferenceManager",
                 "newton": "instinctlab.motion_reference.newton:NewtonMotionReferenceManager",
             },
         )

@@ -61,7 +61,11 @@ class ShadowingCommandBase(CommandTerm):
         if cfg.asset_cfg.joint_names is None:
             self._motion_reference_joint_ids = slice(None)
         else:
-            resolved_joint_names = [robot.joint_names[index] for index in self._asset_joint_ids]
+            # ``resolve`` gives ``slice(None)`` when the selection is every joint in the backend order.
+            joint_ids = self._asset_joint_ids
+            if isinstance(joint_ids, slice):
+                joint_ids = range(len(robot.joint_names))[joint_ids]
+            resolved_joint_names = [robot.joint_names[index] for index in joint_ids]
             self._motion_reference_joint_ids, reference_joint_names = self._motion_reference.find_joints(
                 resolved_joint_names, preserve_order=True
             )

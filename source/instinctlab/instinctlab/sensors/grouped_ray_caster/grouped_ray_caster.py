@@ -67,6 +67,7 @@ class GroupedRayCaster:
             cfg,
             {
                 "physx": "instinctlab.sensors.grouped_ray_caster.physx:PhysxGroupedRayCaster",
+                "ovphysx": "instinctlab.sensors.grouped_ray_caster.ovphysx:OvPhysxGroupedRayCaster",
                 "newton": "instinctlab.sensors.grouped_ray_caster.newton:NewtonGroupedRayCaster",
             },
         )

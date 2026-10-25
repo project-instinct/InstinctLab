@@ -166,6 +166,7 @@ class VolumePoints:
             cfg,
             {
                 "physx": "instinctlab.sensors.volume_points.physx:PhysxVolumePoints",
+                "ovphysx": "instinctlab.sensors.volume_points.ovphysx:OvPhysxVolumePoints",
                 "newton": "instinctlab.sensors.volume_points.newton:NewtonVolumePoints",
             },
         )
