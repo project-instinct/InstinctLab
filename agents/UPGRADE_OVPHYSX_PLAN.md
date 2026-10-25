@@ -1,6 +1,6 @@
 # Plan: OvPhysX backend support in InstinctLab
 
-Status: decisions taken (2026-10-24, §7). Applies to branch `migrate/isaaclab3-main` (Isaac Lab `main` at `8c9b995cb`, `ovphysx` wheel 0.6.4 already in the image). Nothing in this plan is implemented.
+Status: implemented 2026-10-25 (commits `2da9821`, `9235e39`, `2e3ba3a` and the validation commit; results in §10). Applies to branch `migrate/isaaclab3-main` (Isaac Lab `main` at `8c9b995cb`, `ovphysx` wheel 0.6.4 in the image).
 
 ## 1. Is a backend switch only a `sim` switch today?
 
@@ -121,3 +121,16 @@ Gate: all rows pass or every difference is recorded in the manifest; no deprecat
 2. Backend dispatch accepts OvPhysX; OvPhysX components and tests (Phase 1).
 3. OvPhysX preset entries and `*-OvPhysx-v0` ids (Phase 2).
 4. Validation fixes, manifest entries, README (unsupported combinations updated) and the upgrade log (Phase 3).
+
+## 10. Results
+
+Logs under `~/Data/instinctlab_logs/upgrade_3main/ovphysx/` unless noted.
+
+- Presets (commit 1): resolved cfgs of all 28 PhysX/Newton ids are unchanged (`cfg_before` vs `cfg_after`) except the factory contact sensor cfg on Newton, the explicit `PhysxCfg()` of the locomotion tasks (the launch default) and the perceptive Newton Play reset offset, which now matches Newton training. PhysX and Newton snapshots match the previous sweep on all 14 rows (`main/c13_presets`, parkour Newton on marsbrain). Each `*-Newton-v0`/`*-OvPhysx-v0` id gives the same cfg as `physics=` on the PhysX id; a second backend selector is rejected.
+- Presets in practice: only `sim.physics`, the shadowing contact sensors' `force_threshold` (Newton: unset), the locomotion terrain material and actuators, the perceptive shadowing reset offset and the viewers differ per backend. OvPhysX takes the PhysX values except `sim.physics` (`OvPhysxCfg` with the PhysX GPU buffers) and the viewers (`viser`). The base `ContactSensorCfg` and `PhysxRigidBodyMaterialCfg` work on OvPhysX unchanged.
+- Layout (`s1/layout_check.txt`): all 7 OvPhysX rows identical to main's PhysX rows up to backend class names and backend-order name lists. OvPhysX orders joints and bodies as `G1_29DOF_POLICY_JOINT_ORDER_V1`, unlike PhysX on main (manifest D9). Because reset randomization draws per backend joint, OvPhysX rollouts are not value-comparable with PhysX; the checkpoint plays below replace the value comparison.
+- Reset gate (`s1/gate`): 7/7 PASS. Training: 128 envs x 1 iteration and resume for parkour, perceptive shadowing and HOI, kitless (`train/`).
+- Checkpoints: DWP on `Instinct-Perceptive-Shadowing-G1-OvPhysx-Play-v0`, 32 envs, 10 min: 785 episodes, 0 falls (PhysX 0/934, Newton 27%; `probe_dwp_falls/ovphysx_main.jsonl`). Hiking (`--useonnx`, 1 env, 10 min): 30/30 episodes end in `time_out`, as on PhysX (29/29; `hiking/`).
+- Throughput on marsbrain, 4096 envs (`marsbrain/summary.txt`): parkour 9.2k-12.6k steps/s on PhysX, 19.0k-21.6k on OvPhysX; perceptive shadowing 10.0k vs 11.4k (one sample each).
+- Viewer: OvPhysX Play opens `viser` on port 8080 without Kit (`viser_play.log`). OvPhysX also runs kitless under `isaaclab -p`.
+- Not covered: contact-force semantics (H1) on OvPhysX were not compared per body, since the body order differs; the `ovphysx` tensor-binding API that `OvPhysxView` uses emits a `DeprecationWarning` from Isaac Lab's own code.

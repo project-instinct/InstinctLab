@@ -109,3 +109,12 @@ Requirement: URDF conversion must not depend on Kit; every other component keeps
 - `spawn_from_urdf` converts a cold cache through `urdf_conversion.convert_urdf`: a child process of the virtual environment's Python, with the variables Isaac Sim's `python.sh` exports for Kit removed (`PYTHONPATH`, `LD_LIBRARY_PATH`, `LD_PRELOAD`, `CARB_APP_PATH`, `ISAAC_PATH`, `EXP_PATH`), runs the standalone importer, `_flatten_urdf_geometry` and `_check_urdf_inertia`. The parent publishes the result to the asset cache and spawns it, inside Kit or not.
 - This replaces the 2026-10-24 approach: `ensure_asset_cache_kit_args` (forced a windowless Kit for cold caches under `isaaclab -p`) and its calls in the train/play scripts and the snapshot tool are removed, together with the early PhysX schema registration.
 - Verification (`main/c12_subprocess`): cold-cache training of `Instinct-Locomotion-Flat-G1-v0` under `isaaclab -p` (PhysX, Kit for the simulation only), `-Newton-v0` under `isaaclab -p` (no Kit) and under `python` (no Kit) all train one iteration; each converted USD matches the Kit-converted cache (127 prims, 0 differences). `test_urdf_conversion.py` converts a two-link URDF with an `isaacsim` package shadowing PYTHONPATH as `python.sh` does; without the environment stripping that test fails with `No module named 'isaacsim.asset'`.
+
+## 2026-10-25: Backend presets and OvPhysX
+
+Implements `agents/UPGRADE_OVPHYSX_PLAN.md`; results in its §10.
+
+- Every backend-specific value of a task cfg is a backend preset (`tasks/utils/backends.py`) with `physx` (default), `newton_mjwarp` and `ovphysx` entries. `register_backend_tasks` registers `*-v0`, `*-Newton-v0` and `*-OvPhysx-v0` with their Play variants from one env cfg class; the per-backend Newton cfg modules are gone.
+- OvPhysX implementations of the grouped ray caster and camera, noisy cameras, motion reference and volume points; `TorqueMonitorSensor` is PhysX-only and says so.
+- The shadowing command now handles a `slice(None)` joint selection, which OvPhysX produces because its joint order equals the policy order.
+- The perceptive Newton Play task now uses the training reset offset (`[0, 0, 0.05]`); before, only Newton training set it.

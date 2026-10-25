@@ -113,6 +113,26 @@ Task defaults read datasets from `~/Datasets`; `~` is expanded when the files ar
 A cfg's `__post_init__` derives some fields from these paths and does not run again after a CLI override; the
 affected fields are documented in the motion-file and terrain cfg docstrings.
 
+### Physics backends
+
+Every task has a PhysX id (`*-v0`, the default), a Newton id (`*-Newton-v0`) and an OvPhysX id (`*-OvPhysx-v0`), each
+with a `-Play-v0` variant. The backend ids register the same env cfg with that backend's presets selected
+(`tasks/utils/backends.py`), so `--task Instinct-Parkour-Target-Amp-G1-v0 physics=ovphysx` gives the same cfg as
+`--task Instinct-Parkour-Target-Amp-G1-OvPhysx-v0`. A backend id rejects a `physics=` selector naming another backend.
+
+OvPhysX is PhysX without Kit; it runs kitless under `isaaclab -p` and plain `python`. Its Play tasks default to the `viser` viewer
+(`http://localhost:8080`, listening on all interfaces without authentication); `--viz newton_gl|rerun|viser|none`
+overrides it.
+
+```bash
+docker compose --env-file .env.base run --rm --no-deps instinctlab -c \
+    "python scripts/instinct_rl/play.py --task Instinct-Perceptive-Shadowing-G1-OvPhysx-Play-v0 --load_run <run>"
+```
+
+OvPhysX orders the joints and bodies of an articulation differently from Isaac Sim PhysX (as Newton does). Policy
+observations and actions use explicit joint orders, so checkpoints play across backends; per-backend lists such as
+the AMP reference joints follow the backend order.
+
 ### Validated matrix
 
 Every family below was checked on PhysX and Newton (layout snapshot against the Isaac Lab EA baseline, full/partial
@@ -123,10 +143,16 @@ shadowing (`Instinct-Perceptive-Shadowing-G1-v0`), perceptive VAE (`Instinct-Per
 `-Newton-v0` variant. Behavior differences against Isaac Lab EA are listed in
 [`agents/UPGRADE_ISAACLAB300EA_TO_ISAACLAB300GA_LOG.md`](agents/UPGRADE_ISAACLAB300EA_TO_ISAACLAB300GA_LOG.md).
 
+The `-OvPhysx-v0` variants were checked against main's PhysX rows: layout identical up to the backend order, resets,
+a short train and resume (parkour, perceptive shadowing, HOI), and the DWP and Hiking checkpoints, which play without
+falls as on PhysX. See [`agents/UPGRADE_OVPHYSX_PLAN.md`](agents/UPGRADE_OVPHYSX_PLAN.md).
+
 ### Unsupported combinations
 
-- Physics backend `ovphysx`: only `physx` and `newton` are supported. Selecting `ovphysx` (`--physics ovphysx`) raises
-  `NotImplementedError` from `instinctlab.utils.backend_dispatch` instead of being mapped to PhysX.
+- `TorqueMonitorSensor` (no task uses it) needs PhysX tensor views and raises `NotImplementedError` on Newton and
+  OvPhysX.
+- OvPhysX under Kit: Isaac Lab rejects OvPhysX together with a Kit requirement (the Kit viewer, RTX cameras,
+  `--video` through Kit).
 - NVIDIA drivers older than 580: the image's PyTorch is built for CUDA 13.0 and cannot use the GPU.
 - Distributed (multi-GPU) training is not validated on this branch.
 
