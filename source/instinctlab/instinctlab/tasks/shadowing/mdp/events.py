@@ -20,7 +20,7 @@ Sampling masks.
 
 def resample_base_plane_pos_ref_mask(
     env: ManagerBasedEnv,
-    env_ids: torch.Tensor,
+    env_ids: torch.Tensor | slice,
     motion_ref_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference"),
     maskout_ratio: float = 0.5,
 ):
@@ -31,7 +31,7 @@ def resample_base_plane_pos_ref_mask(
 
 def resample_base_height_pos_ref_mask(
     env: ManagerBasedEnv,
-    env_ids: torch.Tensor,
+    env_ids: torch.Tensor | slice,
     motion_ref_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference"),
     maskout_ratio: float = 0.5,
 ):
@@ -42,7 +42,7 @@ def resample_base_height_pos_ref_mask(
 
 def resample_base_position_ref_mask(
     env: ManagerBasedEnv,
-    env_ids: torch.Tensor,
+    env_ids: torch.Tensor | slice,
     motion_ref_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference"),
     maskout_ratio: float = 0.5,
 ):
@@ -56,7 +56,7 @@ def resample_base_position_ref_mask(
 
 def resample_base_orientation_ref_mask(
     env: ManagerBasedEnv,
-    env_ids: torch.Tensor,
+    env_ids: torch.Tensor | slice,
     motion_ref_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference"),
     maskout_ratio: float = 0.5,
 ):
@@ -67,7 +67,7 @@ def resample_base_orientation_ref_mask(
 
 def resample_base_heading_ref_mask(
     env: ManagerBasedEnv,
-    env_ids: torch.Tensor,
+    env_ids: torch.Tensor | slice,
     motion_ref_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference"),
     maskout_ratio: float = 0.5,
 ):
@@ -78,7 +78,7 @@ def resample_base_heading_ref_mask(
 
 def resample_base_rotation_ref_mask(
     env: ManagerBasedEnv,
-    env_ids: torch.Tensor,
+    env_ids: torch.Tensor | slice,
     motion_ref_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference"),
     maskout_ratio: float = 0.5,
 ):
@@ -97,7 +97,7 @@ Compute Mask based on the reference data.
 
 def maskout_base_height_pos_ref_on_orientation(
     env: ManagerBasedEnv,
-    env_ids: torch.Tensor,
+    env_ids: torch.Tensor | slice,
     motion_ref_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference"),
     maskout_threshold: float = 0.5,
 ):
@@ -119,7 +119,7 @@ def maskout_base_height_pos_ref_on_orientation(
 
 def maskout_base_pos_ref_on_orientation(
     env: ManagerBasedEnv,
-    env_ids: torch.Tensor,
+    env_ids: torch.Tensor | slice,
     motion_ref_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference"),
     maskout_threshold: float = 0.5,
     maskout_prob: float = 1.0,
@@ -141,7 +141,7 @@ def maskout_base_pos_ref_on_orientation(
 
 def maskout_base_plane_pos_ref_on_height(
     env: ManagerBasedEnv,
-    env_ids: torch.Tensor,
+    env_ids: torch.Tensor | slice,
     motion_ref_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference"),
     maskout_threshold: float = 0.5,  # height threshold in meters
 ):
@@ -155,7 +155,7 @@ def maskout_base_plane_pos_ref_on_height(
 
 def maskout_base_pos_ref(
     env: ManagerBasedEnv,
-    env_ids: torch.Tensor,
+    env_ids: torch.Tensor | slice,
     motion_ref_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference"),
 ):
     """Mask out the base pos reference data on every motion reference."""
@@ -167,7 +167,7 @@ def maskout_base_pos_ref(
 
 def maskout_joint_ref(
     env: ManagerBasedEnv,
-    env_ids: torch.Tensor,
+    env_ids: torch.Tensor | slice,
     motion_ref_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference"),
 ):
     """Mask out the wrist reference data on every motion reference.
@@ -176,11 +176,14 @@ def maskout_joint_ref(
         wrist_name_expr: the regular expression to match the wrist names.
     """
     motion_reference: MotionReferenceManagerBase = env.scene[motion_ref_cfg.name]
+    if isinstance(env_ids, slice):
+        env_ids = torch.arange(env.num_envs, device=env.device)[env_ids]
     joint_ids = motion_ref_cfg.joint_ids
+    if isinstance(joint_ids, slice):
+        joint_ids = torch.arange(motion_reference.data.joint_pos_mask.shape[-1], device=env.device)[joint_ids]
     # generate meshgrid for env_ids and joint_ids
-    if isinstance(joint_ids, (list, tuple)):
-        joint_ids = torch.tensor(joint_ids, dtype=torch.long, device=motion_reference.device)
-    env_ids_, joint_ids_ = torch.meshgrid(env_ids, joint_ids, indexing="ij")
+    # meshgrid requires matching dtypes; step resets pass int32 env ids while resolved joint ids are long
+    env_ids_, joint_ids_ = torch.meshgrid(env_ids.long(), joint_ids.long(), indexing="ij")
     env_ids_ = env_ids_.reshape(-1)
     joint_ids_ = joint_ids_.reshape(-1)
     # mask out the wrist reference data
@@ -195,16 +198,22 @@ def maskout_joint_ref(
 
 def maskout_link_ref(
     env: ManagerBasedEnv,
-    env_ids: torch.Tensor,
+    env_ids: torch.Tensor | slice,
     motion_ref_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference"),
 ):
     """Mask out the link reference data on every motion reference.
     NOTE: This implementation uses motion_ref_cfg.link_ids. There is NO need to assign asset_cfg.link_names
     """
     motion_reference: MotionReferenceManagerBase = env.scene[motion_ref_cfg.name]
+    if isinstance(env_ids, slice):
+        env_ids = torch.arange(env.num_envs, device=env.device)[env_ids]
+    # resolved link indices, already a device tensor or slice(None)
+    link_ids = motion_ref_cfg.body_ids
+    if isinstance(link_ids, slice):
+        link_ids = torch.arange(motion_reference.data.link_pos_mask.shape[-1], device=env.device)[link_ids]
     # generate meshgrid for env_ids and link_ids
-    link_ids = torch.tensor(motion_ref_cfg.body_ids, dtype=torch.long, device=env_ids.device)
-    env_ids_, link_ids_ = torch.meshgrid(env_ids, link_ids, indexing="ij")
+    # meshgrid requires matching dtypes; step resets pass int32 env ids while resolved link ids are long
+    env_ids_, link_ids_ = torch.meshgrid(env_ids.long(), link_ids.long(), indexing="ij")
     env_ids_ = env_ids_.reshape(-1)
     link_ids_ = link_ids_.reshape(-1)
     # mask out the link reference data
@@ -219,7 +228,7 @@ def maskout_link_ref(
 
 def reset_robot_state_by_reference_gaussian_randomization_scale(
     env: ManagerBasedEnv,
-    env_ids: torch.Tensor,
+    env_ids: torch.Tensor | slice,
     motion_ref_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference"),
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     position_offset: list = [0.0, 0.0, 0.0],
@@ -235,6 +244,9 @@ def reset_robot_state_by_reference_gaussian_randomization_scale(
 ):
     asset: RigidObject | Articulation = env.scene[asset_cfg.name]
     motion_ref: MotionReferenceManagerBase = env.scene[motion_ref_cfg.name]
+
+    if isinstance(env_ids, slice):
+        env_ids = torch.arange(env.num_envs, device=env.device)[env_ids]
 
     # no reset the motion reference object
     # motion reference (as sensor) is already reset(ed) in scene.reset(...)

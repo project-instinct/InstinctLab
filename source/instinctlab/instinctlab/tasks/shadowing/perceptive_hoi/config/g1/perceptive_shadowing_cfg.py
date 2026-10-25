@@ -1,15 +1,15 @@
 import numpy as np
 import os
 
-from isaaclab_visualizers.kit import KitVisualizerCfg
+from isaaclab_visualizers.kit import KitBackendCfg
 
 import isaaclab.envs.mdp as mdp
 import isaaclab.sim as sim_utils
 from isaaclab.assets import RigidObjectCfg
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors.ray_caster import MultiMeshRayCasterCfg
-from isaaclab.sim.schemas import schemas_cfg
 from isaaclab.utils.configclass import configclass
+from isaaclab.visualizers import VisualizerCfg, WindowCfg
 
 import instinctlab.envs.mdp as instinct_mdp
 import instinctlab.tasks.shadowing.mdp as shadowing_mdp
@@ -28,21 +28,22 @@ from instinctlab.motion_reference import HoiMotionReferenceData, HoiMotionRefere
 from instinctlab.motion_reference.motion_files.omomo_motion_cfg import OmomoMotionCfg as OmomoMotionCfgBase
 from instinctlab.motion_reference.utils import motion_interpolate_bilinear
 from instinctlab.sensors import get_link_prim_targets
-from instinctlab.sim import MeshFileCfg
+from instinctlab.tasks.utils.backends import backend_viewers
 from instinctlab.utils.config import set_cfg_joint_order
+from instinctlab.utils.mesh import load_mesh_file
 from instinctlab.utils.urdf import urdf_importer_link_prim_path
 
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
 
-OMOMO_DATASET_PATH = "/localhdd/Datasets/OMOMO/retargeted"
+OMOMO_DATASET_PATH = "~/Datasets/OMOMO/retargeted"
 
 MESH_FILE_PATHS = {
-    "floorlamp": "/localhdd/Datasets/OMOMO/data/captured_objects/floorlamp_cleaned_simplified.obj",
-    "largebox": "/localhdd/Datasets/OMOMO/data/captured_objects/largebox_cleaned_simplified.obj",
-    "whitechair": "/localhdd/Datasets/OMOMO/data/captured_objects/whitechair_cleaned_simplified.obj",
-    "trashcan": "/localhdd/Datasets/OMOMO/data/captured_objects/trashcan_cleaned_simplified.obj",
-    "smalltable": "/localhdd/Datasets/OMOMO/data/captured_objects/smalltable_cleaned_simplified.obj",
-    "suitcase": "/localhdd/Datasets/OMOMO/data/captured_objects/suitcase_cleaned_simplified.obj",
+    "floorlamp": "~/Datasets/OMOMO/data/captured_objects/floorlamp_cleaned_simplified.obj",
+    "largebox": "~/Datasets/OMOMO/data/captured_objects/largebox_cleaned_simplified.obj",
+    "whitechair": "~/Datasets/OMOMO/data/captured_objects/whitechair_cleaned_simplified.obj",
+    "trashcan": "~/Datasets/OMOMO/data/captured_objects/trashcan_cleaned_simplified.obj",
+    "smalltable": "~/Datasets/OMOMO/data/captured_objects/smalltable_cleaned_simplified.obj",
+    "suitcase": "~/Datasets/OMOMO/data/captured_objects/suitcase_cleaned_simplified.obj",
 }
 MESH_FILE_SCALES = {
     "floorlamp": (1.55 * 0.3793, 1.55 * 0.3793, 1.55 * 0.3793),
@@ -139,17 +140,20 @@ class G1PerceptiveHoiShadowingEnvCfg(perceptual_cfg.PerceptiveHoiShadowingEnvCfg
 
         # add mesh objects as scene rigid objects
         for object_name, mesh_file_path in MESH_FILE_PATHS.items():
+            # TriangleMeshCfg, not TrimeshObjectCfg: a trimesh's ``__dict__`` has a cycle (``visual.mesh``) that
+            # Isaac Lab's cfg validation and ``to_dict`` traverse, so a trimesh cannot live in an env cfg.
+            mesh = load_mesh_file(mesh_file_path)
             setattr(
                 self.scene,
                 object_name,
                 RigidObjectCfg(
                     prim_path=f"/World/envs/env_[^/]+/{object_name}",
-                    spawn=MeshFileCfg(
-                        asset_path=mesh_file_path,
-                        mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
-                        collision_props=sim_utils.CollisionPropertiesCfg(),
-                        rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
-                        mesh_collision_props=schemas_cfg.MeshCollisionBaseCfg(mesh_approximation_name="none"),
+                    spawn=sim_utils.MeshFileCfg(
+                        mesh=sim_utils.MeshFileCfg.TriangleMeshCfg(vertices=mesh.vertices, faces=mesh.faces),
+                        mass_props=sim_utils.MassCfg(mass=1.0),
+                        collision_props=sim_utils.UsdPhysicsCollisionCfg(),
+                        rigid_props=[sim_utils.UsdPhysicsRigidBodyCfg(kinematic_enabled=True)],
+                        mesh_collision_props=sim_utils.UsdPhysicsMeshCollisionCfg(mesh_approximation_name="none"),
                         scale=MESH_FILE_SCALES[object_name],
                     ),
                 ),
@@ -200,11 +204,13 @@ class G1PerceptiveHoiShadowingEnvCfg_PLAY(G1PerceptiveHoiShadowingEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        self.sim.default_visualizer_cfg = KitVisualizerCfg(
-            eye=(1.5, 0.0, 1.5),
-            lookat=(0.0, 0.0, 0.0),
-            origin_type="asset",
-            origin_track_path="robot",
+        self.sim.visualizer_cfgs = backend_viewers(
+            VisualizerCfg(
+                backend=KitBackendCfg(origin_type="asset", origin_track_path="robot"),
+                eye=(1.5, 0.0, 1.5),
+                lookat=(0.0, 0.0, 0.0),
+                window=WindowCfg(size=(1280, 720)),
+            )
         )
 
         # deactivate adaptive sampling and start from the 0.0s of the motion
@@ -215,9 +221,6 @@ class G1PerceptiveHoiShadowingEnvCfg_PLAY(G1PerceptiveHoiShadowingEnvCfg):
         # BeyondConcatMotionAdaptiveWeighting requires _motion_bin_weights, which is only created when motion_bin_length_s is set
         self.curriculum.beyond_adaptive_sampling = None
         self.events.bin_fail_counter_smoothing = None
-        # self.scene.motion_reference.motion_buffers[MOTION_NAME].path = (
-        #     "/localhdd/Datasets/NoKov-Marslab-Motions-instinctnpz/20251116_50cm_kneeClimbStep1/20251106_diveroll4_roadRamp_noWall"
-        # )
         self.scene.camera.debug_vis = True
         self.observations.policy.depth_image.params["debug_vis"] = True
 

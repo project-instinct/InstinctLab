@@ -5,7 +5,6 @@ import torch
 from typing import TYPE_CHECKING
 
 import warp as wp
-from isaaclab_newton.physics import NewtonManager
 from newton import JointType
 from newton.selection import ArticulationView
 
@@ -27,12 +26,12 @@ class NewtonMotionReferenceManager(MotionReferenceManagerBase):
     def _create_articulation_view(self, prim_path: str):
         root_expr = resolve_articulation_root_expression(prim_path)
         articulation_view = ArticulationView(
-            NewtonManager.get_model(),
+            self._backend_manager.get_model(),
             path_expr_to_glob(root_expr),
             verbose=False,
             exclude_joint_types=[JointType.FREE, JointType.FIXED],
         )
-        NewtonManager.get_physics_sim_view().append(articulation_view)
+        self._backend_manager.views[root_expr] = articulation_view
         return articulation_view
 
     @property
@@ -43,29 +42,28 @@ class NewtonMotionReferenceManager(MotionReferenceManagerBase):
     def max_dofs(self) -> int:
         return self._view.joint_dof_count
 
-    @property
-    def joint_dof_names(self) -> list[str]:
-        return list(self._view.joint_dof_names)
+    def _view_joint_dof_names(self, view) -> list[str]:
+        return list(view.joint_dof_names)
 
     def get_root_transforms(self) -> torch.Tensor:
-        transforms = self._view.get_root_transforms(NewtonManager.get_state_0())[:, 0]
+        transforms = self._view.get_root_transforms(self._backend_manager.get_state_0())[:, 0]
         positions, quaternions = transform_to_vec_quat(transforms)
         return torch.cat([wp.to_torch(positions), wp.to_torch(quaternions)], dim=-1)
 
-    def get_dof_positions(self) -> torch.Tensor:
-        return wp.to_torch(self._view.get_dof_positions(NewtonManager.get_state_0())[:, 0])
+    def _get_backend_dof_positions(self) -> torch.Tensor:
+        return wp.to_torch(self._view.get_dof_positions(self._backend_manager.get_state_0())[:, 0])
 
-    def get_dof_velocities(self) -> torch.Tensor:
-        return wp.to_torch(self._view.get_dof_velocities(NewtonManager.get_state_0())[:, 0])
+    def _get_backend_dof_velocities(self) -> torch.Tensor:
+        return wp.to_torch(self._view.get_dof_velocities(self._backend_manager.get_state_0())[:, 0])
 
-    def get_dof_limits(self) -> torch.Tensor:
-        model = NewtonManager.get_model()
+    def _get_backend_dof_limits(self) -> torch.Tensor:
+        model = self._backend_manager.get_model()
         lower = wp.to_torch(self._view.get_attribute("joint_limit_lower", model)[:, 0])[0]
         upper = wp.to_torch(self._view.get_attribute("joint_limit_upper", model)[:, 0])[0]
         return torch.stack([lower, upper], dim=-1).unsqueeze(0)
 
-    def _write_reference_view_state(self, root_pose_w: torch.Tensor, joint_pos: torch.Tensor) -> None:
-        state = NewtonManager.get_state_0()
+    def _write_backend_reference_view_state(self, root_pose_w: torch.Tensor, joint_pos: torch.Tensor) -> None:
+        state = self._backend_manager.get_state_0()
         mask = self._all_env_mask(root_pose_w.device)
         self._reference_view.set_root_transforms(state, self._to_warp(root_pose_w, wp.transformf), mask=mask)
         self._reference_view.set_root_velocities(

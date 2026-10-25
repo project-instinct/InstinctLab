@@ -1,5 +1,8 @@
 # Migrating a downstream project from Isaac Lab 3.0.0-beta2 to 3.0.0
 
+> Superseded: InstinctLab now targets Isaac Lab `main`. See `agents/UPGRADE_TO_3main_LMUOpus.md` (plan) and
+> `agents/UPGRADE_ISAACLAB300EA_TO_ISAACLAB300GA_LOG.md` (results). This guide describes the older beta2 to EA step.
+
 This is a practical guide for projects built on InstinctLab, such as GI Lab.
 Use the current InstinctLab migration as the reference implementation, then port
 only the API areas your project uses.

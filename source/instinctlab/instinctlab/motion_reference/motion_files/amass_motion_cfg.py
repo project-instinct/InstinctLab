@@ -22,7 +22,11 @@ class AmassMotionCfg(MotionBufferCfg):
     class_type: type | str = "{DIR}.amass_motion:AmassMotion"
 
     path: str = MISSING  # type: ignore
-    """ the path to the motion dataset """
+    """ the path to the motion dataset.
+    A leading `~` is expanded when the file list is built (not in `__post_init__`), so CLI overrides resolve.
+    `filtered_motion_selection_filepath` is expanded the same way, and its entries plus `subset_selection` are
+    relative to `path`.
+    """
 
     supported_file_endings: Sequence[str] = [
         "poses.npz",

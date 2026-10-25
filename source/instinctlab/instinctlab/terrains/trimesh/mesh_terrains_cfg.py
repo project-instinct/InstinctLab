@@ -29,12 +29,15 @@ class MotionMatchedTerrainCfg(SubTerrainBaseCfg):
 
     path: str = MISSING
     """Directory containing both terrains and the motions, so that these can be matched together.
+    A leading `~` is expanded when the terrain is generated (not in `__post_init__`), so CLI overrides resolve.
     """
 
     metadata_yaml: str = MISSING
     """YAML file containing the motion matching configuration.
     This file should specify the motion matching parameters, such as the motion files to be used,
     the matching criteria, and any other relevant settings.
+    A leading `~` is expanded when the terrain is generated, like `path`, which the YAML's `terrain_file` entries
+    are relative to.
 
     You may use the `scripts/motion_matched_metadata_generator.py` to generate the metadata.yaml file if you arrange your
     dataset in the structure as described in `scripts/motion_matched_metadata_generator.py`.

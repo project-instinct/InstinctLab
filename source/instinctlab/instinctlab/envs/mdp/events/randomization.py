@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 def randomize_default_joint_pos(
     env: ManagerBasedEnv,
-    env_ids: torch.Tensor | None,
+    env_ids: torch.Tensor | slice | None,
     asset_cfg: SceneEntityCfg,
     offset_distribution_params: tuple[float, float],
     operation: Literal["add", "scale", "abs"] = "add",
@@ -39,12 +39,11 @@ def randomize_default_joint_pos(
     # resolve environment ids
     if env_ids is None:
         env_ids = torch.arange(env.scene.num_envs, device=asset.device)
+    elif isinstance(env_ids, slice):
+        env_ids = torch.arange(env.scene.num_envs, device=asset.device)[env_ids]
 
-    # resolve joint indices
-    if asset_cfg.joint_ids == slice(None):
-        joint_ids = slice(None)  # for optimization purposes
-    else:
-        joint_ids = torch.tensor(asset_cfg.joint_ids, dtype=torch.int, device=asset.device)
+    # resolved joint indices, already a device tensor or slice(None)
+    joint_ids = asset_cfg.joint_ids
 
     if offset_distribution_params is not None:
         pos = asset.data.default_joint_pos.torch.to(asset.device).clone()
@@ -65,7 +64,7 @@ def randomize_default_joint_pos(
 
 def randomize_ray_offsets(
     env: ManagerBasedEnv,
-    env_ids: torch.Tensor | None,
+    env_ids: torch.Tensor | slice | None,
     asset_cfg: SceneEntityCfg,
     offset_pose_ranges: dict[str, tuple[float, float]],
     distribution: Literal["uniform", "log_uniform", "gaussian"] = "uniform",
@@ -79,9 +78,14 @@ def randomize_ray_offsets(
             and values are tuples representing the range for each component.
         - distribution: (str) "uniform" or "log_uniform" or "gaussian", determines the distribution of the randomization.
     """
-    num_env_ids = env.scene.num_envs if env_ids is None else len(env_ids)
     # extract the used quantities (to enable type-hinting)
     sensor: BaseRayCaster = env.scene[asset_cfg.name]
+    # resolve environment ids
+    if env_ids is None:
+        env_ids = torch.arange(env.scene.num_envs, device=sensor.ray_starts.torch.device)
+    elif isinstance(env_ids, slice):
+        env_ids = torch.arange(env.scene.num_envs, device=sensor.ray_starts.torch.device)[env_ids]
+    num_env_ids = len(env_ids)
     ray_starts = sensor.ray_starts.torch[env_ids]  # (num_envs, num_rays, 3)
     ray_directions = sensor.ray_directions.torch[env_ids]  # (num_envs, num_rays, 3)
     # sample from given range
@@ -113,7 +117,7 @@ def randomize_ray_offsets(
 
 def randomize_camera_offsets(
     env: ManagerBasedEnv,
-    env_ids: torch.Tensor | None,
+    env_ids: torch.Tensor | slice | None,
     asset_cfg: SceneEntityCfg,
     offset_pose_ranges: dict[str, tuple[float, float]],
     distribution: Literal["uniform", "log_uniform", "gaussian"] = "uniform",
@@ -135,6 +139,8 @@ def randomize_camera_offsets(
     # resolve environment ids
     if env_ids is None:
         env_ids = torch.arange(env.scene.num_envs, device=sensor._device)
+    elif isinstance(env_ids, slice):
+        env_ids = torch.arange(env.scene.num_envs, device=sensor._device)[env_ids]
 
     # get the camera pose
     camera_offset_pos = torch.tensor(list(sensor.cfg.offset.pos), device=sensor._device).repeat(sensor._view.count, 1)
@@ -265,6 +271,8 @@ def _read_native_actuator_gain(asset, attr: str) -> tuple[torch.Tensor | None, t
 
     gains = torch.zeros((num_envs, num_joints), dtype=torch.float32, device=asset.device)
     covered = torch.zeros(num_joints, dtype=torch.bool, device=asset.device)
+    public_index = {name: index for index, name in enumerate(asset.joint_names)}
+    backend_to_public = np.array([public_index[name] for name in asset.backend_joint_names], dtype=np.int64)
 
     for act in adapter.actuators:
         controller = act.controller
@@ -284,7 +292,8 @@ def _read_native_actuator_gain(asset, attr: str) -> tuple[torch.Tensor | None, t
         local_ids = local_ids[valid]
         values = values[valid]
         env_idx = torch.as_tensor(env_ids, dtype=torch.long, device=asset.device)
-        local_idx = torch.as_tensor(local_ids, dtype=torch.long, device=asset.device)
+        # controller indices count backend DOFs; ArticulationCfg.joint_ordering may give the public API another order
+        local_idx = torch.as_tensor(backend_to_public[local_ids], dtype=torch.long, device=asset.device)
         gains[env_idx, local_idx] = torch.as_tensor(values, device=asset.device)
         covered[local_idx] = True
 

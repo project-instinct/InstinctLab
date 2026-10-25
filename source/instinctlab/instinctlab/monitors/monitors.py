@@ -4,7 +4,7 @@ import csv
 import os
 import torch
 from torch.distributions import Multinomial
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING
 
 import warp as wp
 
@@ -21,6 +21,7 @@ from instinctlab.motion_reference.utils import (
     get_link_position_distance,
     matching_reference_timing,
 )
+from instinctlab.utils.backend_dispatch import active_physics_backend
 from instinctlab.utils.prims import resolve_articulation_root_expression
 
 from .monitor_manager import MonitorSensor, MonitorTerm
@@ -55,7 +56,7 @@ class TorqueMonitorSensor(MonitorSensor):
     Operations
     """
 
-    def reset(self, env_ids: Sequence[int] | None = None, env_mask: wp.array | None = None):
+    def reset(self, env_ids: torch.Tensor | slice | None = None, env_mask: wp.array | None = None):
         # self._torque_buffer[env_ids] = 0.0
         resolved_mask = self._resolve_indices_and_mask(env_ids, env_mask)
         resolved_ids = wp.to_torch(resolved_mask).nonzero(as_tuple=False).squeeze(-1)
@@ -82,6 +83,11 @@ class TorqueMonitorSensor(MonitorSensor):
 
     def _initialize_impl(self):
         super()._initialize_impl()
+        backend = active_physics_backend()
+        if backend != "physx":
+            raise NotImplementedError(
+                f"TorqueMonitorSensor needs PhysX tensor views; the '{backend}' backend has none."
+            )
         # set access to the articulation we want to monitor
         root_expr = resolve_articulation_root_expression(self.cfg.prim_path)
         self._view = self._physics_sim_view.create_articulation_view(path_expr_to_glob(root_expr))
@@ -171,7 +177,7 @@ class JointStatMonitorTerm(MonitorTerm):
 
         self._last_joint_vel = asset.data.joint_vel.torch[:, self.cfg.params["asset_cfg"].joint_ids].detach().clone()
 
-    def reset_idx(self, env_ids: Sequence[int] | slice):
+    def reset_idx(self, env_ids: torch.Tensor | slice):
         """Nothing to do here."""
         self._joint_acc_max[env_ids] = 0.0
         self._joint_vel_max[env_ids] = 0.0
@@ -248,7 +254,7 @@ class ActuatorMonitorTerm(MonitorTerm):
         self._joint_vel[:] = self.asset.data.joint_vel.torch[:, self.asset_joint_ids].mean(dim=-1)
         self._joint_power[:] = (self._applied_torque * self._joint_vel).mean(dim=-1)
 
-    def reset_idx(self, env_ids: Sequence[int] | slice):
+    def reset_idx(self, env_ids: torch.Tensor | slice):
         """Reset the monitor term for the given environment ids."""
         self._joint_pos_cmd[env_ids] = 0.0
         self._applied_torque[env_ids] = 0.0
@@ -293,7 +299,7 @@ class ContactForceMonitorTerm(MonitorTerm):
         self._force_mean[:] = force_norms_max_hist.mean(dim=-1)
         self._force_max[:] = force_norms_max_hist.max(dim=-1).values
 
-    def reset_idx(self, env_ids: Sequence[int] | slice):
+    def reset_idx(self, env_ids: torch.Tensor | slice):
         self._force_mean[env_ids] = 0.0
         self._force_max[env_ids] = 0.0
 
@@ -351,7 +357,7 @@ class BodyStatMonitorTerm(MonitorTerm):
 
         self._last_body_vel = asset.data.body_vel_w.torch[:, self.cfg.params["asset_cfg"].body_ids].detach().clone()
 
-    def reset_idx(self, env_ids: Sequence[int] | slice):
+    def reset_idx(self, env_ids: torch.Tensor | slice):
         """Nothing to do here."""
         self._body_acc_max[env_ids] = 0.0
         self._body_vel_max[env_ids] = 0.0
@@ -382,11 +388,12 @@ class MotionReferenceMonitorTerm(MonitorTerm):
         pass
 
     @torch.no_grad()
-    def reset_idx(self, env_ids: Sequence[int]):
+    def reset_idx(self, env_ids: torch.Tensor | slice):
         motion_reference = self._env.scene[self.cfg.params["asset_cfg"].name]
-        self.num_env_reset = len(env_ids)
+        selected_env_ids = torch.arange(self._env.num_envs, device=self.device)[env_ids]
+        self.num_env_reset = int(selected_env_ids.numel())
         self.num_motion_reference_exhausted = torch.sum(
-            torch.logical_not(motion_reference.data.validity[env_ids].any(dim=-1)).to(torch.int)
+            torch.logical_not(motion_reference.data.validity[selected_env_ids].any(dim=-1)).to(torch.int)
         )
 
     def get_log(self, is_episode=False) -> dict[str, float | torch.Tensor]:
@@ -474,7 +481,7 @@ class ShadowingPositionMonitorTerm(MonitorTerm):
 
         self._num_frames_should_reach += in_frame_mask.to(torch.int)
 
-    def reset_idx(self, env_ids: Sequence[int] | slice):
+    def reset_idx(self, env_ids: torch.Tensor | slice):
         self._episodic_base_pos_error = self._base_pos_error[env_ids] / self._num_frames_should_reach[env_ids]
         self._episodic_base_pos_error_xy = self._base_pos_error_xy[env_ids] / self._num_frames_should_reach[env_ids]
         self._episodic_base_pos_error_z = self._base_pos_error_z[env_ids] / self._num_frames_should_reach[env_ids]
@@ -546,7 +553,7 @@ class ShadowingRotationMonitorTerm(MonitorTerm):
 
         self._num_frames_should_reach += in_frame_mask.to(torch.int)
 
-    def reset_idx(self, env_ids: Sequence[int] | slice):
+    def reset_idx(self, env_ids: torch.Tensor | slice):
         self._episodic_base_rot_error = self._base_rot_error[env_ids] / self._num_frames_should_reach[env_ids]
         self._episodic_base_rot_error_max = self._base_rot_error_max[env_ids].clone()
 
@@ -611,7 +618,7 @@ class ShadowingVelocityMonitorTerm(MonitorTerm):
 
         self._num_frames_should_reach += in_frame_mask.to(torch.int)
 
-    def reset_idx(self, env_ids: Sequence[int] | slice):
+    def reset_idx(self, env_ids: torch.Tensor | slice):
         self._episodic_base_vel_error = self._base_vel_error[env_ids] / self._num_frames_should_reach[env_ids]
         self._episodic_base_vel_error_max = self._base_vel_error_max[env_ids].clone()
 
@@ -681,7 +688,7 @@ class ShadowingJointPosMonitorTerm(MonitorTerm):
 
         self._num_frames_should_reach += in_frame_mask.to(torch.int)
 
-    def reset_idx(self, env_ids: Sequence[int] | slice):
+    def reset_idx(self, env_ids: torch.Tensor | slice):
         self._episodic_joint_pos_error = self._joint_pos_error[env_ids] / self._num_frames_should_reach[env_ids]
         self._episodic_joint_pos_error_max = self._joint_pos_error_max[env_ids].clone()
 
@@ -750,7 +757,7 @@ class ShadowingJointVelMonitorTerm(MonitorTerm):
         )
         self._num_frames_should_reach += in_frame_mask.to(torch.int)
 
-    def reset_idx(self, env_ids: Sequence[int] | slice):
+    def reset_idx(self, env_ids: torch.Tensor | slice):
         self._episodic_joint_vel_error = self._joint_vel_error[env_ids] / self._num_frames_should_reach[env_ids]
         self._episodic_joint_vel_error_max = self._joint_vel_error_max[env_ids].clone()
 
@@ -821,7 +828,7 @@ class ShadowingLinkPosMonitorTerm(MonitorTerm):
         )
         self._num_frames_should_reach += in_frame_mask.to(torch.int)
 
-    def reset_idx(self, env_ids: Sequence[int] | slice):
+    def reset_idx(self, env_ids: torch.Tensor | slice):
         self._episodic_link_pos_error = self._link_pos_error[env_ids] / self._num_frames_should_reach[env_ids]
         self._episodic_link_pos_error_max = self._link_pos_error_max[env_ids].clone()
 
@@ -869,15 +876,15 @@ class ShadowingProgressMonitorTerm(MonitorTerm):
     Operations
     """
 
-    def reset_idx(self, env_ids: Sequence[int] | slice):
+    def reset_idx(self, env_ids: torch.Tensor | slice):
         """Reset the success ratio for the given environment IDs."""
         if isinstance(env_ids, slice):
-            env_ids = list(range(self._env.num_envs))[env_ids]
+            env_ids = torch.arange(self._env.num_envs, device=self.device)[env_ids]
 
         total_system_steps = self._env.common_step_counter
         motion_identifiers = self._motion_reference.get_current_motion_identifiers(env_ids)
         self._sampled_motion_count = len(set(motion_identifiers))
-        self._sampled_motion_vs_len_envs = self._sampled_motion_count / len(env_ids)
+        self._sampled_motion_vs_len_envs = self._sampled_motion_count / int(env_ids.numel())
 
         progress = (self._env.episode_length_buf * self._env.step_dt)[
             env_ids
@@ -1051,7 +1058,7 @@ class ShadowingGravityMonitorTerm(MonitorTerm):
         self._pg_diff_max = torch.maximum(self._pg_diff_max, diff * in_frame_mask)
         self._num_frames_should_reach += in_frame_mask.to(torch.int)
 
-    def reset_idx(self, env_ids: Sequence[int] | slice):
+    def reset_idx(self, env_ids: torch.Tensor | slice):
         self._episodic_pg_diff = self._pg_diff[env_ids] / self._num_frames_should_reach[env_ids]
         self._episodic_pg_diff_max = self._pg_diff_max[env_ids].clone()
 

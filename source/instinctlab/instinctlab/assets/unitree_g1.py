@@ -4,10 +4,12 @@ Customized Unitree G1 asset for Isaac Sim
 
 import os
 
+from isaaclab_physx.sim.schemas import PhysxArticulationCfg, PhysxRigidBodyCfg
+
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import DelayedPDActuatorCfg, ImplicitActuatorCfg
 from isaaclab.assets import AssetBaseCfg
-from isaaclab.sim.schemas import CollisionBaseCfg, JointDriveBaseCfg
+from isaaclab.sim.schemas import UsdPhysicsCollisionCfg, UsdPhysicsDriveCfg
 from isaaclab_assets import G1_CFG
 
 from instinctlab.sim import UrdfFileCfg
@@ -50,8 +52,46 @@ G1_29DOF_POLICY_JOINT_ORDER_V1 = (
 Changing this tuple is a breaking policy-interface change. Define a new version instead.
 """
 
+G1_29DOF_BODY_ORDER = (
+    "torso_link",
+    "waist_roll_link",
+    "left_shoulder_pitch_link",
+    "right_shoulder_pitch_link",
+    "waist_yaw_link",
+    "left_shoulder_roll_link",
+    "right_shoulder_roll_link",
+    "pelvis",
+    "left_shoulder_yaw_link",
+    "right_shoulder_yaw_link",
+    "left_hip_pitch_link",
+    "right_hip_pitch_link",
+    "left_elbow_link",
+    "right_elbow_link",
+    "left_hip_roll_link",
+    "right_hip_roll_link",
+    "left_wrist_roll_link",
+    "right_wrist_roll_link",
+    "left_hip_yaw_link",
+    "right_hip_yaw_link",
+    "left_wrist_pitch_link",
+    "right_wrist_pitch_link",
+    "left_knee_link",
+    "right_knee_link",
+    "left_wrist_yaw_link",
+    "right_wrist_yaw_link",
+    "left_ankle_pitch_link",
+    "right_ankle_pitch_link",
+    "left_ankle_roll_link",
+    "right_ankle_roll_link",
+)
+"""Body order of the torso-base G1 URDFs (Isaac Sim PhysX order), the public body order on every backend."""
+
 
 G1_29DOF_TORSOBASE_CFG = G1_CFG.copy()
+# Every backend exposes the joints in the policy order and the bodies in G1_29DOF_BODY_ORDER, and so do the components
+# that read the robot through their own views (see instinctlab.utils.prims.articulation_name_order).
+G1_29DOF_TORSOBASE_CFG.joint_ordering = G1_29DOF_POLICY_JOINT_ORDER_V1
+G1_29DOF_TORSOBASE_CFG.body_ordering = G1_29DOF_BODY_ORDER
 G1_29DOF_TORSOBASE_CFG.spawn = UrdfFileCfg(
     asset_path=os.path.join(__file_dir__, "resources/unitree_g1/urdf/g1_29dof_torsobase_simplified.urdf"),
     merge_fixed_joints=True,
@@ -542,19 +582,24 @@ G1_29DOF_TORSOBASE_POPSICLE_CFG.spawn = UrdfFileCfg(
     fix_base=False,
     self_collision=True,
     activate_contact_sensors=True,
-    joint_drive_props=JointDriveBaseCfg(ensure_drives_exist=True),
-    rigid_props=sim_utils.RigidBodyPropertiesCfg(
-        disable_gravity=False,
-        retain_accelerations=False,
-        linear_damping=0.0,
-        angular_damping=0.0,
-        max_linear_velocity=1000.0,
-        max_angular_velocity=1000.0,
-        max_depenetration_velocity=1.0,
-    ),
-    articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-        enabled_self_collisions=True, solver_position_iteration_count=8, solver_velocity_iteration_count=4
-    ),
+    joint_drive_props=[UsdPhysicsDriveCfg()],
+    ensure_drives_exist=True,
+    rigid_props=[
+        PhysxRigidBodyCfg(
+            disable_gravity=False,
+            retain_accelerations=False,
+            linear_damping=0.0,
+            angular_damping=0.0,
+            max_linear_velocity=1000.0,
+            max_angular_velocity=1000.0,
+            max_depenetration_velocity=1.0,
+        )
+    ],
+    articulation_props=[
+        PhysxArticulationCfg(
+            enabled_self_collisions=True, solver_position_iteration_count=8, solver_velocity_iteration_count=4
+        )
+    ],
 )
 G1_29DOF_TORSOBASE_POPSICLE_CFG.spawn.activate_contact_sensors = True
 G1_29DOF_TORSOBASE_POPSICLE_CFG.soft_joint_pos_limit_factor = 0.9
@@ -575,9 +620,9 @@ G1_29DOF_TORSOBASE_POPSICLE_CFG.actuators = beyondmimic_g1_29dof_actuators
 
 _G1_REFERENCE_SPAWN_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG.spawn.copy()
 _G1_REFERENCE_SPAWN_CFG.activate_contact_sensors = False
-_G1_REFERENCE_SPAWN_CFG.rigid_props = sim_utils.RigidBodyPropertiesCfg(disable_gravity=True)
-_G1_REFERENCE_SPAWN_CFG.collision_props = CollisionBaseCfg(collision_enabled=False)
-_G1_REFERENCE_SPAWN_CFG.joint_drive_props = JointDriveBaseCfg(stiffness=0.0, damping=0.0, max_force=1.0e6)
+_G1_REFERENCE_SPAWN_CFG.rigid_props = [PhysxRigidBodyCfg(disable_gravity=True)]
+_G1_REFERENCE_SPAWN_CFG.collision_props = UsdPhysicsCollisionCfg(collision_enabled=False)
+_G1_REFERENCE_SPAWN_CFG.joint_drive_props = [UsdPhysicsDriveCfg(stiffness=0.0, damping=0.0, max_force=1.0e6)]
 G1_REFERENCE_CFG = AssetBaseCfg(
     spawn=_G1_REFERENCE_SPAWN_CFG,
     init_state=AssetBaseCfg.InitialStateCfg(

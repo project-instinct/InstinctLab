@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import torch
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING
 
 import isaaclab.utils.math as math_utils
 from isaaclab.managers import ManagerTermBase, SceneEntityCfg
@@ -28,7 +28,7 @@ class base_pos_offset_since_motion_refresh(ManagerTermBase):
 
         self.base_pos_marker = torch.zeros_like(self.asset.data.root_pos_w.torch)  # (num_envs, 3)
 
-    def reset(self, env_ids: Sequence[int] | None = None) -> None:
+    def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
         self.base_pos_marker[env_ids] = self.asset.data.root_pos_w.torch[env_ids]
 
     def __call__(

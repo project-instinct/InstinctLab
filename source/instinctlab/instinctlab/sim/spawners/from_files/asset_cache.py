@@ -19,7 +19,7 @@ from typing import Any
 ASSET_CACHE_POSTPROCESSOR_VERSION = 2
 
 _THIS_FILE = Path(__file__).resolve()
-_POSTPROCESSOR_FILES = (_THIS_FILE, _THIS_FILE.with_name("from_files.py"))
+_POSTPROCESSOR_FILES = (_THIS_FILE, _THIS_FILE.with_name("from_files.py"), _THIS_FILE.with_name("urdf_conversion.py"))
 
 
 def _sha256_file(path: Path) -> str:
@@ -197,60 +197,3 @@ def publish_asset_cache(cfg, flat_usd_path: str | Path) -> Path:
             shutil.rmtree(promotion_dir, ignore_errors=True)
 
     return cached_path
-
-
-def find_uncached_asset_cfgs(env_cfg) -> list:
-    """Return custom URDF spawn configs whose digest-scoped USD is not cached."""
-    from .from_files_cfg import UrdfFileCfg
-
-    visited: set[int] = set()
-    uncached = []
-
-    def visit(node):
-        node_id = id(node)
-        if node_id in visited:
-            return
-        visited.add(node_id)
-        if isinstance(node, UrdfFileCfg) and node.asset_cache_enabled and not has_valid_asset_cache(node):
-            uncached.append(node)
-            return
-        if isinstance(node, dict):
-            children = node.values()
-        elif isinstance(node, (list, tuple, set)):
-            children = node
-        else:
-            try:
-                children = vars(node).values()
-            except TypeError:
-                return
-        for child in children:
-            if child is None or isinstance(child, (int, float, str, bool)):
-                continue
-            visit(child)
-
-    visit(env_cfg)
-    return uncached
-
-
-def ensure_asset_cache_kit_args(env_cfg, launcher_args) -> bool:
-    """Force a windowless Kit app when a custom URDF asset cache is cold.
-
-    When the digest-scoped USD already exists, this is a no-op and normal kitless
-    Newton launches such as ``--viz none`` remain unchanged.
-    """
-    if not find_uncached_asset_cfgs(env_cfg):
-        return False
-
-    kit_args = getattr(launcher_args, "kit_args", "") or ""
-    if "--/app/windowless=true" not in kit_args:
-        kit_args = f"{kit_args} --/app/windowless=true".strip()
-
-    if isinstance(launcher_args, dict):
-        launcher_args["visualizer"] = ["kit"]
-        launcher_args["visualizer_explicit"] = True
-        launcher_args["kit_args"] = kit_args
-    else:
-        launcher_args.visualizer = ["kit"]
-        launcher_args.visualizer_explicit = True
-        launcher_args.kit_args = kit_args
-    return True

@@ -1,9 +1,7 @@
 import torch
-from collections.abc import Sequence
 
 from isaaclab.envs import ManagerBasedRLEnv
 from isaaclab.envs.common import VecEnvStepReturn
-from isaaclab.ui.widgets import ManagerLiveVisualizer
 
 from instinctlab.managers import DummyRewardCfg, MultiRewardCfg, MultiRewardManager
 from instinctlab.monitors import MonitorManager
@@ -31,8 +29,42 @@ class InstinctRlEnv(ManagerBasedRLEnv):
         print("[INFO] Monitor Manager: ", self.monitor_manager)
 
     def setup_manager_visualizers(self):
-        super().setup_manager_visualizers()
-        self.manager_visualizers["monitor_manager"] = ManagerLiveVisualizer(manager=self.monitor_manager)
+        managers = {
+            "action_manager": self.action_manager,
+            "observation_manager": self.observation_manager,
+            "command_manager": self.command_manager,
+            "termination_manager": self.termination_manager,
+            "reward_manager": self.reward_manager,
+            "curriculum_manager": self.curriculum_manager,
+            "monitor_manager": self.monitor_manager,
+        }
+
+        def mean_reward(group_name: str | None = None) -> float:
+            reward_buf = getattr(self, "reward_buf", None)
+            if reward_buf is None:
+                return 0.0
+            return float(reward_buf[group_name].mean() if group_name is not None else reward_buf.mean())
+
+        # the multi reward manager returns a dict of reward buffers, one per reward group
+        if isinstance(self.reward_manager.active_terms, dict):
+            reward_scalars = {
+                f"mean_reward_{group_name}": lambda group_name=group_name: mean_reward(group_name)
+                for group_name in self.reward_manager.active_terms
+            }
+        else:
+            reward_scalars = {"mean_reward": mean_reward}
+        scalars = {
+            "episode": {
+                **reward_scalars,
+                "episode_length": lambda: float(self.episode_length_buf.float().mean()),
+            }
+        }
+        for viz in self.sim.visualizers:
+            viz.add_live_plots(managers, scalars=scalars)
+        # Populate manager_visualizers for the Kit window (BaseEnvWindow reads this attribute).
+        self.manager_visualizers = {
+            name: mlv for v in self.sim.visualizers for name, mlv in getattr(v, "kit_manager_visualizers", {}).items()
+        }
 
     def step(self, action: torch.Tensor) -> VecEnvStepReturn:
         return_ = super().step(action)
@@ -41,8 +73,10 @@ class InstinctRlEnv(ManagerBasedRLEnv):
         self.extras["step"].update(monitor_infos)
         return return_
 
-    def _reset_idx(self, env_ids: Sequence[int]):
-        monitor_infos = self.monitor_manager.reset(env_ids, is_episode=True)
+    def _reset_idx(self, env_ids: torch.Tensor | slice):
+        # the monitor manager indexes its buffers with an explicit tensor, so resolve the selector once
+        monitor_env_ids = torch.arange(self.num_envs, device=self.device)[env_ids]
+        monitor_infos = self.monitor_manager.reset(monitor_env_ids, is_episode=True)
         return_ = super()._reset_idx(env_ids)
         self.extras["log"] = self.extras.get("log", {})
         self.extras["log"].update(monitor_infos)

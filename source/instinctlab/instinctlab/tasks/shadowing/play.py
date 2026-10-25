@@ -1,39 +1,23 @@
-"""Script to play a checkpoint if an RL agent from Instinct-RL."""
+"""Script to play a checkpoint of an RL agent from Instinct-RL."""
 
-import argparse
+import gymnasium as gym
+import numpy as np
+import os
 import subprocess
-import sys
+import time
+import torch
 
-# local imports
-import cli_args  # isort: skip
+from instinct_rl.runners import OnPolicyRunner
 
-# add argparse arguments
-parser = argparse.ArgumentParser(description="Play an RL agent with Instinct-RL.")
-parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
-parser.add_argument("--video_length", type=int, default=3000, help="Length of the recorded video (in steps).")
-parser.add_argument("--video_start_step", type=int, default=0, help="Start step for the simulation.")
-parser.add_argument(
-    "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
-)
-parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
-parser.add_argument("--task", type=str, default=None, help="Name of the task.")
-parser.add_argument("--exportonnx", action="store_true", default=False, help="Export policy as ONNX model.")
-parser.add_argument("--debug", action="store_true", default=False, help="Enable debug mode.")
-parser.add_argument("--no_resume", default=None, action="store_true", help="Force play in no resume mode.")
+import isaaclab.utils.math as math_utils
+from isaaclab.app import launch_simulation
+
+import instinctlab.tasks  # noqa: F401
+from instinctlab.utils import instinct_rl_cli as cli
+
+parser = cli.build_play_parser()
+cli.add_play_runtime_args(parser)
 # custom play arguments
-parser.add_argument("--env_cfg", action="store_true", default=False, help="Load configuration from file.")
-parser.add_argument("--agent_cfg", action="store_true", default=False, help="Load configuration from file.")
-parser.add_argument("--sample", action="store_true", default=False, help="Sample actions instead of using the policy.")
-parser.add_argument("--zero_act_until", type=int, default=0, help="Zero actions until this timestep.")
-parser.add_argument(
-    "--no_terminate", action="store_true", default=False, help="Do not remove termination conditions in simulation."
-)
-parser.add_argument(
-    "--aux_reward",
-    action="store_true",
-    default=False,
-    help="Whether to assign auxiliary rewards to each of the env's reward term.",
-)
 parser.add_argument(
     "--mpjpe",
     action="store_true",
@@ -68,108 +52,40 @@ parser.add_argument(
     help="If set, the camera will rotate from initial pose at this speed (rad/s)",
 )
 
-# append Instinct-RL cli arguments
-cli_args.add_instinct_rl_args(parser)
-# append simulation launcher cli args
-from isaaclab.app import add_launcher_args  # isort: skip
+args_cli, overrides = cli.parse_cli(parser, require_run_name=False)
 
-add_launcher_args(parser)
-args_cli = parser.parse_args()
-# always enable cameras to record video
-if args_cli.video:
-    args_cli.enable_cameras = True
-
-import gymnasium as gym
-import numpy as np
-import os
-import time
-import torch
-
-from instinct_rl.runners import OnPolicyRunner
-
-import isaaclab.utils.math as math_utils
-from isaaclab.app import launch_simulation
-from isaaclab.envs.utils.video_recorder_cfg import VideoRecorderCfg
-from isaaclab.utils.dict import print_dict
-from isaaclab.utils.io import load_yaml
-from isaaclab_tasks.utils import get_checkpoint_path, parse_env_cfg
-
-# Import extensions to set up environment tasks
-import instinctlab.tasks  # noqa: F401
-from instinctlab.utils.wrappers.instinct_rl import InstinctRlOnPolicyRunnerCfg
-
-# wait for attach if in debug mode
-if args_cli.debug:
-    # import typing; typing.TYPE_CHECKING = True
-    import debugpy
-
-    ip_address = ("0.0.0.0", 6789)
-    print("Process: " + " ".join(sys.argv[:]))
-    print("Is waiting for attach at address: %s:%d" % ip_address, flush=True)
-    debugpy.listen(ip_address)
-    debugpy.wait_for_client()
-    debugpy.breakpoint()
+cli.wait_for_debugger(args_cli.debug)
 
 
 def main():
     """Play with Instinct-RL agent."""
-    # parse configuration
-    env_cfg = parse_env_cfg(
-        args_cli.task, device=args_cli.device, num_envs=args_cli.num_envs, use_fabric=not args_cli.disable_fabric
-    )
+    # Resolve the run folder from the task defaults, Hydra and the CLI before any saved YAML is layered.
+    env_cfg, agent_cfg = cli.resolve_play_cfg(args_cli.task, overrides)
+    cli.update_instinct_rl_cfg(agent_cfg, args_cli)
+    log_dir, resume_path = cli.play_run_dir(args_cli, agent_cfg)
 
-    # override
+    env_yaml, agent_yaml = cli.load_saved_cfgs(args_cli, log_dir)
+    if env_yaml is not None or agent_yaml is not None:
+        env_cfg, agent_cfg = cli.resolve_play_cfg(args_cli.task, overrides, env_yaml=env_yaml, agent_yaml=agent_yaml)
+    cli.apply_play_cli(args_cli, env_cfg, agent_cfg)
+    agent_cfg.load_run = args_cli.load_run
+    env_cfg.log_dir = log_dir
+
+    # override reset pose ranges after the CLI has won over saved YAML and Hydra
     if args_cli.x_offset is not None:
         env_cfg.events.reset_robot.params["randomize_pose_range"]["x"] = [args_cli.x_offset] * 2
     if args_cli.y_offset is not None:
         env_cfg.events.reset_robot.params["randomize_pose_range"]["y"] = [args_cli.y_offset] * 2
 
-    agent_cfg: InstinctRlOnPolicyRunnerCfg = cli_args.parse_instinct_rl_cfg(args_cli.task, args_cli)
-
-    # specify directory for logging experiments
-    log_root_path = os.path.join("logs", "instinct_rl", agent_cfg.experiment_name)
-    log_root_path = os.path.abspath(log_root_path)
-    agent_cfg.load_run = args_cli.load_run
-    if agent_cfg.load_run is not None:
-        print(f"[INFO] Loading experiment from directory: {log_root_path}")
-        if os.path.isabs(agent_cfg.load_run):
-            resume_path = get_checkpoint_path(
-                os.path.dirname(agent_cfg.load_run), os.path.basename(agent_cfg.load_run), agent_cfg.load_checkpoint
-            )
-        else:
-            resume_path = get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
-        log_dir = os.path.dirname(resume_path)
-    elif not args_cli.no_resume:
-        raise RuntimeError(
-            f"\033[91m[ERROR] No checkpoint specified and play.py resumes from a checkpoint by default. Please specify"
-            f" a checkpoint to resume from using --load_run or use --no_resume to disable this behavior.\033[0m"
-        )
-    else:
-        print(f"[INFO] No experiment directory specified. Using default: {log_root_path}")
-        log_dir = os.path.join(log_root_path, agent_cfg.run_name + "_play")
-        resume_path = "model_scratch.pt"
-
-    if args_cli.env_cfg:
-        env_cfg = load_yaml(os.path.join(log_dir, "params", "env.yaml"))
-    if args_cli.agent_cfg:
-        agent_cfg_dict = load_yaml(os.path.join(log_dir, "params", "agent.yaml"))
-    else:
-        agent_cfg_dict = agent_cfg.to_dict()
-
-    # configure the environment-owned recorder before environment construction
-    if args_cli.video:
-        env_cfg.video_recorders = [
-            VideoRecorderCfg(
-                source="visualizer",
-                output_dir=os.path.join(log_dir, "videos", "play"),
-                video_length=args_cli.video_length,
-                step_offset=args_cli.video_start_step,
-                output_filename_prefix=f"model_{resume_path.split('_')[-1].split('.')[0]}",
-            )
-        ]
-
+    cli.pre_launch_video_config(
+        env_cfg,
+        args_cli,
+        step_offset=args_cli.video_start_step,
+        prefix=cli.checkpoint_video_prefix(resume_path),
+    )
     with launch_simulation(env_cfg, args_cli):
-        return _run_play(env_cfg, agent_cfg, agent_cfg_dict, log_dir, resume_path)
+        cli.apply_video_recording(env_cfg, args_cli, os.path.join(log_dir, "videos", "play"))
+        return _run_play(env_cfg, agent_cfg, log_dir, resume_path)
 
 
 def _get_kit_visualizer(env):
@@ -178,12 +94,12 @@ def _get_kit_visualizer(env):
     if sim is None:
         return None
     for viz in getattr(sim, "visualizers", []):
-        if getattr(getattr(viz, "cfg", None), "visualizer_type", None) == "kit":
+        if getattr(getattr(getattr(viz, "cfg", None), "backend", None), "visualizer_type", None) == "kit":
             return viz
     return None
 
 
-def _run_play(env_cfg, agent_cfg, agent_cfg_dict, log_dir: str, resume_path: str):
+def _run_play(env_cfg, agent_cfg, log_dir: str, resume_path: str):
     """Run shadowing policy inference inside an active simulation runtime."""
     from isaaclab.envs import DirectMARLEnv, multi_agent_to_single_agent
 
@@ -218,7 +134,7 @@ def _run_play(env_cfg, agent_cfg, agent_cfg_dict, log_dir: str, resume_path: str
     env = InstinctRlVecEnvWrapper(env)
 
     # load previously trained model
-    ppo_runner = OnPolicyRunner(env, agent_cfg_dict, log_dir=None, device=agent_cfg.device)
+    ppo_runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
     if agent_cfg.load_run is not None:
         print(f"[INFO]: Loading model checkpoint from: {resume_path}")
         ppo_runner.load(resume_path)
@@ -340,8 +256,8 @@ def _run_play(env_cfg, agent_cfg, agent_cfg_dict, log_dir: str, resume_path: str
 
         if args_cli.cam_rotate_speed is not None:
             # VisualizerCfg eye/lookat are offsets from the controller's current asset-root origin.
-            lookat = np.asarray(env_cfg.sim.default_visualizer_cfg.lookat)
-            eye_offset = np.asarray(env_cfg.sim.default_visualizer_cfg.eye) - lookat
+            lookat = np.asarray(kit_visualizer.cfg.lookat)
+            eye_offset = np.asarray(kit_visualizer.cfg.eye) - lookat
             angle = args_cli.cam_rotate_speed * timestep * env.unwrapped.step_dt
             rotmat = np.array(
                 [
@@ -360,13 +276,8 @@ def _run_play(env_cfg, agent_cfg, agent_cfg_dict, log_dir: str, resume_path: str
     env.close()
 
     if args_cli.video:
-        subprocess.run(
-            [
-                "code",
-                "-r",
-                os.path.join(log_dir, "videos", "play", f"model_{resume_path.split('_')[-1].split('.')[0]}_0000.mp4"),
-            ]
-        )
+        recorder = env_cfg.video_recorders[0]
+        subprocess.run(["code", "-r", os.path.join(recorder.output_dir, f"{recorder.output_filename_prefix}_0000.mp4")])
     return total_success, total_traj
 
 

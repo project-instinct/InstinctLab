@@ -12,21 +12,20 @@ EXTENSION_TOML_DATA = toml.load(os.path.join(EXTENSION_PATH, "config", "extensio
 
 # Minimum dependencies required prior to installation
 INSTALL_REQUIRES = [
-    # Isaac Lab release/3.0.0 source snapshot 6e0cbe2c3953b2e32fefc1065f4c4f5818f458c3
-    "isaaclab==16.4.0",
-    "isaaclab-assets==0.6.4",
-    "isaaclab-physx==5.1.0",
-    "isaaclab-tasks==17.0.0",
-    "isaaclab-visualizers==1.7.0",
-    "isaaclab-newton==5.3.0",
+    # Isaac Lab main source snapshot 8c9b995cb
+    "isaaclab==41.0.1",
+    "isaaclab-assets==2.1.0",
+    "isaaclab-physx==9.0.0",
+    "isaaclab-tasks==29.0.1",
+    "isaaclab-visualizers==4.0.0",
+    "isaaclab-newton==10.0.0",
     "instinct-rl==1.0.3",
     # Direct numerical/runtime dependencies
     "numpy>=2",
     "torch==2.11.0",
-    "torchaudio==2.11.0",
     "torchvision==0.26.0",
     "gymnasium==1.3.0",
-    "warp-lang==1.16.0",
+    "warp-lang==1.17.0",
     # InstinctLab-specific dependencies
     "pytorch_kinematics",
     "joblib",
@@ -58,7 +57,7 @@ setup(
     classifiers=[
         "Natural Language :: English",
         "Programming Language :: Python :: 3.12",
-        "Isaac Sim :: 6.0.1",
+        "Isaac Sim :: 6.2.0",
     ],
     zip_safe=False,
 )

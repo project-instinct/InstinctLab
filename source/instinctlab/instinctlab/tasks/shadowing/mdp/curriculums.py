@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import torch
-from collections.abc import Sequence
 from typing import TYPE_CHECKING, Literal
 
 from isaaclab.managers.manager_base import ManagerTermBase
@@ -9,14 +8,14 @@ from isaaclab.managers.manager_base import ManagerTermBase
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
     from isaaclab.managers import CurriculumTermCfg
-    from isaaclab.motion_reference.motion_files.amass_motion import AmassMotion
 
+    from instinctlab.motion_reference.motion_files.amass_motion import AmassMotion
     from instinctlab.motion_reference.motion_reference_manager import MotionReferenceManagerBase
 
 
 def update_motion_reference_weight(
     env: ManagerBasedRLEnv,
-    env_ids: Sequence[int],
+    env_ids: torch.Tensor | slice,
     reference_name: str = "motion_reference",
     success_weight_ratio: float = 0.6,
 ) -> dict[str, float] | None:
@@ -24,6 +23,8 @@ def update_motion_reference_weight(
     motion_reference: MotionReferenceManagerBase = env.scene[reference_name]
     if not hasattr(env, "reset_time_outs") or not hasattr(env, "reset_terminated"):
         return None
+    if isinstance(env_ids, slice):
+        env_ids = torch.arange(env.num_envs, device=env.device)[env_ids]
     timeout_env_ids = env_ids[env.reset_time_outs[env_ids]]
     terminated_env_ids = env_ids[env.reset_terminated[env_ids]]
     motion_reference.update_motion_weights(
@@ -42,10 +43,12 @@ def update_motion_reference_weight(
 
 def update_motion_reference_weights_by_progress(
     env: ManagerBasedRLEnv,
-    env_ids: Sequence[int],
+    env_ids: torch.Tensor | slice,
     reference_name: str = "motion_reference",
 ) -> dict[str, float] | None:
     """Update the motion reference weights based on (1-progress) of the environment."""
+    if isinstance(env_ids, slice):
+        env_ids = torch.arange(env.num_envs, device=env.device)[env_ids]
     num_envs = len(env_ids)
     if num_envs == 0:
         return None
@@ -87,7 +90,7 @@ class update_motion_reference_weights_by_delayed_stats(ManagerTermBase):
     def __call__(
         self,
         env: ManagerBasedRLEnv,
-        env_ids: Sequence[int],
+        env_ids: torch.Tensor | slice,
         reference_name: str = "motion_reference",
         progress_refresh_epsilon: float = 0.01,
         length_refresh_epsilon: float = 0.01,
@@ -96,6 +99,8 @@ class update_motion_reference_weights_by_delayed_stats(ManagerTermBase):
         init_experience_length: float = 0.02,
     ) -> dict[str, float] | None:
         """Update the motion reference weights based on the delayed statistics of the environment."""
+        if isinstance(env_ids, slice):
+            env_ids = torch.arange(env.num_envs, device=env.device)[env_ids]
         if len(env_ids) == 0 or env.common_step_counter < 1:
             # if no env_ids or the environment has not stepped yet, return None
             return None
@@ -136,7 +141,7 @@ class update_motion_reference_weights_by_delayed_stats(ManagerTermBase):
 
 def update_motion_reference_weights_by_experience(
     env: ManagerBasedRLEnv,
-    env_ids: Sequence[int],
+    env_ids: torch.Tensor | slice,
     reference_name: str = "motion_reference",
     success_weight_ratio: float = 1.0,
     full_trajectory_weight_ratio: float = 0.6,
@@ -155,6 +160,8 @@ def update_motion_reference_weights_by_experience(
     motion_reference: MotionReferenceManagerBase = env.scene[reference_name]
     if not hasattr(env, "reset_time_outs") or not hasattr(env, "reset_terminated"):
         return None
+    if isinstance(env_ids, slice):
+        env_ids = torch.arange(env.num_envs, device=env.device)[env_ids]
     experience_length = (env.episode_length_buf * env.step_dt)[env_ids]
     full_trajectory_env_ids_mask = (
         experience_length / motion_reference.complete_motion_lengths[env_ids] > full_trajectory_threshold

@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import re
 from typing import TYPE_CHECKING
 
-import warp as wp
-from isaaclab_newton.physics import NewtonManager
 from isaaclab_newton.sensors.ray_caster import LegacyMultiMeshRayCaster, LegacyMultiMeshRayCasterCamera
 
 from instinctlab.sensors.grouped_ray_caster.flat_target_prim_registry import FlatTargetPrimRegistryMixin
@@ -16,64 +13,24 @@ if TYPE_CHECKING:
     from instinctlab.sensors.grouped_ray_caster.grouped_ray_caster_cfg import GroupedRayCasterCfg
 
 
-class NewtonGroupedRayCasterBackendMixin:
-    """Newton site registration and tracked-target transform access."""
-
-    def _initialize_warp_meshes(self) -> None:
-        self._tracked_target_index = 0
-        super()._initialize_warp_meshes()
-
-    def _register_sites_for_expr(self, prim_expr: str) -> list[str]:
-        attach_expr = prim_expr
-        if prim_expr.rsplit("/", 1)[-1].lower() in ("camera", "raycaster"):
-            attach_expr = prim_expr.rsplit("/", 1)[0]
-        body_pattern = re.sub(r"env_(?:\.\*|\[\^/\]\*|\[\^/\]\+|\*)", "env_0", attach_expr, count=1)
-        if body_pattern.startswith("/World/envs/env_0/"):
-            identity = wp.transform(wp.vec3(0.0, 0.0, 0.0), wp.quat(0.0, 0.0, 0.0, 1.0))
-            return [NewtonManager.cl_register_site(body_pattern, identity)]
-        return super()._register_sites_for_expr(prim_expr)
-
-    def _register_target_sites_for_exprs(self, owner_exprs: list[str]) -> list[str]:
-        identity = wp.transform(wp.vec3(0.0, 0.0, 0.0), wp.quat(0.0, 0.0, 0.0, 1.0))
-        patterns = [
-            re.sub(r"env_(?:\.\*|\[\^/\]\*|\[\^/\]\+|\*)", "env_0", owner_expr, count=1) for owner_expr in owner_exprs
-        ]
-        return [NewtonManager.cl_register_site(pattern, identity) for pattern in patterns]
-
-    @staticmethod
-    def _tracked_target_count(view) -> int:
-        return int(view.shape[0])
-
-    @staticmethod
-    def _tracked_target_world_ids(view) -> None:
-        return None
-
-    def _tracked_target_transforms_wp(self, view) -> wp.array:
-        view_count = self._tracked_target_count(view)
-        transforms_wp = wp.empty(view_count, dtype=wp.transformf, device=self._device)
-        self._update_newton_site_transforms(
-            view,
-            transforms_wp,
-            wp.empty(view_count, dtype=wp.vec3f, device=self._device),
-            wp.empty(view_count, dtype=wp.quatf, device=self._device),
-        )
-        return transforms_wp
+# The sensor body is registered through ``self._backend_manager.cl_register_site`` by Newton's own
+# ``_NewtonRayCasterPoseMixin``: identical body patterns share one site, and each instance resolves its
+# own site indices from the backend manager. Tracked ray-cast targets bind to Newton bodies through the
+# scene-data provider, the same as on PhysX, so no Newton-specific target registration is needed.
 
 
 class NewtonGroupedRayCaster(
     GroupedRayCasterKernelMixin,
-    NewtonGroupedRayCasterBackendMixin,
     FlatTargetPrimRegistryMixin,
     LegacyMultiMeshRayCaster,
 ):
-    """Newton ray caster over flat mesh entities grouped by fixed world IDs."""
+    """Newton ray caster over per-environment target groups."""
 
     cfg: GroupedRayCasterCfg
 
 
 class NewtonGroupedRayCasterCamera(
     GroupedRayCasterCameraKernelMixin,
-    NewtonGroupedRayCasterBackendMixin,
     FlatTargetPrimRegistryMixin,
     LegacyMultiMeshRayCasterCamera,
 ):

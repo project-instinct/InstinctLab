@@ -161,7 +161,7 @@ class delayed_visualizable_image(ManagerTermBase):
                 f" {frames_needed_if_no_delay + max_delayed_frames}."
             )
 
-    def reset(self, env_ids: torch.Tensor | None = None) -> None:
+    def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
         """
         Reset the delayed frame ranges.
         """

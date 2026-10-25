@@ -4,7 +4,7 @@ import yaml
 from dataclasses import MISSING
 from functools import partial
 
-from isaaclab_visualizers.kit import KitVisualizerCfg
+from isaaclab_visualizers.kit import KitBackendCfg
 
 import isaaclab.envs.mdp as mdp
 import isaaclab.sim as sim_utils
@@ -16,6 +16,7 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTermCfg
 from isaaclab.utils.configclass import configclass
 from isaaclab.utils.noise import UniformNoiseCfg
+from isaaclab.visualizers import VisualizerCfg, WindowCfg
 
 import instinctlab.envs.mdp as instinct_mdp
 import instinctlab.tasks.shadowing.mdp as shadowing_mdp
@@ -38,16 +39,16 @@ from instinctlab.motion_reference.motion_files.amass_motion_cfg import AmassMoti
 from instinctlab.motion_reference.motion_files.terrain_motion_cfg import TerrainMotionCfg as TerrainMotionCfgBase
 from instinctlab.motion_reference.utils import motion_interpolate_bilinear
 from instinctlab.sensors import get_link_prim_targets
+from instinctlab.tasks.utils.backends import backend_viewers
 from instinctlab.utils.config import set_cfg_joint_order
 from instinctlab.utils.urdf import urdf_importer_link_prim_path
 
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
 PROPRIO_HISTORY_LENGTH = 8
 
-MOTION_FOLDER = (
-    "~/Datasets/NoKov-Marslab-Motions-instinctnpz/20251116_50cm_kneeClimbStep1"
-    # "~/Datasets/NoKov-Marslab-Motions-instinctnpz/20251116_50cm_kneeClimbStep1/20251106_diveroll4_roadRamp_noWall"
-)
+# Download the Deep Whole-body Parkour dataset from:
+# https://drive.google.com/drive/folders/1dpSYHVhP1kFdBK5ixh_f_3g0vcbyC08f?usp=drive_link
+MOTION_FOLDER = "~/Datasets/Deep-Wholebody-Parkour_Dataset"
 
 
 @configclass
@@ -266,11 +267,13 @@ class G1PerceptiveVaeEnvCfg_PLAY(G1PerceptiveVaeEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        self.sim.default_visualizer_cfg = KitVisualizerCfg(
-            eye=(0.0, 2.0, 2.5),
-            lookat=(0.0, 0.0, 0.0),
-            origin_type="asset",
-            origin_track_path="robot",
+        self.sim.visualizer_cfgs = backend_viewers(
+            VisualizerCfg(
+                backend=KitBackendCfg(origin_type="asset", origin_track_path="robot"),
+                eye=(0.0, 2.0, 2.5),
+                lookat=(0.0, 0.0, 0.0),
+                window=WindowCfg(size=(1280, 720)),
+            )
         )
 
         # deactivate adaptive sampling and start from the 0.0s of the motion
@@ -280,18 +283,6 @@ class G1PerceptiveVaeEnvCfg_PLAY(G1PerceptiveVaeEnvCfg):
         self.scene.motion_reference.motion_buffers[MOTION_NAME].motion_start_from_middle_range = [0.0, 0.0]
         self.scene.motion_reference.motion_buffers[MOTION_NAME].motion_bin_length_s = None
         self.scene.motion_reference.motion_buffers[MOTION_NAME].env_starting_stub_sampling_strategy = "independent"
-        # self.scene.motion_reference.motion_buffers[MOTION_NAME].path = (
-        #     "/localhdd/Datasets/NoKov-Marslab-Motions-instinctnpz/20251115_diveRoll4_kneelClimb_jumpSit_rollVault"
-        # )
-        # self.scene.motion_reference.motion_buffers[MOTION_NAME].metadata_yaml = (
-        #     "/localhdd/Datasets/NoKov-Marslab-Motions-instinctnpz/20251115_diveRoll4_kneelClimb_jumpSit_rollVault/metadata.yaml"
-        # )
-        # self.scene.terrain.terrain_generator.sub_terrains["motion_matched"].path = (
-        #     self.scene.motion_reference.motion_buffers[MOTION_NAME].path
-        # )
-        # self.scene.terrain.terrain_generator.sub_terrains["motion_matched"].metadata_yaml = (
-        #     self.scene.motion_reference.motion_buffers[MOTION_NAME].metadata_yaml
-        # )
 
         # Use non-terrain-matching motion and plane to hack the scene.
         self.scene.terrain.terrain_generator.num_rows = 6

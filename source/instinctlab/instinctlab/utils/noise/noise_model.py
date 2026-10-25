@@ -30,6 +30,22 @@ def _uniform_random(low: float, high: float, shape: tuple[int, ...], device: str
     return torch.empty(shape, device=device).uniform_(low, high)
 
 
+def _resolve_env_ids(
+    env_ids: torch.Tensor | slice | Sequence[int] | None, num_envs: int, device: str | torch.device
+) -> torch.Tensor:
+    """Resolve an environment selector into a 1-D tensor of environment indices.
+
+    Managers pass either a slice (full resets), an integer tensor (step resets) or ``None`` (all).
+    """
+    if isinstance(env_ids, torch.Tensor):
+        return env_ids
+    if env_ids is None:
+        return torch.arange(num_envs, device=device)
+    if isinstance(env_ids, slice):
+        return torch.arange(num_envs, device=device)[env_ids]
+    return torch.tensor(env_ids, device=device)
+
+
 class ImageNoiseModel:
     """This serves as an example of a noise model for images.
     It should be replaced with a specific noise model implementation.
@@ -46,7 +62,9 @@ class ImageNoiseModel:
         self.num_envs = num_envs
         self.device = device
 
-    def __call__(self, data: torch.Tensor, cfg: ImageNoiseCfg, env_ids: torch.Tensor | Sequence[int]) -> torch.Tensor:
+    def __call__(
+        self, data: torch.Tensor, cfg: ImageNoiseCfg, env_ids: torch.Tensor | slice | Sequence[int]
+    ) -> torch.Tensor:
         """Apply noise to the image data.
 
         Args:
@@ -59,7 +77,7 @@ class ImageNoiseModel:
         """
         return data
 
-    def reset(self, env_ids: Sequence[int] | None = None):
+    def reset(self, env_ids: torch.Tensor | slice | Sequence[int] | None = None):
         """Reset the noise model state if needed.
 
         Args:
@@ -71,7 +89,7 @@ class ImageNoiseModel:
 def depth_contour_noise(
     data: torch.Tensor,
     cfg: DepthContourNoiseCfg,
-    env_ids: torch.Tensor | Sequence[int],
+    env_ids: torch.Tensor | slice | Sequence[int],
 ) -> torch.Tensor:
     """Apply depth contour noise to the image data.
 
@@ -144,7 +162,7 @@ def depth_contour_noise(
 def depth_artifact_noise(
     data: torch.Tensor,
     cfg: DepthArtifactNoiseCfg,
-    env_ids: torch.Tensor | Sequence[int],
+    env_ids: torch.Tensor | slice | Sequence[int],
 ) -> torch.Tensor:
     """Add depth artifacts to the image data."""
     return _add_depth_artifacts(
@@ -160,7 +178,7 @@ def depth_artifact_noise(
 def depth_stero_noise(
     data: torch.Tensor,
     cfg: DepthSteroNoiseCfg,
-    env_ids: torch.Tensor | Sequence[int],
+    env_ids: torch.Tensor | slice | Sequence[int],
 ) -> torch.Tensor:
     """Simulate the noise from the depth limit of the stereo camera."""
     device = cfg.device
@@ -172,12 +190,12 @@ def depth_stero_noise(
     # add noise to the fart points
     far_noise = _uniform_random(0.0, cfg.stero_far_noise_std, (N, H * W), device=device).view(N, H, W, 1)
     far_noise = far_noise * far_mask
-    data += far_noise
 
     # add noise to near points
     near_noise = _uniform_random(0.0, cfg.stero_near_noise_std, (N, H * W), device=device).view(N, H, W, 1)
     near_noise = near_noise * near_mask
-    data += near_noise
+    # out-of-place: ``data`` may alias caller-owned storage
+    data = data + far_noise + near_noise
 
     # add artifacts to the too close points
     vertical_block_mask = too_close_mask.sum(dim=-3, keepdim=True) > (too_close_mask.shape[-3] * 0.6)
@@ -214,7 +232,7 @@ def depth_stero_noise(
 def depth_sky_artifact_noise(
     data: torch.Tensor,
     cfg: DepthSkyArtifactNoiseCfg,
-    env_ids: torch.Tensor | Sequence[int],
+    env_ids: torch.Tensor | slice | Sequence[int],
 ) -> torch.Tensor:
     """Add sky artifacts to the image data, in case something like ceiling pattern or stereo failure happens."""
     device = cfg.device
@@ -232,6 +250,8 @@ def depth_sky_artifact_noise(
 
     to_sky_mask = _recognize_top_down_seeing_sky(possible_to_sky_mask)
     isinf_mask = data.isinf()
+    # out-of-place: ``data`` may alias caller-owned storage
+    data = data.clone()
 
     # add artifacts to the regions where they are seemingly pointing to sky
     for pixel_value in random.sample(
@@ -255,7 +275,7 @@ def depth_sky_artifact_noise(
 
 
 def depth_normalization(
-    data: torch.Tensor, cfg: DepthNormalizationCfg, env_ids: torch.Tensor | Sequence[int]
+    data: torch.Tensor, cfg: DepthNormalizationCfg, env_ids: torch.Tensor | slice | Sequence[int]
 ) -> torch.Tensor:
     """Clip the depth values to given range and choose whether to normalize them to [0, 1] range."""
 
@@ -312,10 +332,9 @@ class LatencyNoiseModel(ImageNoiseModel):
         # initialize the delay settings
         self._resample_delays(torch.arange(num_envs, device=device))
 
-    def __call__(self, data, cfg, env_ids: torch.Tensor | Sequence[int]):
+    def __call__(self, data, cfg, env_ids: torch.Tensor | slice | Sequence[int]):
         # convert env_ids to tensor
-        if isinstance(env_ids, Sequence):
-            env_ids = torch.tensor(env_ids, device=self.device)
+        env_ids = _resolve_env_ids(env_ids, self.num_envs, self.device)
 
         if data.shape[0] != len(env_ids):
             raise RuntimeError(
@@ -337,7 +356,7 @@ class LatencyNoiseModel(ImageNoiseModel):
         delayed = self.delay_buffer.compute(data, batch_ids=env_ids.tolist())
         return delayed
 
-    def _generate_resample_intervals(self, env_ids: Sequence[int] | None = None):
+    def _generate_resample_intervals(self, env_ids: torch.Tensor | None = None):
         """Generate resample intervals for each environment"""
         base_interval = self.cfg.sample_frequency_steps
         offset_range = self.cfg.sample_frequency_steps_offset
@@ -412,12 +431,9 @@ class LatencyNoiseModel(ImageNoiseModel):
 
         self.delay_buffer.set_time_lag(new_delays, env_ids.tolist())
 
-    def reset(self, env_ids: Sequence[int] | None = None):
+    def reset(self, env_ids: torch.Tensor | slice | Sequence[int] | None = None):
         """reset the noise model state for given environments."""
-        if env_ids is None:
-            env_ids = list(range(self.num_envs))
-
-        env_ids_tensor = torch.tensor(env_ids, device=self.device)
+        env_ids_tensor = _resolve_env_ids(env_ids, self.num_envs, self.device)
 
         # reset the environment step counters
         self.env_step_counters[env_ids_tensor] = 0
@@ -425,11 +441,11 @@ class LatencyNoiseModel(ImageNoiseModel):
 
         # reset resample intervals if "every_n_steps" is used
         if self.cfg.sample_frequency == "every_n_steps":
-            new_intervals = self._generate_resample_intervals(env_ids)
+            new_intervals = self._generate_resample_intervals(env_ids_tensor)
             self.resample_intervals[env_ids_tensor] = new_intervals
 
         # reset the delay buffer
-        self.delay_buffer.reset(env_ids)
+        self.delay_buffer.reset(env_ids_tensor)
 
         # resample delays for given environments
         self._resample_delays(env_ids_tensor)
@@ -522,7 +538,7 @@ def _add_depth_artifacts(
 def crop_and_resize(
     data: torch.Tensor,
     cfg: CropAndResizeCfg,
-    env_ids: torch.Tensor | Sequence[int],
+    env_ids: torch.Tensor | slice | Sequence[int],
 ) -> torch.Tensor:
     """Crop and resize the input image tensor."""
     # Crop the image
@@ -545,7 +561,7 @@ def crop_and_resize(
 def blind_spot_noise(
     data: torch.Tensor,
     cfg: BlindSpotNoiseCfg,
-    env_ids: torch.Tensor | Sequence[int],
+    env_ids: torch.Tensor | slice | Sequence[int],
 ) -> torch.Tensor:
     """Remove data in the leftmost columns to mimic blind spot of stereo-matching."""
     # Crop the image
@@ -566,7 +582,7 @@ def blind_spot_noise(
 def gaussian_blur_noise(
     data: torch.Tensor,
     cfg: GaussianBlurNoiseCfg,
-    env_ids: torch.Tensor | Sequence[int],
+    env_ids: torch.Tensor | slice | Sequence[int],
 ) -> torch.Tensor:
     """Apply Gaussian blur to the image data."""
     # Convert from (N, H, W, C) to (N, C, H, W)
@@ -583,7 +599,7 @@ def gaussian_blur_noise(
 def random_gaussian_noise(
     data: torch.Tensor,
     cfg: RandomGaussianNoiseCfg,
-    env_ids: torch.Tensor | Sequence[int],
+    env_ids: torch.Tensor | slice | Sequence[int],
 ) -> torch.Tensor:
     """Apply random Gaussian noise to the image data."""
     N, H, W, C = data.shape
@@ -608,7 +624,7 @@ def _recognize_top_down_too_close(too_close_mask):
 def range_based_gaussian_noise(
     data: torch.Tensor,
     cfg: RangeBasedGaussianNoiseCfg,
-    env_ids: torch.Tensor | Sequence[int],
+    env_ids: torch.Tensor | slice | Sequence[int],
 ) -> torch.Tensor:
     """Apply gaussian noise to the data where the original value is in the range [min_value, max_value]
     if min_value or max_value is None, the boundary is not considered.
@@ -630,7 +646,7 @@ def range_based_gaussian_noise(
 def stereo_too_close_noise(
     data: torch.Tensor,
     cfg: StereoTooCloseNoiseCfg,
-    env_ids: torch.Tensor | Sequence[int],
+    env_ids: torch.Tensor | slice | Sequence[int],
 ) -> torch.Tensor:
     """Apply noise to the data where the original value is too close to the stereo camera."""
     N, H, W, C = data.shape
@@ -638,6 +654,8 @@ def stereo_too_close_noise(
     vertical_block_mask = _recognize_top_down_too_close(too_close_mask)
     full_block_mask = vertical_block_mask & too_close_mask
     half_block_mask = (~vertical_block_mask) & too_close_mask
+    # out-of-place: ``data`` may alias caller-owned storage
+    data = data.clone()
 
     # add artifacts where vertical pixels are all too close (full block)
     for pixel_value in random.sample(
@@ -681,7 +699,8 @@ class SensorDeadNoiseModel(ImageNoiseModel):
             else torch.tensor(self.cfg.dead_frames, device=device)
         )
 
-    def __call__(self, data, cfg: SensorDeadNoiseCfg, env_ids: torch.Tensor | Sequence[int]):
+    def __call__(self, data, cfg: SensorDeadNoiseCfg, env_ids: torch.Tensor | slice | Sequence[int]):
+        env_ids = _resolve_env_ids(env_ids, self.num_envs, self.device)
         if self._data_buffer is None:
             self._data_buffer = torch.zeros_like(data[0]).unsqueeze(0).repeat(self.num_envs, *([1] * (data.ndim - 1)))
 
@@ -711,7 +730,8 @@ class SensorDeadNoiseModel(ImageNoiseModel):
         self._data_buffer[buffer_to_refresh_mask] = data[data_to_refresh_mask]
         return self._data_buffer[env_ids]
 
-    def reset(self, env_ids: Sequence[int] | None = None):
+    def reset(self, env_ids: torch.Tensor | slice | Sequence[int] | None = None):
+        env_ids = _resolve_env_ids(env_ids, self.num_envs, self.device)
         self._remain_dead_frames[env_ids] = 0
         if self._data_buffer is not None:
             self._data_buffer[env_ids] = 0

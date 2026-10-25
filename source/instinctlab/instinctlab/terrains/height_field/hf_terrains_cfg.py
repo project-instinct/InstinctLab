@@ -24,6 +24,12 @@ class WallTerrainCfgMixin:
 
 @configclass
 class PerlinPlaneTerrainCfg(HfTerrainBaseCfg, WallTerrainCfgMixin):
+    # The discretization defaults to None so that a sub-terrain inherits it from the terrain generator, as the EA
+    # terrain generator always overwrote it. Same for every other height-field configuration below.
+    horizontal_scale: float | None = None
+    vertical_scale: float | None = None
+    slope_threshold: float | None = None
+
     function = hf_terrains.perlin_plane_terrain
 
     noise_scale: float | List[float] = 0.05
@@ -38,42 +44,70 @@ class PerlinPlaneTerrainCfg(HfTerrainBaseCfg, WallTerrainCfgMixin):
 
 @configclass
 class PerlinPyramidSlopedTerrainCfg(HfPyramidSlopedTerrainCfg, WallTerrainCfgMixin):
+    horizontal_scale: float | None = None
+    vertical_scale: float | None = None
+    slope_threshold: float | None = None
+
     function = hf_terrains.perlin_pyramid_sloped_terrain
     perlin_cfg: PerlinPlaneTerrainCfg | None = None
 
 
 @configclass
 class PerlinInvertedPyramidSlopedTerrainCfg(HfInvertedPyramidSlopedTerrainCfg, WallTerrainCfgMixin):
+    horizontal_scale: float | None = None
+    vertical_scale: float | None = None
+    slope_threshold: float | None = None
+
     function = hf_terrains.perlin_pyramid_sloped_terrain
     perlin_cfg: PerlinPlaneTerrainCfg | None = None
 
 
 @configclass
 class PerlinPyramidStairsTerrainCfg(HfPyramidStairsTerrainCfg, WallTerrainCfgMixin):
+    horizontal_scale: float | None = None
+    vertical_scale: float | None = None
+    slope_threshold: float | None = None
+
     function = hf_terrains.perlin_pyramid_stairs_terrain
     perlin_cfg: PerlinPlaneTerrainCfg | None = None
 
 
 @configclass
 class PerlinInvertedPyramidStairsTerrainCfg(HfInvertedPyramidStairsTerrainCfg, WallTerrainCfgMixin):
+    horizontal_scale: float | None = None
+    vertical_scale: float | None = None
+    slope_threshold: float | None = None
+
     function = hf_terrains.perlin_pyramid_stairs_terrain
     perlin_cfg: PerlinPlaneTerrainCfg | None = None
 
 
 @configclass
 class PerlinDiscreteObstaclesTerrainCfg(HfDiscreteObstaclesTerrainCfg, WallTerrainCfgMixin):
+    horizontal_scale: float | None = None
+    vertical_scale: float | None = None
+    slope_threshold: float | None = None
+
     function = hf_terrains.perlin_discrete_obstacles_terrain
     perlin_cfg: PerlinPlaneTerrainCfg | None = None
 
 
 @configclass
 class PerlinWaveTerrainCfg(HfWaveTerrainCfg, WallTerrainCfgMixin):
+    horizontal_scale: float | None = None
+    vertical_scale: float | None = None
+    slope_threshold: float | None = None
+
     function = hf_terrains.perlin_wave_terrain
     perlin_cfg: PerlinPlaneTerrainCfg | None = None
 
 
 @configclass
 class PerlinSteppingStonesTerrainCfg(HfSteppingStonesTerrainCfg, WallTerrainCfgMixin):
+    horizontal_scale: float | None = None
+    vertical_scale: float | None = None
+    slope_threshold: float | None = None
+
     function = hf_terrains.perlin_stepping_stones_terrain
     perlin_cfg: PerlinPlaneTerrainCfg | None = None
 
@@ -82,6 +116,10 @@ class PerlinSteppingStonesTerrainCfg(HfSteppingStonesTerrainCfg, WallTerrainCfgM
 @configclass
 class PerlinParapetTerrainCfg(HfTerrainBaseCfg, WallTerrainCfgMixin):
     """Configuration for a parapet terrain, can be used for jump and hurdle tasks."""
+
+    horizontal_scale: float | None = None
+    vertical_scale: float | None = None
+    slope_threshold: float | None = None
 
     function = hf_terrains.perlin_parapet_terrain
     parapet_height: tuple[float, float] | float = (0.1, 0.3)
@@ -96,6 +134,10 @@ class PerlinParapetTerrainCfg(HfTerrainBaseCfg, WallTerrainCfgMixin):
 class PerlinGutterTerrainCfg(HfTerrainBaseCfg, WallTerrainCfgMixin):
     """Configuration for a gutter parkour terrain."""
 
+    horizontal_scale: float | None = None
+    vertical_scale: float | None = None
+    slope_threshold: float | None = None
+
     function = hf_terrains.perlin_gutter_terrain
     gutter_length: tuple[float, float] | float = (0.5, 1.5)  # the distance between gutters
     gutter_depth: tuple[float, float] | float = (0.1, 0.3)  # the depth of the gutter
@@ -106,6 +148,10 @@ class PerlinGutterTerrainCfg(HfTerrainBaseCfg, WallTerrainCfgMixin):
 @configclass
 class PerlinStairsUpDownTerrainCfg(HfTerrainBaseCfg, WallTerrainCfgMixin):
     """Configuration for a stairs up and down parkour terrain."""
+
+    horizontal_scale: float | None = None
+    vertical_scale: float | None = None
+    slope_threshold: float | None = None
 
     function = hf_terrains.perlin_stairs_up_down_terrain
     per_step_height: tuple[float, float] | float = MISSING
@@ -127,6 +173,10 @@ class PerlinStairsUpDownTerrainCfg(HfTerrainBaseCfg, WallTerrainCfgMixin):
 class PerlinStairsDownUpTerrainCfg(HfTerrainBaseCfg, WallTerrainCfgMixin):
     """Configuration for a stairs down and up parkour terrain."""
 
+    horizontal_scale: float | None = None
+    vertical_scale: float | None = None
+    slope_threshold: float | None = None
+
     function = hf_terrains.perlin_stairs_down_up_terrain
     per_step_height: tuple[float, float] | float = MISSING
     """The height of each step. Could be a fixed value or a range (min, max)."""
@@ -147,6 +197,10 @@ class PerlinStairsDownUpTerrainCfg(HfTerrainBaseCfg, WallTerrainCfgMixin):
 class PerlinTiltTerrainCfg(HfTerrainBaseCfg, WallTerrainCfgMixin):
     """Configuration for a tilt terrain."""
 
+    horizontal_scale: float | None = None
+    vertical_scale: float | None = None
+    slope_threshold: float | None = None
+
     function = hf_terrains.perlin_tilt_terrain
     wall_height: tuple[float, float] | float = MISSING
     wall_width: float | None = None
@@ -159,6 +213,10 @@ class PerlinTiltTerrainCfg(HfTerrainBaseCfg, WallTerrainCfgMixin):
 @configclass
 class PerlinTiltedRampTerrainCfg(HfTerrainBaseCfg, WallTerrainCfgMixin):
     """Configuration for a tilted ramp terrain."""
+
+    horizontal_scale: float | None = None
+    vertical_scale: float | None = None
+    slope_threshold: float | None = None
 
     function = hf_terrains.perlin_tilted_ramp_terrain
     tilt_angle: tuple[float, float] | float = MISSING  # in degrees
@@ -175,6 +233,10 @@ class PerlinTiltedRampTerrainCfg(HfTerrainBaseCfg, WallTerrainCfgMixin):
 class PerlinSlopeTerrainCfg(HfTerrainBaseCfg, WallTerrainCfgMixin):
     """Configuration for a slope up and down terrain with a flat ground in the middle."""
 
+    horizontal_scale: float | None = None
+    vertical_scale: float | None = None
+    slope_threshold: float | None = None
+
     function = hf_terrains.perlin_slope_terrain
     slope_angle: tuple[float, float] | float = MISSING  # in degrees
     per_slope_length: tuple[float, float] | float = MISSING
@@ -188,6 +250,10 @@ class PerlinSlopeTerrainCfg(HfTerrainBaseCfg, WallTerrainCfgMixin):
 class PerlinCrossStoneTerrainCfg(HfTerrainBaseCfg, WallTerrainCfgMixin):
     """Configuration for a cross stone terrain."""
 
+    horizontal_scale: float | None = None
+    vertical_scale: float | None = None
+    slope_threshold: float | None = None
+
     function = hf_terrains.perlin_cross_stone_terrain
     stone_size: tuple[float, float] = MISSING
     stone_height: tuple[float, float] | float = MISSING
@@ -200,6 +266,10 @@ class PerlinCrossStoneTerrainCfg(HfTerrainBaseCfg, WallTerrainCfgMixin):
 
 @configclass
 class PerlinSquareGapTerrainCfg(HfTerrainBaseCfg, WallTerrainCfgMixin):
+    horizontal_scale: float | None = None
+    vertical_scale: float | None = None
+    slope_threshold: float | None = None
+
     function = hf_terrains.perlin_square_gap_terrain
 
     gap_distance_range: tuple[float, float] = (0.1, 0.5)

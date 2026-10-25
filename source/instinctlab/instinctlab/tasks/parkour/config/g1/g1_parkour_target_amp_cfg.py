@@ -1,10 +1,11 @@
 import copy
 import os
 
-from isaaclab_visualizers.kit import KitVisualizerCfg
+from isaaclab_visualizers.kit import KitBackendCfg
 
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.configclass import configclass
+from isaaclab.visualizers import VisualizerCfg, WindowCfg
 
 import instinctlab.tasks.parkour.mdp as mdp
 from instinctlab.assets.unitree_g1 import (
@@ -21,6 +22,8 @@ from instinctlab.motion_reference.motion_files.amass_motion_cfg import AmassMoti
 from instinctlab.motion_reference.utils import motion_interpolate_bilinear
 from instinctlab.sensors import get_link_prim_targets
 from instinctlab.tasks.parkour.config.parkour_env_cfg import ROUGH_TERRAINS_CFG, ParkourEnvCfg
+from instinctlab.tasks.utils.backends import backend_viewers
+from instinctlab.tasks.utils.newton import InstinctNewtonBackendCfg, InstinctNewtonVisualizerCfg
 from instinctlab.utils.config import set_cfg_joint_order
 from instinctlab.utils.urdf import urdf_importer_link_prim_path
 
@@ -37,9 +40,7 @@ G1_with_shoe_CFG.spawn.asset_path = os.path.abspath(
 class AmassMotionCfg(AmassMotionCfgBase):
     path = os.path.expanduser("~/Datasets/hiking-in-the-wild_Data&Model/data&model/parkour_motion_reference")
     retargetting_func = None
-    filtered_motion_selection_filepath = os.path.expanduser(
-        "~/Datasets/hiking-in-the-wild_Data&Model/data&model/parkour_motion_reference/parkour_motion_without_run.yaml"
-    )
+    filtered_motion_selection_filepath = os.path.join(path, "parkour_motion_without_run.yaml")
     motion_start_from_middle_range = [0.0, 0.9]
     motion_start_height_offset = 0.0
     ensure_link_below_zero_ground = False
@@ -142,11 +143,14 @@ class G1ParkourRoughEnvCfg_PLAY(G1ParkourRoughEnvCfg):
         self.scene.terrain.terrain_generator = ROUGH_TERRAINS_CFG_PLAY
         # make a smaller scene for play
         self.scene.num_envs = 10
-        self.sim.default_visualizer_cfg = KitVisualizerCfg(
-            eye=(4.0, 0.75, 1.0),
-            lookat=(0.0, 0.75, 0.0),
-            origin_type="asset",
-            origin_track_path="robot",
+        self.sim.visualizer_cfgs = backend_viewers(
+            VisualizerCfg(
+                backend=KitBackendCfg(origin_type="asset", origin_track_path="robot"),
+                eye=(4.0, 0.75, 1.0),
+                lookat=(0.0, 0.75, 0.0),
+                window=WindowCfg(size=(1280, 720)),
+            ),
+            newton=InstinctNewtonVisualizerCfg(backend=InstinctNewtonBackendCfg(follow_body=True)),
         )
 
         self.scene.env_spacing = 2.5

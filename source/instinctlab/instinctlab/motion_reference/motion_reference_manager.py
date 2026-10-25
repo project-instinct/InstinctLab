@@ -16,6 +16,7 @@ from isaaclab.utils.buffers import TimestampedBuffer
 
 from instinctlab.motion_reference.motion_reference_data import MotionReferenceData, MotionReferenceState
 from instinctlab.utils.backend_dispatch import create_backend_component
+from instinctlab.utils.prims import articulation_name_order
 
 if TYPE_CHECKING:
     from instinctlab.motion_reference.motion_buffer import MotionBuffer
@@ -336,20 +337,27 @@ class MotionReferenceManagerBase(SensorBase):
     Operations.
     """
 
-    def reset(self, env_ids: Sequence[int] | torch.Tensor | None = None):
+    def reset(self, env_ids: torch.Tensor | slice | None = None):
         """Reset the motion reference manager as a sensor, also reset the motion reference components."""
         assert (
             self.is_initialized
         ), "Motion reference manager is not initialized successfully. Please check the error message above."
         super().reset(env_ids)
-        if env_ids is None:
-            env_ids = self.ALL_INDICES
+        env_ids = self._resolve_env_ids(env_ids)
 
         # Reset motion buffer selection and resample selection
         self._reset_motion_buffers(env_ids)
         self._reset_data(env_ids)
         self._resample_buffer_collate_params(env_ids)
         self._resample_update_period(env_ids)
+
+    def _resolve_env_ids(self, env_ids: torch.Tensor | slice | None) -> torch.Tensor:
+        """Resolve an environment selector to a 1-D index tensor on the manager device."""
+        if env_ids is None:
+            return self.ALL_INDICES
+        if isinstance(env_ids, torch.Tensor):
+            return env_ids
+        return self.ALL_INDICES[env_ids]
 
     def find_joints(
         self, name_keys: str | Sequence[str], joint_subset: list[str] | None = None, preserve_order: bool = False
@@ -380,18 +388,16 @@ class MotionReferenceManagerBase(SensorBase):
         # find bodies
         return string_utils.resolve_matching_names(name_keys, self.cfg.link_of_interests, preserve_order)
 
-    def get_init_reference_state(self, env_ids: Sequence[int] | torch.Tensor | None = None) -> MotionReferenceState:
+    def get_init_reference_state(self, env_ids: torch.Tensor | slice | None = None) -> MotionReferenceState:
         """Get the initial reference state for the given env_ids."""
-        env_ids = torch.as_tensor(env_ids, device=self.device)
+        env_ids = self._resolve_env_ids(env_ids)
         for name, buffer in self._motion_buffers.items():
             env_ids_assignment = self._motion_buffer_assignment[name]
             assert env_ids_assignment.step is None, "Only support continuous env_ids assignment for now."
             env_ids_this_buffer_mask = torch.logical_and(
                 env_ids >= env_ids_assignment.start, env_ids < env_ids_assignment.stop
             )
-            env_ids_this_buffer = (
-                self.ALL_INDICES[env_ids_assignment] if env_ids is None else env_ids[env_ids_this_buffer_mask]
-            )
+            env_ids_this_buffer = env_ids[env_ids_this_buffer_mask]
             buffer.fill_init_reference_state(
                 env_ids_this_buffer,
                 self.env_origins,
@@ -439,10 +445,9 @@ class MotionReferenceManagerBase(SensorBase):
             link_pos_quat_b[:, link_idx, 3:] = math_utils.quat_from_matrix(pose_mat[:, :3, :3])
         return link_pos_quat_b.to(input_device)
 
-    def get_current_motion_identifiers(self, env_ids: Sequence[int] | torch.Tensor | None = None) -> list[str]:
+    def get_current_motion_identifiers(self, env_ids: torch.Tensor | slice | None = None) -> list[str]:
         """Get the current motion identifiers for the given env_ids."""
-        if env_ids is None:
-            env_ids = self.ALL_INDICES
+        env_ids = self._resolve_env_ids(env_ids)
         motion_identifiers = []
         for name, buffer in self._motion_buffers.items():
             env_ids_assignment = self._motion_buffer_assignment[name]
@@ -450,14 +455,13 @@ class MotionReferenceManagerBase(SensorBase):
             env_ids_this_buffer_mask = torch.logical_and(
                 env_ids >= env_ids_assignment.start, env_ids < env_ids_assignment.stop
             )
-            motion_identifiers.extend(buffer.get_current_motion_identifiers(env_ids[env_ids_this_buffer_mask]))  # type: ignore
+            motion_identifiers.extend(buffer.get_current_motion_identifiers(env_ids[env_ids_this_buffer_mask]))
         return motion_identifiers
 
-    def get_current_motion_weights(self, env_ids: Sequence[int] | torch.Tensor | None = None) -> torch.Tensor:
+    def get_current_motion_weights(self, env_ids: torch.Tensor | slice | None = None) -> torch.Tensor:
         """Get the current motion weights for the given env_ids."""
-        if env_ids is None:
-            env_ids = self.ALL_INDICES
-        motion_weights = torch.empty(len(env_ids), device=self.device, dtype=torch.float32)
+        env_ids = self._resolve_env_ids(env_ids)
+        motion_weights = torch.empty(env_ids.numel(), device=self.device, dtype=torch.float32)
         for name, buffer in self._motion_buffers.items():
             env_ids_assignment = self._motion_buffer_assignment[name]
             assert env_ids_assignment.step is None, "Only support continuous env_ids assignment for now."
@@ -466,12 +470,12 @@ class MotionReferenceManagerBase(SensorBase):
             )
             motion_weights[env_ids_this_buffer_mask] = buffer.get_current_motion_weights(
                 env_ids[env_ids_this_buffer_mask]
-            )  # type: ignore
+            )
         return motion_weights
 
     def update_motion_weights(
         self,
-        env_ids: Sequence[int] | torch.Tensor,
+        env_ids: torch.Tensor | slice,
         weight_ratio: float | torch.Tensor = 1.0,
     ):
         """Update the motion weights for the given env_ids, to update the motion sample weights when reset.
@@ -479,9 +483,10 @@ class MotionReferenceManagerBase(SensorBase):
             - multiple motion_buffers is not recommended.
             - multi processing is not recommended.
         """
+        env_ids = self._resolve_env_ids(env_ids)
         if isinstance(weight_ratio, torch.Tensor):
-            assert len(weight_ratio) == len(
-                env_ids
+            assert (
+                len(weight_ratio) == env_ids.numel()
             ), "weight_ratio must be a scalar or a tensor with the same length as env_ids."
         for name, buffer in self._motion_buffers.items():
             env_ids_assignment = self._motion_buffer_assignment[name]
@@ -489,7 +494,7 @@ class MotionReferenceManagerBase(SensorBase):
             env_ids_this_buffer_mask = torch.logical_and(
                 env_ids >= env_ids_assignment.start, env_ids < env_ids_assignment.stop
             )
-            env_ids_this_buffer = env_ids[env_ids_this_buffer_mask]  # type: ignore
+            env_ids_this_buffer = env_ids[env_ids_this_buffer_mask]
             buffer.update_motion_weights(
                 env_ids_this_buffer,
                 weight_ratio=(
@@ -563,7 +568,7 @@ class MotionReferenceManagerBase(SensorBase):
         time_to_target_frame = torch.arange(self.cfg.num_frames, device=self.device, dtype=torch.float32)
         if self.cfg.data_start_from == "one_frame_interval":
             time_to_target_frame += 1
-        time_to_target_frame = time_to_target_frame.unsqueeze(0).repeat(len(env_ids), 1)
+        time_to_target_frame = time_to_target_frame.unsqueeze(0).repeat(env_ids.numel(), 1)
         time_to_target_frame *= self.frame_interval_s[env_ids].unsqueeze(-1)
 
         for name, buffer in self._motion_buffers.items():
@@ -623,6 +628,12 @@ class MotionReferenceManagerBase(SensorBase):
     def _initialize_data(self):
         """Initialize _data for the 'sensor' output"""
         self._view = self._create_articulation_view(self.cfg.prim_path)
+        # Present the joints in the order of the robot articulation (ArticulationCfg.joint_ordering), so that ids
+        # resolved on the robot and on the motion reference index the same joints.
+        backend_names = self._view_joint_dof_names(self._view)
+        self._joint_names = articulation_name_order(self.cfg.prim_path, "joint", backend_names)
+        self._backend_joint_ids = self._permutation(backend_names, self._joint_names)
+        self._reference_joint_ids = None
         self._ALL_INDICES = torch.arange(self.count, device=self.device)
         self.isaac_joint_names = self.joint_dof_names
         self._initialize_symmetric_joint_mapping()
@@ -671,26 +682,52 @@ class MotionReferenceManagerBase(SensorBase):
         """Number of active degrees of freedom per articulation."""
         raise NotImplementedError
 
-    @property
-    def joint_dof_names(self) -> list[str]:
-        """Joint names in backend articulation order."""
+    def _view_joint_dof_names(self, view) -> list[str]:
+        """Joint names of a backend articulation view, in backend order."""
         raise NotImplementedError
 
     def get_root_transforms(self) -> torch.Tensor:
         """Read root transforms as position followed by quaternion in xyzw order."""
         raise NotImplementedError
 
-    def get_dof_positions(self) -> torch.Tensor:
-        """Read articulation joint positions."""
+    def _get_backend_dof_positions(self) -> torch.Tensor:
+        """Read articulation joint positions in backend order."""
         raise NotImplementedError
+
+    def _get_backend_dof_velocities(self) -> torch.Tensor:
+        """Read articulation joint velocities in backend order."""
+        raise NotImplementedError
+
+    def _get_backend_dof_limits(self) -> torch.Tensor:
+        """Read joint limits in ``(view, dof, lower-upper)`` layout and backend order."""
+        raise NotImplementedError
+
+    @staticmethod
+    def _permutation(source_names: list[str], target_names: list[str]) -> list[int] | None:
+        """Ids into *source_names* that give *target_names*, or None when the orders already match."""
+        if list(source_names) == list(target_names):
+            return None
+        return [list(source_names).index(name) for name in target_names]
+
+    @property
+    def joint_dof_names(self) -> list[str]:
+        """Joint names in the robot articulation's order (see :func:`~instinctlab.utils.prims.articulation_name_order`)."""
+        return list(self._joint_names)
+
+    def get_dof_positions(self) -> torch.Tensor:
+        """Read articulation joint positions in :attr:`joint_dof_names` order."""
+        values = self._get_backend_dof_positions()
+        return values if self._backend_joint_ids is None else values[:, self._backend_joint_ids]
 
     def get_dof_velocities(self) -> torch.Tensor:
-        """Read articulation joint velocities."""
-        raise NotImplementedError
+        """Read articulation joint velocities in :attr:`joint_dof_names` order."""
+        values = self._get_backend_dof_velocities()
+        return values if self._backend_joint_ids is None else values[:, self._backend_joint_ids]
 
     def get_dof_limits(self) -> torch.Tensor:
-        """Read joint limits in ``(view, dof, lower-upper)`` layout."""
-        raise NotImplementedError
+        """Read joint limits in ``(view, dof, lower-upper)`` layout and :attr:`joint_dof_names` order."""
+        values = self._get_backend_dof_limits()
+        return values if self._backend_joint_ids is None else values[:, self._backend_joint_ids]
 
     def _initialize_symmetric_joint_mapping(self):
         """Resolve configured symmetry arrays into the runtime articulation order."""
@@ -783,7 +820,7 @@ class MotionReferenceManagerBase(SensorBase):
         # TODO: Considering tracking link is already known from config,
         # forward kinematics can be accelerated by ONNX or JIT.
 
-    def _reset_motion_buffers(self, env_ids: Sequence[int] | torch.Tensor):
+    def _reset_motion_buffers(self, env_ids: torch.Tensor):
         """Reset each motion buffers if is selected by the given env_ids."""
         for name in self._motion_buffers.keys():
             env_ids_assignment = self._motion_buffer_assignment[name]
@@ -792,16 +829,16 @@ class MotionReferenceManagerBase(SensorBase):
                 env_ids >= env_ids_assignment.start, env_ids < env_ids_assignment.stop
             )
             self._motion_buffers[name].reset(
-                env_ids=env_ids[env_ids_this_buffer_mask],  # type: ignore
+                env_ids=env_ids[env_ids_this_buffer_mask],
                 symmetric_augmentation_mask_buffer=self._env_symmetric_augmentation_mask,
             )
 
-    def _reset_data(self, env_ids: Sequence[int] | torch.Tensor):
+    def _reset_data(self, env_ids: torch.Tensor):
         """Reset the reference data / reference frame for the given env_ids."""
         self._data.reset(env_ids)
         self._reference_frame.reset(env_ids)
 
-    def _resample_buffer_collate_params(self, env_ids: Sequence[int] | torch.Tensor | None = None):
+    def _resample_buffer_collate_params(self, env_ids: torch.Tensor | None = None):
         """Resample values for motion collate behaviors for the given env_ids. E.g. frame_interval_s,
         symmetric_augmentation_mask.
         """
@@ -814,7 +851,7 @@ class MotionReferenceManagerBase(SensorBase):
             )
         elif isinstance(self.cfg.frame_interval_s, Sequence):
             self._frame_interval_s[env_ids] = (
-                torch.rand(len(env_ids), device=self.device)  # type: ignore
+                torch.rand(env_ids.numel(), device=self.device)
                 * (self.cfg.frame_interval_s[1] - self.cfg.frame_interval_s[0])
                 + self.cfg.frame_interval_s[0]
             )
@@ -831,7 +868,7 @@ class MotionReferenceManagerBase(SensorBase):
             # The values in self._data should be already symmetrically augmented.
             self._env_symmetric_augmentation_mask = torch.zeros(self.count, device=self.device, dtype=torch.bool)
 
-    def _resample_update_period(self, env_ids: Sequence[int] | torch.Tensor | None = None):
+    def _resample_update_period(self, env_ids: torch.Tensor | None = None):
         """Resample the update period for the given env_ids."""
         if env_ids is None and isinstance(self.cfg.update_period, (list, tuple)):
             # initialize the update period so that the sensor manager will update the sensor at the given period
@@ -844,24 +881,24 @@ class MotionReferenceManagerBase(SensorBase):
                 )
                 * self.cfg.update_period[0]
             )
-            env_ids = self._ALL_INDICES  # type: ignore
+            env_ids = self._ALL_INDICES
 
         if isinstance(self.cfg.update_period, torch.Tensor) and self.cfg.update_period_sample_strategy is not None:
             if self.cfg.update_period_sample_strategy == "uniform":
                 self.cfg.update_period[env_ids] = (
                     torch.rand(
-                        len(env_ids),  # type: ignore
+                        env_ids.numel(),
                         device=self.device,
                     )
                     * (self.cfg.update_period_range[1] - self.cfg.update_period_range[0])
                     + self.cfg.update_period_range[0]
-                )  # type: ignore
+                )
             elif self.cfg.update_period_sample_strategy == "uniform_frame_limits":
                 # Currently, assuming sample frame indices are still linearly increasing.
-                max_motion_ref_length_s = self.frame_interval_s * self.cfg.num_frames  # (len(env_ids),)
+                max_motion_ref_length_s = self.frame_interval_s * self.cfg.num_frames  # (num_selected,)
                 self.cfg.update_period[env_ids] = (
                     torch.rand(
-                        len(env_ids),  # type: ignore
+                        env_ids.numel(),
                         device=self.device,
                     )
                     * (max_motion_ref_length_s[env_ids] - self.frame_interval_s[env_ids])
@@ -1067,6 +1104,9 @@ class MotionReferenceManagerBase(SensorBase):
         """Find the ArticulationView to serve as a motion reference visualization."""
         if hasattr(self, "_backend") and self.cfg.reference_prim_path is not None:
             self._reference_view = self._create_articulation_view(self.cfg.reference_prim_path)
+            self._reference_joint_ids = self._permutation(
+                self._joint_names, self._view_joint_dof_names(self._reference_view)
+            )
 
     def _set_reference_view_state(self):
         """Set the articulation view to the reference state for motion visualization."""
@@ -1091,7 +1131,13 @@ class MotionReferenceManagerBase(SensorBase):
         self._write_reference_view_state(root_pose_w, robot_joint_pos)
 
     def _write_reference_view_state(self, root_pose_w: torch.Tensor, joint_pos: torch.Tensor) -> None:
-        """Write visualization state through the active backend's native view."""
+        """Write visualization state, *joint_pos* in :attr:`joint_dof_names` order, to the reference view."""
+        if self._reference_joint_ids is not None:
+            joint_pos = joint_pos[:, self._reference_joint_ids]
+        self._write_backend_reference_view_state(root_pose_w, joint_pos.contiguous())
+
+    def _write_backend_reference_view_state(self, root_pose_w: torch.Tensor, joint_pos: torch.Tensor) -> None:
+        """Write visualization state, *joint_pos* in the reference view's backend order, through its native view."""
         raise NotImplementedError
 
     def _set_debug_vis_impl(self, debug_vis: bool):
@@ -1182,6 +1228,7 @@ class MotionReferenceManager:
             cfg,
             {
                 "physx": "instinctlab.motion_reference.physx:PhysxMotionReferenceManager",
+                "ovphysx": "instinctlab.motion_reference.ovphysx:OvPhysxMotionReferenceManager",
                 "newton": "instinctlab.motion_reference.newton:NewtonMotionReferenceManager",
             },
         )

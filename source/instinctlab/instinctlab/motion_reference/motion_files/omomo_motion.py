@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import os
 import torch
-from typing import TYPE_CHECKING, Sequence, cast
+from typing import TYPE_CHECKING, cast
 
 import isaaclab.utils.math as math_utils
 
@@ -269,7 +269,7 @@ class OmomoMotion(AmassMotion):
 
     def fill_init_reference_state(
         self,
-        env_ids: Sequence[int] | torch.Tensor,
+        env_ids: torch.Tensor,
         env_origins: torch.Tensor,
         state_buffer: HoiMotionReferenceState,
     ) -> None:
@@ -311,14 +311,13 @@ class OmomoMotion(AmassMotion):
         state_buffer.object_validity[env_ids] = False
 
         # Scatter into the correct object slot per env
-        env_ids_dev = env_ids if isinstance(env_ids, torch.Tensor) else torch.tensor(env_ids, device=self.output_device)
         target_obj_idxs_dev = target_obj_idxs.to(self.output_device)
 
         valid_mask = target_obj_idxs_dev != -1
         if not valid_mask.any():
             return
 
-        v_env = env_ids_dev[valid_mask]
+        v_env = env_ids[valid_mask]
         v_obj = target_obj_idxs_dev[valid_mask]
         v_src = valid_mask.to(object_pos_w.device)
 
@@ -330,7 +329,7 @@ class OmomoMotion(AmassMotion):
 
     def fill_motion_data(
         self,
-        env_ids: Sequence[int] | torch.Tensor,
+        env_ids: torch.Tensor,
         sample_timestamp: torch.Tensor,
         env_origins: torch.Tensor,
         data_buffer: HoiMotionReferenceData,
@@ -365,14 +364,13 @@ class OmomoMotion(AmassMotion):
 
         target_obj_idxs = self._resolve_object_indices(data_buffer.scene_object_names, motion_ids)
 
-        env_ids_dev = env_ids if isinstance(env_ids, torch.Tensor) else torch.tensor(env_ids, device=self.output_device)
         target_obj_idxs_dev = target_obj_idxs.to(self.output_device)
 
         valid_mask = target_obj_idxs_dev != -1
         if not valid_mask.any():
             return
 
-        v_env = env_ids_dev[valid_mask]
+        v_env = env_ids[valid_mask]
         v_obj = target_obj_idxs_dev[valid_mask]
 
         # Invalidate object slots that this motion buffer does not provide data for

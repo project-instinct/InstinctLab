@@ -21,6 +21,7 @@ class TorqueMonitorSensorCfg(MonitorSensorCfg):
 
     class_type: type | str = "{DIR}.monitors:TorqueMonitorSensor"
 
-    prim_path: str = "/World/envs/env_*/Robot"
+    # The scene expands the macro to the environment regex, which is what the PhysX views take.
+    prim_path: str = "{ENV_REGEX_NS}/Robot"
 
     history_length: int = 4  # assuming is the number of decimation

@@ -1,7 +1,9 @@
 import math
 from dataclasses import MISSING
 
-from isaaclab_visualizers.kit import KitVisualizerCfg
+from isaaclab_newton.sim.schemas import NewtonMaterialPropertiesCfg
+from isaaclab_physx.physics import PhysxCfg
+from isaaclab_visualizers.kit import KitBackendCfg
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
@@ -19,6 +21,7 @@ from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.configclass import configclass
 from isaaclab.utils.noise import UniformNoiseCfg as Unoise
+from isaaclab.visualizers import VisualizerCfg, WindowCfg
 
 import instinctlab.envs.mdp as instinct_mdp
 import instinctlab.tasks.locomotion.mdp as locomotion_mdp
@@ -26,9 +29,12 @@ from instinctlab.assets.unitree_g1 import (
     G1_29DOF_POLICY_JOINT_ORDER_V1,
     G1_29DOF_TORSOBASE_POPSICLE_CFG,
     beyondmimic_action_scale,
+    beyondmimic_g1_29dof_actuators,
 )
 from instinctlab.envs.manager_based_rl_env_cfg import InstinctLabRLEnvCfg
 from instinctlab.monitors import MonitorTermCfg
+from instinctlab.tasks.utils.backends import backend_preset, backend_viewers, physics_preset
+from instinctlab.tasks.utils.newton import newton_physics_cfg
 from instinctlab.utils.config import set_cfg_joint_order
 
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
@@ -45,15 +51,21 @@ class G1FlatSceneCfg(InteractiveSceneCfg):
         prim_path="/World/ground",
         terrain_type="plane",
         collision_group=-1,
-        physics_material=sim_utils.RigidBodyMaterialCfg(
-            friction_combine_mode="multiply",
-            restitution_combine_mode="multiply",
-            static_friction=1.0,
-            dynamic_friction=1.0,
+        physics_material=backend_preset(
+            sim_utils.PhysxRigidBodyMaterialCfg(
+                friction_combine_mode="multiply",
+                restitution_combine_mode="multiply",
+                static_friction=1.0,
+                dynamic_friction=1.0,
+            ),
+            newton=NewtonMaterialPropertiesCfg(static_friction=1.0, dynamic_friction=1.0),
         ),
         debug_vis=False,
     )
-    robot = G1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+    robot = G1_CFG.replace(
+        prim_path="{ENV_REGEX_NS}/Robot",
+        actuators=backend_preset(G1_CFG.actuators, newton=beyondmimic_g1_29dof_actuators),
+    )
     contact_forces = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True)
     sky_light = AssetBaseCfg(
         prim_path="/World/skyLight",
@@ -369,11 +381,13 @@ class G1FlatEnvCfg(InstinctLabRLEnvCfg):
     curriculum: G1FlatCurriculumCfg = G1FlatCurriculumCfg()
 
     def __post_init__(self):
-        self.sim.default_visualizer_cfg = KitVisualizerCfg(
-            eye=(2.0, 2.0, 0.5),
-            lookat=(0.0, 0.0, 0.0),
-            origin_type="asset",
-            origin_track_path="robot",
+        self.sim.visualizer_cfgs = backend_viewers(
+            VisualizerCfg(
+                backend=KitBackendCfg(origin_type="asset", origin_track_path="robot"),
+                eye=(2.0, 2.0, 0.5),
+                lookat=(0.0, 0.0, 0.0),
+                window=WindowCfg(size=(1280, 720)),
+            )
         )
         joint_order = list(G1_29DOF_POLICY_JOINT_ORDER_V1)
         set_cfg_joint_order(self.actions.joint_pos, joint_order)
@@ -394,6 +408,10 @@ class G1FlatEnvCfg(InstinctLabRLEnvCfg):
         self.episode_length_s = 20.0
         self.sim.dt = 0.005
         self.sim.render_interval = self.decimation
+        self.sim.physics = physics_preset(
+            PhysxCfg(),
+            newton=newton_physics_cfg(njmax=112, nconmax=28, margin=0.0, gap=0.01, use_mujoco_contacts=True),
+        )
         if self.scene.contact_forces is not None:
             self.scene.contact_forces.update_period = self.sim.dt
         self.actions.joint_pos.scale = beyondmimic_action_scale

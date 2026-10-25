@@ -1,11 +1,12 @@
 import numpy as np
 import os
 
-from isaaclab_visualizers.kit import KitVisualizerCfg
+from isaaclab_visualizers.kit import KitBackendCfg
 
 import isaaclab.envs.mdp as mdp
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.configclass import configclass
+from isaaclab.visualizers import VisualizerCfg, WindowCfg
 
 import instinctlab.envs.mdp as instinct_mdp
 import instinctlab.tasks.shadowing.mdp as shadowing_mdp
@@ -25,12 +26,16 @@ from instinctlab.motion_reference.motion_files.amass_motion_cfg import AmassMoti
 from instinctlab.motion_reference.motion_files.terrain_motion_cfg import TerrainMotionCfg as TerrainMotionCfgBase
 from instinctlab.motion_reference.utils import motion_interpolate_bilinear
 from instinctlab.sensors import get_link_prim_targets
+from instinctlab.tasks.utils.backends import backend_preset, backend_viewers
+from instinctlab.tasks.utils.newton import InstinctNewtonBackendCfg, InstinctNewtonVisualizerCfg
 from instinctlab.utils.config import set_cfg_joint_order
 from instinctlab.utils.urdf import urdf_importer_link_prim_path
 
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
 
-MOTION_FOLDER = "~/Datasets/NoKov-Marslab-Motions-instinctnpz/20251116_50cm_kneeClimbStep6"
+# Download the Deep Whole-body Parkour dataset from:
+# https://drive.google.com/drive/folders/1dpSYHVhP1kFdBK5ixh_f_3g0vcbyC08f?usp=drive_link
+MOTION_FOLDER = "~/Datasets/Deep-Wholebody-Parkour_Dataset"
 
 
 @configclass
@@ -113,6 +118,7 @@ class G1PerceptiveShadowingEnvCfg(perceptual_cfg.PerceptiveShadowingEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
+        self.events.reset_robot.params["position_offset"] = backend_preset([0.0, 0.0, 0.0], newton=[0.0, 0.0, 0.05])
         joint_order = list(G1_29DOF_POLICY_JOINT_ORDER_V1)
         set_cfg_joint_order(self.actions.joint_pos, joint_order)
         self.observations.policy.joint_pos.params["asset_cfg"] = set_cfg_joint_order(
@@ -185,11 +191,16 @@ class G1PerceptiveShadowingEnvCfg_PLAY(G1PerceptiveShadowingEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        self.sim.default_visualizer_cfg = KitVisualizerCfg(
-            eye=(1.5, 0.0, 1.5),
-            lookat=(0.0, 0.0, 0.0),
-            origin_type="asset",
-            origin_track_path="robot",
+        self.sim.visualizer_cfgs = backend_viewers(
+            VisualizerCfg(
+                backend=KitBackendCfg(origin_type="asset", origin_track_path="robot"),
+                eye=(1.5, 0.0, 1.5),
+                lookat=(0.0, 0.0, 0.0),
+                window=WindowCfg(size=(1280, 720)),
+            ),
+            newton=InstinctNewtonVisualizerCfg(
+                backend=InstinctNewtonBackendCfg(show_contacts=True, show_visual=True, follow_body=True),
+            ),
         )
 
         # deactivate adaptive sampling and start from the 0.0s of the motion
@@ -199,9 +210,6 @@ class G1PerceptiveShadowingEnvCfg_PLAY(G1PerceptiveShadowingEnvCfg):
         self.scene.motion_reference.motion_buffers[MOTION_NAME].motion_start_from_middle_range = [0.0, 0.0]
         self.scene.motion_reference.motion_buffers[MOTION_NAME].motion_bin_length_s = None
         self.scene.motion_reference.motion_buffers[MOTION_NAME].env_starting_stub_sampling_strategy = "independent"
-        # self.scene.motion_reference.motion_buffers[MOTION_NAME].path = (
-        #     "/localhdd/Datasets/NoKov-Marslab-Motions-instinctnpz/20251116_50cm_kneeClimbStep1/20251106_diveroll4_roadRamp_noWall"
-        # )
         self.scene.motion_reference.motion_buffers[MOTION_NAME].metadata_yaml = os.path.join(
             self.scene.motion_reference.motion_buffers[MOTION_NAME].path, "metadata.yaml"
         )

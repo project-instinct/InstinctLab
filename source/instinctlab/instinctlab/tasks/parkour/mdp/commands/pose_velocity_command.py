@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 import torch
-from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import isaaclab.utils.math as math_utils
@@ -171,7 +170,9 @@ class PoseVelocityCommand(CommandTerm):
             torch.exp(-angular_vel_error / self.cfg.ang_vel_metrics_std**2) / self._env.max_episode_length
         )
 
-    def _resample_command(self, env_ids: Sequence[int]):
+    def _resample_command(self, env_ids: torch.Tensor | slice):
+        if isinstance(env_ids, slice):
+            env_ids = torch.arange(self.num_envs, device=self.device)[env_ids]
         # sample new position targets from the terrain
         ids = torch.randint(0, self.valid_targets.shape[2], size=(len(env_ids),), device=self.device)
         self.pos_command_w[env_ids] = self.valid_targets[

@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import torch
 import yaml
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING
 
 import joblib
 
@@ -32,10 +32,12 @@ class TerrainMotion(AmassMotion):
 
     def _refresh_motion_file_list(self):
         """Refresh the list of motion files based on the terrain configuration."""
-        with open(self.cfg.metadata_yaml) as file:
+        # Expand here, not in __post_init__: CLI/Hydra overrides do not re-run __post_init__.
+        dataset_path = os.path.expanduser(self.cfg.path)
+        with open(os.path.expanduser(self.cfg.metadata_yaml)) as file:
             self.yaml_data = yaml.safe_load(file)
 
-        self._all_motion_files = [os.path.join(self.cfg.path, f["motion_file"]) for f in self.yaml_data["motion_files"]]
+        self._all_motion_files = [os.path.join(dataset_path, f["motion_file"]) for f in self.yaml_data["motion_files"]]
         self._motion_weights = torch.tensor(
             [float(f.get("weight", 1.0)) for f in self.yaml_data["motion_files"]],
             dtype=torch.float,
@@ -98,7 +100,7 @@ class TerrainMotion(AmassMotion):
                 )
                 self._all_motion_num_selectable_origins[self._all_motion_terrain_ids == terrain_id] = num_origins
 
-    def _sample_assigned_env_starting_stub(self, env_ids: Sequence[int] | torch.Tensor | None = None) -> None:
+    def _sample_assigned_env_starting_stub(self, env_ids: torch.Tensor | None = None) -> None:
         """Also sample the origins for the given env_ids."""
         super()._sample_assigned_env_starting_stub(env_ids)
         assigned_ids = self.env_ids_to_assigned_ids(env_ids).to(self.buffer_device)
@@ -115,7 +117,7 @@ class TerrainMotion(AmassMotion):
 
         self._sample_assigned_env_origins(assigned_ids)
 
-    def _safe_motion_resampling(self, assigned_ids: Sequence[int] | torch.Tensor) -> None:
+    def _safe_motion_resampling(self, assigned_ids: torch.Tensor) -> None:
         """To prevent sampling the motions with no origins, we need to resample some of the assigned motions."""
         if self._all_motion_num_selectable_origins.isnan().any():
             # terrain is not fully initialized, skip safe resampling
@@ -133,7 +135,7 @@ class TerrainMotion(AmassMotion):
             ).to(self.buffer_device)
             self._assigned_env_motion_selection[re_sample_ids] = all_motion_ids_with_origins[resampled_motion_ids]
 
-    def _sample_assigned_env_origins(self, assigned_ids: Sequence[int] | torch.Tensor) -> None:
+    def _sample_assigned_env_origins(self, assigned_ids: torch.Tensor) -> None:
         """Sample the origins for the assigned envs."""
         assert assigned_ids is not None  # type: ignore
         if self._all_motion_num_selectable_origins.isnan().any():
@@ -147,7 +149,7 @@ class TerrainMotion(AmassMotion):
         )
         self._assigned_env_origins[assigned_ids] = self._all_motion_origins_in_scene[motion_ids, sample_i]
 
-    def _get_motion_based_origin(self, env_origins: torch.Tensor, env_ids: Sequence[int] | torch.Tensor):
+    def _get_motion_based_origin(self, env_origins: torch.Tensor, env_ids: torch.Tensor):
         """Get the origin for a specific motion based on its terrain ID.
         NOTE: env_origins is ignored in this case since the terrain motion is terrain-dependent.
         """

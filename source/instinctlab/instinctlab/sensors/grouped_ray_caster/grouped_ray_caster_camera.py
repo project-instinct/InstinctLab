@@ -6,8 +6,8 @@ import warp as wp
 
 from isaaclab.sensors.ray_caster import kernels as ray_caster_kernels
 
+from instinctlab.sensors.grouped_ray_caster.grouped_kernels import raycast_mesh_table_min_distance_kernel
 from instinctlab.utils.backend_dispatch import create_backend_component
-from instinctlab.utils.warp.kernels import raycast_flat_mesh_groups_min_distance_kernel
 
 if TYPE_CHECKING:
     from instinctlab.sensors.grouped_ray_caster.grouped_ray_caster_camera_cfg import GroupedRayCasterCameraCfg
@@ -33,32 +33,27 @@ class GroupedRayCasterCameraKernelMixin:
         )
 
         wp.launch(
-            raycast_flat_mesh_groups_min_distance_kernel,
+            raycast_mesh_table_min_distance_kernel,
             dim=(self._num_envs, self.num_rays),
             inputs=[
                 env_mask,
-                self._ray_world_ids_wp,
-                self._world_mesh_indices_wp,
-                self._world_mesh_offsets_wp,
-                self._flat_mesh_ids_wp,
+                self._mesh_ids_wp,
                 self._ray_starts_w,
                 self._ray_directions_w,
+                self._mesh_positions_w,
+                self._mesh_orientations_w,
+                float(ray_caster_kernels.CAMERA_RAYCAST_MAX_DIST),
+                float(self.cfg.min_distance),
+                int(return_normal),
+                int(False),  # return_face_id
+                int(self.cfg.update_mesh_ids),
+            ],
+            outputs=[
                 self.ray_hits_w.warp,
                 self._ray_distance_cam_wp,
                 self._ray_normal_w,
                 self._ray_face_id_wp,
                 self._ray_mesh_id_wp,
-                self._flat_mesh_positions_w,
-                self._flat_mesh_orientations_w,
-                float(ray_caster_kernels.CAMERA_RAYCAST_MAX_DIST),
-                float(self.cfg.min_distance),
-                int(self._num_envs),
-                int(self._num_flat_mesh_entities),
-                int(self._num_world_mesh_indices),
-                int(self.num_rays),
-                int(return_normal),
-                int(False),
-                int(self.cfg.update_mesh_ids),
             ],
             device=self._device,
         )
@@ -122,6 +117,7 @@ class GroupedRayCasterCamera:
             cfg,
             {
                 "physx": "instinctlab.sensors.grouped_ray_caster.physx:PhysxGroupedRayCasterCamera",
+                "ovphysx": "instinctlab.sensors.grouped_ray_caster.ovphysx:OvPhysxGroupedRayCasterCamera",
                 "newton": "instinctlab.sensors.grouped_ray_caster.newton:NewtonGroupedRayCasterCamera",
             },
         )

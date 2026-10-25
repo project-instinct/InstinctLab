@@ -2,6 +2,8 @@ import math
 import os
 from dataclasses import MISSING
 
+from isaaclab_physx.sim.spawners.materials import PhysxRigidBodyMaterialCfg
+
 import isaaclab.envs.mdp as mdp
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
@@ -25,6 +27,7 @@ from instinctlab.monitors import MonitorTermCfg
 from instinctlab.motion_reference import MotionReferenceManagerCfg
 from instinctlab.sensors import GroupedRayCasterCfg, NoisyGroupedRayCasterCameraCfg
 from instinctlab.tasks.shadowing import mdp as shadowing_mdp
+from instinctlab.tasks.utils.backends import backend_preset, physics_preset
 from instinctlab.terrains.terrain_importer_cfg import TerrainImporterCfg
 from instinctlab.utils.noise import (
     CropAndResizeCfg,
@@ -79,7 +82,7 @@ class PerceptiveHoiShadowingSceneCfg(InteractiveSceneCfg):
         prim_path="/World/ground",
         terrain_type="plane",
         terrain_generator=None,
-        physics_material=sim_utils.RigidBodyMaterialCfg(
+        physics_material=PhysxRigidBodyMaterialCfg(
             friction_combine_mode="multiply",
             restitution_combine_mode="multiply",
             static_friction=1.0,
@@ -173,7 +176,10 @@ class PerceptiveHoiShadowingSceneCfg(InteractiveSceneCfg):
         min_distance=0.05,
     )
     contact_forces = ContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True, force_threshold=10.0
+        prim_path="{ENV_REGEX_NS}/Robot/.*",
+        history_length=3,
+        track_air_time=True,
+        force_threshold=backend_preset(10.0, newton=None),
     )
 
     def __post_init__(self):
@@ -741,8 +747,13 @@ class PerceptiveHoiShadowingEnvCfg(InstinctLabRLEnvCfg):
         if self.sim.physics is None:
             from isaaclab_physx.physics import PhysxCfg
 
-            self.sim.physics = PhysxCfg(
-                gpu_max_rigid_patch_count=10 * 2**15,
-                gpu_max_rigid_contact_count=2**27,
-                gpu_collision_stack_size=2**27,
+            from instinctlab.tasks.utils.newton import newton_physics_cfg
+
+            self.sim.physics = physics_preset(
+                PhysxCfg(
+                    gpu_max_rigid_patch_count=10 * 2**15,
+                    gpu_max_rigid_contact_count=2**27,
+                    gpu_collision_stack_size=2**27,
+                ),
+                newton=newton_physics_cfg(njmax=224, nconmax=56, margin=0.0, gap=0.01),
             )

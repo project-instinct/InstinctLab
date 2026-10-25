@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import torch
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING
 
 import warp as wp
 
@@ -12,8 +12,8 @@ from instinctlab.utils.torch import ConcatBatchTensor
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
     from isaaclab.managers import CurriculumTermCfg
-    from isaaclab.motion_reference.motion_files.amass_motion import AmassMotion
 
+    from instinctlab.motion_reference.motion_files.amass_motion import AmassMotion
     from instinctlab.motion_reference.motion_reference_manager import MotionReferenceManagerBase
 
 
@@ -70,12 +70,14 @@ class BeyondMimicAdaptiveWeighting(ManagerTermBase):
     def __call__(
         self,
         env: ManagerBasedRLEnv,
-        env_ids: Sequence[int],
+        env_ids: torch.Tensor | slice,
         adaptive_uniform_ratio: float = 0.1,
         adaptive_kernel_size: int = 3,
         adaptive_alpha: float = 0.001,
         adaptive_lambda: float = 0.8,
     ) -> dict[str, float] | None:
+        if isinstance(env_ids, slice):
+            env_ids = torch.arange(env.num_envs, device=env.device)[env_ids]
         if len(env_ids) == 0:
             raise ValueError("No env_ids")
 
@@ -202,12 +204,14 @@ class BeyondConcatMotionAdaptiveWeighting(BeyondMimicAdaptiveWeighting):
     def __call__(
         self,
         env: ManagerBasedRLEnv,
-        env_ids: Sequence[int],
+        env_ids: torch.Tensor | slice,
         adaptive_uniform_ratio: float = 0.1,
         adaptive_kernel_size: int = 3,
         adaptive_alpha: float = 0.001,
         adaptive_lambda: float = 0.8,
     ) -> dict[str, float] | None:
+        if isinstance(env_ids, slice):
+            env_ids = torch.arange(env.num_envs, device=env.device)[env_ids]
         self._update_current_motion_bin_fail_counter(env_ids)
 
         # Compute the new motion bin probability

@@ -128,13 +128,10 @@ class MotionBuffer:
     Operations for rollouts. (motion update and reset)
     """
 
-    def reset(
-        self, env_ids: Sequence[int] | torch.Tensor | None, symmetric_augmentation_mask_buffer: torch.Tensor
-    ) -> None:
+    def reset(self, env_ids: torch.Tensor, symmetric_augmentation_mask_buffer: torch.Tensor) -> None:
         """Reset the motion buffer for the specified env_ids.
         ## Args:
             - env_ids: The environment IDs to reset the motion buffer, which is among the entire num_envs.
-                If None, reset all buffers.
             - symmetric_augmentation_mask_buffer: The buffer to store the symmetric augmentation mask for each env. The
                 motion buffer is expected to sample and fill the symmetric augmentation mask for each env. Because some
                 of the motions do or do not support symmetric augmentation.
@@ -144,7 +141,7 @@ class MotionBuffer:
 
     def fill_init_reference_state(
         self,
-        env_ids: Sequence[int] | torch.Tensor,
+        env_ids: torch.Tensor,
         env_origins: torch.Tensor,
         state_buffer: MotionReferenceState,
     ) -> None:
@@ -159,7 +156,7 @@ class MotionBuffer:
 
     def fill_motion_data(
         self,
-        env_ids: Sequence[int] | torch.Tensor,
+        env_ids: torch.Tensor,
         sample_timestamp: torch.Tensor,
         env_origins: torch.Tensor,
         data_buffer: MotionReferenceData,
@@ -183,7 +180,7 @@ class MotionBuffer:
     Helper functions.
     """
 
-    def env_ids_to_assigned_ids(self, env_ids: Sequence[int] | torch.Tensor | None = None) -> torch.Tensor:
+    def env_ids_to_assigned_ids(self, env_ids: torch.Tensor | None = None) -> torch.Tensor:
         """Since the motion buffer only fills the motion reference data for the assigned envs, this function maps the
         env_ids to the assigned_ids. env_ids is the selection among all envs, while assigned_ids is the selection among
         the envs assigned to this motion buffer.
@@ -194,24 +191,24 @@ class MotionBuffer:
         else:
             return env_ids - self.assigned_env_slice.start
 
-    def env_ids_is_assigned(self, env_ids: Sequence[int] | torch.Tensor) -> torch.Tensor:
+    def env_ids_is_assigned(self, env_ids: torch.Tensor) -> torch.Tensor:
         """Check if the env_ids are assigned to this motion buffer."""
         return (env_ids >= self.assigned_env_slice.start) & (env_ids < self.assigned_env_slice.stop)
 
-    def get_current_motion_identifiers(self, env_ids: Sequence[int] | torch.Tensor | None = None) -> list[str]:
+    def get_current_motion_identifiers(self, env_ids: torch.Tensor | None = None) -> list[str]:
         """Get the motion identifiers for the specified env_ids. The identifier must be unique for each motion reference
         even between different experiment runs. Typically, the identifier is the motion file path or name.
         If the motion buffer is generative, the identifier should be a motion_buffer-specific parameter combination.
         """
         raise NotImplementedError
 
-    def get_current_motion_weights(self, env_ids: Sequence[int] | torch.Tensor | None = None) -> torch.Tensor:
+    def get_current_motion_weights(self, env_ids: torch.Tensor | None = None) -> torch.Tensor:
         """Get the current motion weights for the specified env_ids. The motion weights are used to determine the
         probability of selecting a motion reference for each env.
         If the motion buffer is generative, the weights should be based on the current state of the motion buffer.
         """
         return (
-            torch.ones(len(env_ids), device=self.device, dtype=torch.float32)
+            torch.ones(env_ids.numel(), device=self.device, dtype=torch.float32)
             if env_ids is not None
             else torch.ones(self.num_assigned_envs, device=self.device, dtype=torch.float32)
         )

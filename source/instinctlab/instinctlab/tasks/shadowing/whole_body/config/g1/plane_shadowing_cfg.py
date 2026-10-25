@@ -8,7 +8,7 @@ import os
 import yaml
 from functools import partial
 
-from isaaclab_visualizers.kit import KitVisualizerCfg
+from isaaclab_visualizers.kit import KitBackendCfg
 
 import isaaclab.envs.mdp as mdp
 from isaaclab.managers import CurriculumTermCfg
@@ -16,6 +16,7 @@ from isaaclab.managers import RewardTermCfg as RewTermCfg
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTermCfg
 from isaaclab.utils.configclass import configclass
+from isaaclab.visualizers import VisualizerCfg, WindowCfg
 
 import instinctlab.envs.mdp as instinct_mdp
 import instinctlab.tasks.shadowing.mdp as shadowing_mdp
@@ -39,6 +40,7 @@ from instinctlab.motion_reference import MotionReferenceManagerCfg
 from instinctlab.motion_reference.motion_files.aistpp_motion_cfg import AistppMotionCfg as AistppMotionCfgBase
 from instinctlab.motion_reference.motion_files.amass_motion_cfg import AmassMotionCfg as AmassMotionCfgBase
 from instinctlab.motion_reference.utils import motion_interpolate_bilinear
+from instinctlab.tasks.utils.backends import backend_viewers
 from instinctlab.utils.config import set_cfg_joint_order
 from instinctlab.utils.humanoid_ik import HumanoidSmplRotationalIK
 
@@ -433,11 +435,13 @@ class G1PlaneShadowingEnvCfg_PLAY(G1PlaneShadowingEnvCfg):
         # post init of parent
         super().__post_init__()
 
-        self.sim.default_visualizer_cfg = KitVisualizerCfg(
-            eye=(4.0, 0.75, 1.0),
-            lookat=(0.0, 0.75, 0.0),
-            origin_type="asset",
-            origin_track_path="robot",
+        self.sim.visualizer_cfgs = backend_viewers(
+            VisualizerCfg(
+                backend=KitBackendCfg(origin_type="asset", origin_track_path="robot"),
+                eye=(4.0, 0.75, 1.0),
+                lookat=(0.0, 0.75, 0.0),
+                window=WindowCfg(size=(1280, 720)),
+            )
         )
 
         # spawn the robot randomly in the grid (instead of their terrain levels)

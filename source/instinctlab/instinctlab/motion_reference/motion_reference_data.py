@@ -406,9 +406,8 @@ class MotionReferenceData:
         return_.link_quat_w[:, :, :, 3] = 1.0
         return return_
 
-    def reset(self, env_ids: Sequence[int] | torch.Tensor) -> None:
+    def reset(self, env_ids: torch.Tensor | slice) -> None:
         """Reset the motion reference data for the given env_ids. Zeros tensors and marks as invalid."""
-        env_ids = torch.as_tensor(env_ids, device=self.validity.torch.device)
         for field in fields(self):
             tensor = getattr(self, field.name)
             if not isinstance(tensor, ProxyArray) or tensor.shape[0] != self.validity.shape[0]:
@@ -474,7 +473,7 @@ class MotionReferenceState:
         return_.base_quat_w[:, 3] = 1.0
         return return_
 
-    def __getitem__(self, idx: Sequence[int] | torch.Tensor | None):
+    def __getitem__(self, idx: torch.Tensor | slice | None):
         if idx is None:
             return self
 

@@ -29,7 +29,7 @@ from collections import deque
 if args_cli.video:
     import imageio.v2 as iio
 
-from isaaclab_visualizers.kit import KitVisualizerCfg
+from isaaclab_visualizers.kit import KitBackendCfg
 
 import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
@@ -37,6 +37,7 @@ from isaaclab.assets import Articulation, AssetBaseCfg
 from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
 from isaaclab.sim import SimulationContext
 from isaaclab.utils import Timer, configclass
+from isaaclab.visualizers import VisualizerCfg
 
 from instinctlab.assets.unitree_g1 import G1_29DOF_TORSOBASE_CFG
 from instinctlab.motion_reference import MotionReferenceManager
@@ -218,14 +219,14 @@ def main():
     sim_cfg = sim_utils.SimulationCfg(
         dt=0.005,
         device=args_cli.device,
-        visualizer_cfgs=KitVisualizerCfg(eye=(7.5, 7.5, 7.5), lookat=(0.0, 0.0, 0.0)),
+        visualizer_cfgs=VisualizerCfg(backend=KitBackendCfg(), eye=(7.5, 7.5, 7.5), lookat=(0.0, 0.0, 0.0)),
     )
     sim = SimulationContext(sim_cfg)
     # # Set main camera
     # sim.set_camera_view([2.5, 0.0, 4.0], [0.0, 0.0, 2.0])
 
     # Design scene
-    scene_cfg = SceneCfg(num_envs=args_cli.num_envs, env_spacing=2.0, replicate_physics=False)
+    scene_cfg = SceneCfg(num_envs=args_cli.num_envs, env_spacing=2.0)
     with Timer("[INFO] Time to create scene: "):
         scene = InteractiveScene(scene_cfg)
 

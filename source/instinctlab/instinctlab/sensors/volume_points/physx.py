@@ -4,12 +4,12 @@ import re
 from typing import TYPE_CHECKING
 
 import warp as wp
-from isaaclab_physx.physics import PhysxManager
 from pxr import UsdPhysics
 
 import isaaclab.sim as sim_utils
 
-from instinctlab.sensors.volume_points.volume_points import VolumePointsBase
+from instinctlab.sensors.volume_points.volume_points import VolumePointsBase, env_body_rows
+from instinctlab.utils.prims import sort_by_articulation_order
 
 if TYPE_CHECKING:
     import torch
@@ -30,7 +30,7 @@ class PhysxVolumePoints(VolumePointsBase):
         return self._body_physx_view
 
     def _initialize_backend_impl(self) -> None:
-        self._physics_sim_view = PhysxManager.get_physics_sim_view()
+        self._physics_sim_view = self._backend_manager.get_physics_sim_view()
         if self._physics_sim_view is None:
             raise RuntimeError("PhysX simulation view is not initialized.")
 
@@ -54,11 +54,13 @@ class PhysxVolumePoints(VolumePointsBase):
                 f"Sensor at path '{self.cfg.prim_path}' could not find rigid bodies matching {name_exprs}."
             )
 
+        # Bodies in the order of the robot articulation (ArticulationCfg.body_ordering), whatever the backend.
+        order = sort_by_articulation_order(self.cfg.prim_path, "body", [prim.GetName() for prim in body_prims])
+        body_prims = sorted(body_prims, key=lambda prim: order.index(prim.GetName()))
+
         template_root_path = template_root.GetPath().pathString
-        body_paths_glob = [
-            sim_utils.path_expr_to_glob(destination_root_expr + prim.GetPath().pathString[len(template_root_path) :])
-            for prim in body_prims
-        ]
+        body_suffixes = [prim.GetPath().pathString[len(template_root_path) :] for prim in body_prims]
+        body_paths_glob = [sim_utils.path_expr_to_glob(destination_root_expr + suffix) for suffix in body_suffixes]
         self._body_physx_view = self._physics_sim_view.create_rigid_body_view(body_paths_glob)
         self._num_bodies = self.body_physx_view.count // self._num_envs
         if self._num_bodies != len(body_prims):
@@ -67,11 +69,14 @@ class PhysxVolumePoints(VolumePointsBase):
                 f"\n\tInput prim path    : {self.cfg.prim_path}"
                 f"\n\tResolved prim paths: {body_paths_glob}"
             )
-        self._body_names = [path.split("/")[-1] for path in self.body_physx_view.prim_paths[: self.num_bodies]]
+        self._row_order = env_body_rows(self.body_physx_view.prim_paths, body_suffixes, self._device)
+        self._body_names = [prim.GetName() for prim in body_prims]
 
     def _refresh_body_state(self, env_mask: wp.array, env_ids: torch.Tensor) -> None:
-        body_poses = wp.to_torch(self.body_physx_view.get_transforms()).view(-1, self.num_bodies, 7)[env_ids]
-        body_vels = wp.to_torch(self.body_physx_view.get_velocities()).view(-1, self.num_bodies, 6)[env_ids]
+        poses = wp.to_torch(self.body_physx_view.get_transforms()).reshape(-1, 7)[self._row_order]
+        vels = wp.to_torch(self.body_physx_view.get_velocities()).reshape(-1, 6)[self._row_order]
+        body_poses = poses.view(-1, self.num_bodies, 7)[env_ids]
+        body_vels = vels.view(-1, self.num_bodies, 6)[env_ids]
         self._data.pos_w.torch[env_ids] = body_poses[..., :3]
         self._data.quat_w.torch[env_ids] = body_poses[..., 3:]
         self._data.vel_w.torch[env_ids] = body_vels[..., :3]

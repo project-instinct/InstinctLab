@@ -3,6 +3,8 @@
 
 """InstinctLab extensions to Isaac Lab sim utilities."""
 
-from .spawners import MeshFileCfg, UrdfFileCfg
+from .spawners import UrdfFileCfg
 
-__all__ = ["MeshFileCfg", "UrdfFileCfg"]
+__all__ = ["UrdfFileCfg"]
+
+# MeshFileCfg was removed: use ``isaaclab.sim.MeshFileCfg``.

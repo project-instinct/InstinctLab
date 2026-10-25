@@ -1,6 +1,6 @@
 # Grouped ray casters
 
-This package extends Isaac Lab's multi-mesh ray casters with fixed world-to-mesh grouping, dynamic target tracking,
+This package extends Isaac Lab's multi-mesh ray casters with per-environment target groups, dynamic target tracking,
 near-hit rejection, and optional mesh IDs. It supports the PhysX and Newton backends without importing both backend
 packages into the same sensor process.
 
@@ -9,8 +9,11 @@ packages into the same sensor process.
 PhysX and Newton expose similar ray-caster results, but their pose-tracking lifecycles are different:
 
 - PhysX creates rigid-body views after the physics simulation view is initialized.
-- Newton registers sites during sensor construction, before cloning and model finalization, and later reads those sites
-  directly from Newton model/state arrays.
+- Newton registers the sensor site during sensor construction, before cloning and model finalization, and later reads
+  that site directly from Newton model/state arrays.
+
+Ray-cast *targets* are the same on both backends: Isaac Lab binds every tracked target through the scene-data
+provider, so InstinctLab registers no target sites of its own.
 
 That difference cannot be hidden safely by importing both implementations and selecting a branch during an update.
 Doing so loads an unused physics integration, makes optional backend installations impossible, and allows backend-only
@@ -24,9 +27,10 @@ The package therefore has one shared layer and one implementation module per bac
 | `grouped_ray_caster_camera_cfg.py` | Backend-neutral camera configuration and public `class_type`. |
 | `grouped_ray_caster.py` | Public lazy dispatcher and shared non-camera Warp update. |
 | `grouped_ray_caster_camera.py` | Public lazy dispatcher and shared camera Warp update. |
-| `flat_target_prim_registry.py` | Shared mesh discovery, world membership, and transform scattering. |
-| `physx.py` | PhysX view access and the two concrete PhysX sensors. |
-| `newton.py` | Newton site registration/access and the two concrete Newton sensors. |
+| `grouped_kernels.py` | Shared near-hit-rejecting ray-cast kernel over the per-environment mesh tables. |
+| `flat_target_prim_registry.py` | Shared target resolution: articulation-root targets and uniform per-environment prim counts. |
+| `physx.py` | The two concrete PhysX sensors. |
+| `newton.py` | The two concrete Newton sensors. |
 | `instinctlab.utils.backend_dispatch` | Public helper that imports only the implementation selected by the active `SimulationContext`. |
 
 This is the minimum useful split for import isolation. Combining `physx.py` and `newton.py` would import both backend
@@ -54,6 +58,27 @@ Maintain these rules:
 
 External users should construct `GroupedRayCasterCfg` or `GroupedRayCasterCameraCfg`. The concrete `Physx*` and
 `Newton*` classes are implementation details and may move as Isaac Lab's backend APIs evolve.
+
+## Grouping semantics
+
+Grouping is what Isaac Lab's multi-mesh tables already provide: every configured target contributes one row of mesh
+slots to each environment, padded to the widest row, so a ray of environment `i` only ever hits environment `i`'s
+targets. InstinctLab adds two rules on top:
+
+- **One mount per environment.** Each sensor instance is attached to exactly one body in every environment. Several
+  instances of the same class may live in one scene; on Newton, instances on the same body share one site label.
+- **Uniform target resolution.** A target expression must resolve the same number of prims in every environment it
+  exists in; a ragged expression raises instead of silently padding the narrower environments. An environment without
+  any match is accepted, so a static target may exist in only some prototypes.
+
+A global target expression such as `/World/ground` resolves to one mesh that every environment shares. An
+env-regex expression such as `{ENV_REGEX_NS}/Obstacle` resolves to one record per environment, with the pose taken
+from that environment's prim; use it when the same geometry can sit at different places or be transformed per
+environment. Warp meshes are cached per source prim and device, so identical geometry referenced by several targets or
+sensors is loaded once.
+
+An articulation-root prim is one tracked body, not a request to expand the whole robot: InstinctLab lists robot links
+explicitly, and expanding the torso root would add every link a second time.
 
 ## Backend support policy
 
