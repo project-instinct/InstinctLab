@@ -27,7 +27,7 @@ from instinctlab.assets.unitree_g1 import beyondmimic_action_scale
 from instinctlab.managers import MultiRewardCfg
 from instinctlab.motion_reference import MotionReferenceManagerCfg
 from instinctlab.sensors import Grid3dPointsGeneratorCfg, NoisyGroupedRayCasterCameraCfg, VolumePointsCfg
-from instinctlab.tasks.utils.backends import backend_preset
+from instinctlab.tasks.utils.backends import physics_preset
 from instinctlab.terrains import GreedyconcatEdgeCylinderCfg, TerrainImporterCfg
 from instinctlab.utils.noise import (
     CropAndResizeCfg,
@@ -927,7 +927,7 @@ class ParkourEnvCfg(ManagerBasedRLEnvCfg):
 
             from instinctlab.tasks.utils.newton import newton_physics_cfg
 
-            self.sim.physics = backend_preset(
+            self.sim.physics = physics_preset(
                 PhysxCfg(
                     gpu_max_rigid_patch_count=10 * 2**15,
                     gpu_collision_stack_size=2**29,

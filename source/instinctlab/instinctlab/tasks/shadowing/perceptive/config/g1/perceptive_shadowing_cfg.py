@@ -26,7 +26,7 @@ from instinctlab.motion_reference.motion_files.amass_motion_cfg import AmassMoti
 from instinctlab.motion_reference.motion_files.terrain_motion_cfg import TerrainMotionCfg as TerrainMotionCfgBase
 from instinctlab.motion_reference.utils import motion_interpolate_bilinear
 from instinctlab.sensors import get_link_prim_targets
-from instinctlab.tasks.utils.backends import backend_preset
+from instinctlab.tasks.utils.backends import backend_preset, backend_viewers
 from instinctlab.tasks.utils.newton import InstinctNewtonBackendCfg, InstinctNewtonVisualizerCfg
 from instinctlab.utils.config import set_cfg_joint_order
 from instinctlab.utils.urdf import urdf_importer_link_prim_path
@@ -191,20 +191,16 @@ class G1PerceptiveShadowingEnvCfg_PLAY(G1PerceptiveShadowingEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        self.sim.visualizer_cfgs = backend_preset(
-            [
-                VisualizerCfg(
-                    backend=KitBackendCfg(origin_type="asset", origin_track_path="robot"),
-                    eye=(1.5, 0.0, 1.5),
-                    lookat=(0.0, 0.0, 0.0),
-                    window=WindowCfg(size=(1280, 720)),
-                ),
-            ],
-            newton=[
-                InstinctNewtonVisualizerCfg(
-                    backend=InstinctNewtonBackendCfg(show_contacts=True, show_visual=True, follow_body=True),
-                ),
-            ],
+        self.sim.visualizer_cfgs = backend_viewers(
+            VisualizerCfg(
+                backend=KitBackendCfg(origin_type="asset", origin_track_path="robot"),
+                eye=(1.5, 0.0, 1.5),
+                lookat=(0.0, 0.0, 0.0),
+                window=WindowCfg(size=(1280, 720)),
+            ),
+            newton=InstinctNewtonVisualizerCfg(
+                backend=InstinctNewtonBackendCfg(show_contacts=True, show_visual=True, follow_body=True),
+            ),
         )
 
         # deactivate adaptive sampling and start from the 0.0s of the motion

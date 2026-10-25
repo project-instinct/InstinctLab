@@ -33,7 +33,7 @@ from instinctlab.assets.unitree_g1 import (
 )
 from instinctlab.envs.manager_based_rl_env_cfg import InstinctLabRLEnvCfg
 from instinctlab.monitors import MonitorTermCfg
-from instinctlab.tasks.utils.backends import backend_preset
+from instinctlab.tasks.utils.backends import backend_preset, backend_viewers, physics_preset
 from instinctlab.tasks.utils.newton import newton_physics_cfg
 from instinctlab.utils.config import set_cfg_joint_order
 
@@ -381,14 +381,14 @@ class G1FlatEnvCfg(InstinctLabRLEnvCfg):
     curriculum: G1FlatCurriculumCfg = G1FlatCurriculumCfg()
 
     def __post_init__(self):
-        self.sim.visualizer_cfgs = [
+        self.sim.visualizer_cfgs = backend_viewers(
             VisualizerCfg(
                 backend=KitBackendCfg(origin_type="asset", origin_track_path="robot"),
                 eye=(2.0, 2.0, 0.5),
                 lookat=(0.0, 0.0, 0.0),
                 window=WindowCfg(size=(1280, 720)),
-            ),
-        ]
+            )
+        )
         joint_order = list(G1_29DOF_POLICY_JOINT_ORDER_V1)
         set_cfg_joint_order(self.actions.joint_pos, joint_order)
         self.observations.policy.joint_pos.params["asset_cfg"] = set_cfg_joint_order(
@@ -408,7 +408,7 @@ class G1FlatEnvCfg(InstinctLabRLEnvCfg):
         self.episode_length_s = 20.0
         self.sim.dt = 0.005
         self.sim.render_interval = self.decimation
-        self.sim.physics = backend_preset(
+        self.sim.physics = physics_preset(
             PhysxCfg(),
             newton=newton_physics_cfg(njmax=112, nconmax=28, margin=0.0, gap=0.01, use_mujoco_contacts=True),
         )

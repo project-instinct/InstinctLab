@@ -24,7 +24,7 @@ from instinctlab.monitors import MonitorTermCfg
 from instinctlab.motion_reference import MotionReferenceManagerCfg
 from instinctlab.sensors import GroupedRayCasterCfg, NoisyGroupedRayCasterCameraCfg
 from instinctlab.tasks.shadowing import mdp as shadowing_mdp
-from instinctlab.tasks.utils.backends import backend_preset
+from instinctlab.tasks.utils.backends import backend_preset, physics_preset
 from instinctlab.terrains.terrain_generator_cfg import FiledTerrainGeneratorCfg
 from instinctlab.terrains.terrain_importer_cfg import TerrainImporterCfg
 from instinctlab.terrains.trimesh import MotionMatchedTerrainCfg
@@ -734,7 +734,7 @@ class PerceptiveShadowingEnvCfg(InstinctLabRLEnvCfg):
 
             from instinctlab.tasks.utils.newton import newton_physics_cfg
 
-            self.sim.physics = backend_preset(
+            self.sim.physics = physics_preset(
                 PhysxCfg(
                     gpu_max_rigid_patch_count=10 * 2**15,
                     gpu_max_rigid_contact_count=2**27,

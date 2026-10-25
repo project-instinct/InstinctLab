@@ -21,7 +21,7 @@ from instinctlab.envs.manager_based_rl_env_cfg import InstinctLabRLEnvCfg
 from instinctlab.managers import MultiRewardCfg
 from instinctlab.monitors import MonitorTermCfg
 from instinctlab.motion_reference import MotionReferenceManagerCfg
-from instinctlab.tasks.utils.backends import backend_preset
+from instinctlab.tasks.utils.backends import backend_preset, physics_preset
 
 
 @configclass
@@ -567,7 +567,7 @@ class BeyondMimicEnvCfg(InstinctLabRLEnvCfg):
 
             from instinctlab.tasks.utils.newton import newton_physics_cfg
 
-            self.sim.physics = backend_preset(
+            self.sim.physics = physics_preset(
                 PhysxCfg(gpu_max_rigid_patch_count=10 * 2**15),
                 newton=newton_physics_cfg(njmax=224, nconmax=56, margin=0.0, gap=0.01),
             )

@@ -26,6 +26,7 @@ from instinctlab.motion_reference import MotionReferenceManagerCfg
 from instinctlab.motion_reference.motion_files.aistpp_motion_cfg import AistppMotionCfg as AistppMotionCfgBase
 from instinctlab.motion_reference.motion_files.amass_motion_cfg import AmassMotionCfg as AmassMotionCfgBase
 from instinctlab.motion_reference.utils import motion_interpolate_bilinear
+from instinctlab.tasks.utils.backends import backend_viewers
 from instinctlab.utils.config import set_cfg_joint_order
 
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
@@ -193,14 +194,14 @@ class G1BeyondMimicPlaneEnvCfg_PLAY(G1BeyondMimicPlaneEnvCfg):
         # post init of parent
         super().__post_init__()
 
-        self.sim.visualizer_cfgs = [
+        self.sim.visualizer_cfgs = backend_viewers(
             VisualizerCfg(
                 backend=KitBackendCfg(origin_type="asset", origin_track_path="robot"),
                 eye=(4.0, 0.75, 1.0),
                 lookat=(0.0, 0.75, 0.0),
                 window=WindowCfg(size=(1280, 720)),
-            ),
-        ]
+            )
+        )
 
         # spawn the robot randomly in the grid (instead of their terrain levels)
         self.scene.terrain.max_init_terrain_level = None

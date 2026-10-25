@@ -2,7 +2,7 @@
 
 Every backend-specific value of a task cfg is a :class:`~isaaclab_tasks.utils.hydra.PresetCfg` built by
 :func:`backend_preset`, with one entry per backend. Selecting a backend selects all of them at once, either through
-the backend's task id (``*-Newton-v0``), which registers the same env cfg class with the backend resolved, or with
+the backend's task id (``*-Newton-v0``, ``*-OvPhysx-v0``), which registers the same env cfg class with the backend resolved, or with
 the ``physics=<preset>`` selector on the PhysX task id. The Isaac Lab preset helpers are imported on use, so
 registering the tasks stays light.
 """
@@ -16,24 +16,69 @@ import importlib
 BACKENDS = {
     "physx": ("", "physx"),
     "newton": ("-Newton", "newton_mjwarp"),
+    "ovphysx": ("-OvPhysx", "ovphysx"),
 }
 
 _SAME = object()
 
 
-def backend_preset(physx, *, newton=_SAME):
+def backend_preset(physx, *, newton=_SAME, ovphysx=_SAME):
     """Return a preset holding a value per physics backend.
 
     Args:
         physx: The PhysX value, also used as the default.
         newton: The Newton value. Defaults to the PhysX value.
+        ovphysx: The OvPhysX value. Defaults to the PhysX value: OvPhysX is PhysX without Kit.
 
     Returns:
-        A preset with the ``default``, ``physx`` and ``newton_mjwarp`` entries.
+        A preset with the ``default``, ``physx``, ``newton_mjwarp`` and ``ovphysx`` entries.
     """
     from isaaclab_tasks.utils.hydra import preset
 
-    return preset(default=physx, physx=physx, newton_mjwarp=physx if newton is _SAME else newton)
+    return preset(
+        default=physx,
+        physx=physx,
+        newton_mjwarp=physx if newton is _SAME else newton,
+        ovphysx=physx if ovphysx is _SAME else ovphysx,
+    )
+
+
+def physics_preset(physx, *, newton):
+    """Return the ``sim.physics`` preset; the OvPhysX entry carries the PhysX cfg's values over.
+
+    Args:
+        physx: The :class:`~isaaclab_physx.physics.PhysxCfg`.
+        newton: The :class:`~isaaclab_newton.physics.NewtonCfg`.
+
+    Raises:
+        ValueError: If *physx* sets a field that :class:`~isaaclab_ov.physics.OvPhysxCfg` does not have.
+    """
+    from isaaclab_ov.physics import OvPhysxCfg
+    from isaaclab_physx.physics import PhysxCfg
+
+    defaults = PhysxCfg()
+    changed = {
+        name: getattr(physx, name)
+        for name in physx.__dataclass_fields__
+        if getattr(physx, name) != getattr(defaults, name)
+    }
+    dropped = sorted(set(changed) - set(OvPhysxCfg.__dataclass_fields__))
+    if dropped:
+        raise ValueError(f"OvPhysxCfg has no field for the PhysX settings: {', '.join(dropped)}.")
+    return backend_preset(physx, newton=newton, ovphysx=OvPhysxCfg(**changed))
+
+
+def backend_viewers(kit_viewer, *, newton=None):
+    """Return the ``sim.visualizer_cfgs`` preset: the Kit viewer, Newton's viewer and ``viser`` on OvPhysX.
+
+    Args:
+        kit_viewer: The Kit :class:`~isaaclab.visualizers.VisualizerCfg`.
+        newton: The Newton viewer. Defaults to the Kit viewer.
+    """
+    from isaaclab_visualizers.viser import ViserBackendCfg
+
+    viser = kit_viewer.replace(backend=ViserBackendCfg())
+    return backend_preset([kit_viewer], newton=[newton or kit_viewer], ovphysx=[viser])
 
 
 def select_backend(cfg, backend: str):

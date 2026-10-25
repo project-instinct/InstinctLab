@@ -28,6 +28,7 @@ from instinctlab.motion_reference import HoiMotionReferenceData, HoiMotionRefere
 from instinctlab.motion_reference.motion_files.omomo_motion_cfg import OmomoMotionCfg as OmomoMotionCfgBase
 from instinctlab.motion_reference.utils import motion_interpolate_bilinear
 from instinctlab.sensors import get_link_prim_targets
+from instinctlab.tasks.utils.backends import backend_viewers
 from instinctlab.utils.config import set_cfg_joint_order
 from instinctlab.utils.mesh import load_mesh_file
 from instinctlab.utils.urdf import urdf_importer_link_prim_path
@@ -203,14 +204,14 @@ class G1PerceptiveHoiShadowingEnvCfg_PLAY(G1PerceptiveHoiShadowingEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        self.sim.visualizer_cfgs = [
+        self.sim.visualizer_cfgs = backend_viewers(
             VisualizerCfg(
                 backend=KitBackendCfg(origin_type="asset", origin_track_path="robot"),
                 eye=(1.5, 0.0, 1.5),
                 lookat=(0.0, 0.0, 0.0),
                 window=WindowCfg(size=(1280, 720)),
-            ),
-        ]
+            )
+        )
 
         # deactivate adaptive sampling and start from the 0.0s of the motion
         MOTION_NAME = list(self.scene.motion_reference.motion_buffers.keys())[0]
