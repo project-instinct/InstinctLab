@@ -52,11 +52,46 @@ G1_29DOF_POLICY_JOINT_ORDER_V1 = (
 Changing this tuple is a breaking policy-interface change. Define a new version instead.
 """
 
+G1_29DOF_BODY_ORDER = (
+    "torso_link",
+    "waist_roll_link",
+    "left_shoulder_pitch_link",
+    "right_shoulder_pitch_link",
+    "waist_yaw_link",
+    "left_shoulder_roll_link",
+    "right_shoulder_roll_link",
+    "pelvis",
+    "left_shoulder_yaw_link",
+    "right_shoulder_yaw_link",
+    "left_hip_pitch_link",
+    "right_hip_pitch_link",
+    "left_elbow_link",
+    "right_elbow_link",
+    "left_hip_roll_link",
+    "right_hip_roll_link",
+    "left_wrist_roll_link",
+    "right_wrist_roll_link",
+    "left_hip_yaw_link",
+    "right_hip_yaw_link",
+    "left_wrist_pitch_link",
+    "right_wrist_pitch_link",
+    "left_knee_link",
+    "right_knee_link",
+    "left_wrist_yaw_link",
+    "right_wrist_yaw_link",
+    "left_ankle_pitch_link",
+    "right_ankle_pitch_link",
+    "left_ankle_roll_link",
+    "right_ankle_roll_link",
+)
+"""Body order of the torso-base G1 URDFs (Isaac Sim PhysX order), the public body order on every backend."""
+
 
 G1_29DOF_TORSOBASE_CFG = G1_CFG.copy()
-# Every backend exposes the joints in the policy order, and so do the components that read the robot through their own
-# views (see instinctlab.utils.prims.articulation_name_order).
+# Every backend exposes the joints in the policy order and the bodies in G1_29DOF_BODY_ORDER, and so do the components
+# that read the robot through their own views (see instinctlab.utils.prims.articulation_name_order).
 G1_29DOF_TORSOBASE_CFG.joint_ordering = G1_29DOF_POLICY_JOINT_ORDER_V1
+G1_29DOF_TORSOBASE_CFG.body_ordering = G1_29DOF_BODY_ORDER
 G1_29DOF_TORSOBASE_CFG.spawn = UrdfFileCfg(
     asset_path=os.path.join(__file_dir__, "resources/unitree_g1/urdf/g1_29dof_torsobase_simplified.urdf"),
     merge_fixed_joints=True,

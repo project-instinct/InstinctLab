@@ -31,6 +31,24 @@ def resolve_articulation_root_expression(prim_path: str) -> str:
     return asset_expr + root_path[len(asset_path) :]
 
 
+def _configured_order(prim_path: str, kind: str):
+    """The ``ArticulationCfg.<kind>_ordering`` of the scene articulation at *prim_path*, or None."""
+    from isaaclab.sim import SimulationContext
+
+    sim = SimulationContext.instance()
+    # The environment registers its scene with the simulation context before the physics starts.
+    scene = getattr(sim, "_interactive_scene", None) if sim is not None else None
+    if scene is None:
+        return None
+    for articulation in scene.articulations.values():
+        if articulation.cfg.prim_path == prim_path:
+            ordering = getattr(articulation.cfg, f"{kind}_ordering")
+            if ordering is not None and (isinstance(ordering, str) or not isinstance(ordering, (list, tuple))):
+                raise NotImplementedError(f"Only explicit {kind} name orders are supported here, got {ordering!r}.")
+            return None if ordering is None else list(ordering)
+    return None
+
+
 def articulation_name_order(prim_path: str, kind: str, backend_names: list[str]) -> list[str]:
     """Return the joint or body order that the scene articulation at *prim_path* exposes.
 
@@ -50,23 +68,26 @@ def articulation_name_order(prim_path: str, kind: str, backend_names: list[str])
         NotImplementedError: If the articulation uses a symbolic ordering convention instead of a name list.
         ValueError: If the configured order does not name every backend joint or body exactly once.
     """
-    from isaaclab.sim import SimulationContext
-
-    sim = SimulationContext.instance()
-    # The environment registers its scene with the simulation context before the physics starts.
-    scene = getattr(sim, "_interactive_scene", None) if sim is not None else None
-    ordering = None
-    if scene is not None:
-        for articulation in scene.articulations.values():
-            if articulation.cfg.prim_path == prim_path:
-                ordering = getattr(articulation.cfg, f"{kind}_ordering")
-                break
+    ordering = _configured_order(prim_path, kind)
     if ordering is None:
         return list(backend_names)
-    if isinstance(ordering, str) or not isinstance(ordering, (list, tuple)):
-        raise NotImplementedError(f"Only explicit {kind} name orders are supported here, got {ordering!r}.")
     if sorted(ordering) != sorted(backend_names):
         raise ValueError(
             f"The {kind}_ordering of '{prim_path}' must name each backend {kind} once; backend names: {backend_names}."
         )
-    return list(ordering)
+    return ordering
+
+
+def sort_by_articulation_order(prim_path: str, kind: str, names: list[str]) -> list[str]:
+    """Sort a subset of the joints or bodies of the scene articulation at *prim_path* into its configured order.
+
+    Without a configured order (or an articulation at *prim_path*), *names* are returned unchanged.
+    """
+    ordering = _configured_order(prim_path, kind)
+    if ordering is None:
+        return list(names)
+    rank = {name: index for index, name in enumerate(ordering)}
+    missing = [name for name in names if name not in rank]
+    if missing:
+        raise ValueError(f"The {kind}_ordering of '{prim_path}' does not name {missing}.")
+    return sorted(names, key=rank.__getitem__)

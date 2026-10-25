@@ -23,7 +23,11 @@ from isaaclab.scene import InteractiveScene, InteractiveSceneCfg  # noqa: E402
 from isaaclab.sim import SimulationCfg, build_simulation_context  # noqa: E402
 from isaaclab.utils import configclass  # noqa: E402
 
-from instinctlab.assets.unitree_g1 import G1_29DOF_POLICY_JOINT_ORDER_V1, G1_29DOF_TORSOBASE_POPSICLE_CFG  # noqa: E402
+from instinctlab.assets.unitree_g1 import (  # noqa: E402
+    G1_29DOF_BODY_ORDER,
+    G1_29DOF_POLICY_JOINT_ORDER_V1,
+    G1_29DOF_TORSOBASE_POPSICLE_CFG,
+)
 from instinctlab.motion_reference.ovphysx import OvPhysxMotionReferenceManager  # noqa: E402
 from instinctlab.sensors import Grid3dPointsGeneratorCfg, VolumePointsCfg  # noqa: E402
 from instinctlab.sensors.volume_points.ovphysx import OvPhysxVolumePoints  # noqa: E402
@@ -38,9 +42,11 @@ POINTS = Grid3dPointsGeneratorCfg(
 @configclass
 class _SceneCfg(InteractiveSceneCfg):
     ground = AssetBaseCfg(prim_path="/World/ground", spawn=sim_utils.GroundPlaneCfg())
-    # Reversed policy order: OvPhysX's backend order is the policy order, so this exercises the joint permutation.
+    # Reversed orders, so the joint and body permutations differ from every backend order.
     robot = G1_29DOF_TORSOBASE_POPSICLE_CFG.replace(
-        prim_path="{ENV_REGEX_NS}/Robot", joint_ordering=tuple(reversed(G1_29DOF_POLICY_JOINT_ORDER_V1))
+        prim_path="{ENV_REGEX_NS}/Robot",
+        joint_ordering=tuple(reversed(G1_29DOF_POLICY_JOINT_ORDER_V1)),
+        body_ordering=tuple(reversed(G1_29DOF_BODY_ORDER)),
     )
     feet = VolumePointsCfg(
         prim_path="{ENV_REGEX_NS}/Robot", body_names_expr=".*_ankle_roll_link", points_generator=POINTS
@@ -79,7 +85,9 @@ def test_volume_points_follow_their_own_links(scene):
     sim, scene = scene
     assert isinstance(scene["feet"], OvPhysxVolumePoints)
     _step(sim, scene)
-    for name, bodies in (("feet", ["left_ankle_roll_link", "right_ankle_roll_link"]), ("knee", ["left_knee_link"])):
+    assert scene["robot"].body_names == list(reversed(G1_29DOF_BODY_ORDER))
+    # the sensors follow the robot's body order
+    for name, bodies in (("feet", ["right_ankle_roll_link", "left_ankle_roll_link"]), ("knee", ["left_knee_link"])):
         sensor = scene[name]
         assert sensor.body_names == bodies
         pos, quat = _expected(scene, bodies)
@@ -102,7 +110,7 @@ def test_volume_points_reset_and_update(scene, env_ids):
     for name in ("feet", "knee"):
         scene[name].reset(env_ids)
     _step(sim, scene)
-    pos, _ = _expected(scene, ["left_ankle_roll_link", "right_ankle_roll_link"])
+    pos, _ = _expected(scene, ["right_ankle_roll_link", "left_ankle_roll_link"])
     torch.testing.assert_close(scene["feet"].data.pos_w.torch, pos)
     assert scene["feet"].data.points_pos_w.torch.shape[:2] == (NUM_ENVS, 2)
 

@@ -11,12 +11,11 @@ from pxr import UsdPhysics
 
 import isaaclab.sim as sim_utils
 
-from instinctlab.sensors.volume_points.volume_points import VolumePointsBase
+from instinctlab.sensors.volume_points.volume_points import VolumePointsBase, env_body_rows
+from instinctlab.utils.prims import sort_by_articulation_order
 
 if TYPE_CHECKING:
     from instinctlab.sensors.volume_points.volume_points_cfg import VolumePointsCfg
-
-_ENV_INDEX = re.compile(r"/env_(\d+)(?:/|$)")
 
 
 class OvPhysxVolumePoints(VolumePointsBase):
@@ -49,6 +48,10 @@ class OvPhysxVolumePoints(VolumePointsBase):
                 f"Sensor at path '{self.cfg.prim_path}' could not find rigid bodies matching {name_exprs}."
             )
 
+        # Bodies in the order of the robot articulation (ArticulationCfg.body_ordering), whatever the backend.
+        order = sort_by_articulation_order(self.cfg.prim_path, "body", [prim.GetName() for prim in body_prims])
+        body_prims = sorted(body_prims, key=lambda prim: order.index(prim.GetName()))
+
         template_root_path = template_root.GetPath().pathString
         body_suffixes = [prim.GetPath().pathString[len(template_root_path) :] for prim in body_prims]
         body_globs = [sim_utils.path_expr_to_glob(destination_root_expr + suffix) for suffix in body_suffixes]
@@ -64,17 +67,7 @@ class OvPhysxVolumePoints(VolumePointsBase):
                 f"\n\tResolved prim paths: {body_globs}"
                 f"\n\tMatched bodies     : {self._view.count}, expected {self._num_envs * self._num_bodies}"
             )
-        # Binding rows in (env, body) order; the binding's own order follows OvPhysX, not the glob list.
-        rows = {}
-        for row, path in enumerate(self._view.prim_paths):
-            env_match = _ENV_INDEX.search(path)
-            body_ids = [i for i, suffix in enumerate(body_suffixes) if path.endswith(suffix)]
-            if env_match is None or len(body_ids) != 1:
-                raise RuntimeError(f"Cannot map the OvPhysX body '{path}' to an environment and a sensor body.")
-            rows[(int(env_match.group(1)), body_ids[0])] = row
-        env_ids = sorted({env_id for env_id, _ in rows})
-        order = [rows[(env_id, body_id)] for env_id in env_ids for body_id in range(self._num_bodies)]
-        self._row_order = torch.tensor(order, dtype=torch.long, device=self._device)
+        self._row_order = env_body_rows(self._view.prim_paths, body_suffixes, self._device)
         self._body_names = [prim.GetName() for prim in body_prims]
 
     def _refresh_body_state(self, env_mask: wp.array, env_ids: torch.Tensor) -> None:

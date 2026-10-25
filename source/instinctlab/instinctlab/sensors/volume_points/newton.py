@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import warp as wp
 
 from instinctlab.sensors.volume_points.volume_points import VolumePointsBase
+from instinctlab.utils.prims import sort_by_articulation_order
 
 if TYPE_CHECKING:
     import torch
@@ -88,15 +89,23 @@ class NewtonVolumePoints(VolumePointsBase):
                 f"VolumePoints requires the same non-zero body count in every Newton world; got {sorted(body_counts)}."
             )
         self._num_bodies = next(iter(body_counts))
-        site_indices = [site_idx for world_sites in per_world for site_idx in world_sites]
-        self._site_indices = wp.array(site_indices, dtype=wp.int32, device=self._device)
         self._newton_model = self._backend_manager.get_model()
         if self._newton_model is None:
             raise RuntimeError("Newton simulation model is not initialized.")
 
-        shape_body = wp.to_torch(self._newton_model.shape_body)
-        first_world_body_ids = shape_body[per_world[0]].cpu().tolist()
-        self._body_names = [self._newton_model.body_label[body_id].split("/")[-1] for body_id in first_world_body_ids]
+        shape_body = wp.to_torch(self._newton_model.shape_body).cpu()
+        names_per_world = [
+            [self._newton_model.body_label[body_id].split("/")[-1] for body_id in shape_body[world_sites].tolist()]
+            for world_sites in per_world
+        ]
+        # Bodies in the order of the robot articulation (ArticulationCfg.body_ordering), whatever the backend.
+        self._body_names = sort_by_articulation_order(self.cfg.prim_path, "body", names_per_world[0])
+        site_indices = [
+            world_sites[names.index(name)]
+            for world_sites, names in zip(per_world, names_per_world)
+            for name in self._body_names
+        ]
+        self._site_indices = wp.array(site_indices, dtype=wp.int32, device=self._device)
 
     def _refresh_body_state(self, env_mask: wp.array, env_ids: torch.Tensor) -> None:
         state = self._backend_manager.get_state_0()

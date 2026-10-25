@@ -22,6 +22,7 @@ from instinctlab.sensors.volume_points.volume_points_data import VolumePointsDat
 wp.init()
 
 SITE_LABEL = "ft_7"
+ROBOT_PRIM_PATH = "/World/envs/env_.*/Robot"
 BODY_LABELS = ["Robot/left_ankle_roll_link", "Robot/right_ankle_roll_link"]
 SITE_OFFSETS = [(0.1, 0.0, 0.0), (0.0, 0.2, 0.0)]
 BODY_POSITIONS = [(0.0, 0.0, 1.0), (1.0, 0.0, 1.0)]
@@ -76,6 +77,7 @@ def _make_sensor(site_map) -> NewtonVolumePoints:
     sensor._prim_deletion_handle = None
     sensor._debug_vis_handle = None
     sensor._backend_manager = manager
+    sensor.cfg = SimpleNamespace(prim_path=ROBOT_PRIM_PATH)
     sensor._num_envs = 1
     sensor._device = "cpu"
     sensor._site_label = SITE_LABEL
@@ -121,3 +123,22 @@ def test_missing_site_raises_for_the_registered_label(monkeypatch):
 
     with pytest.raises(ValueError, match=SITE_LABEL):
         _make_sensor({})._initialize_backend_impl()
+
+
+def test_bodies_follow_the_robot_body_ordering(monkeypatch):
+    import isaaclab.sim as sim_utils
+
+    robot = SimpleNamespace(
+        cfg=SimpleNamespace(
+            prim_path=ROBOT_PRIM_PATH, body_ordering=("pelvis", "right_ankle_roll_link", "left_ankle_roll_link")
+        )
+    )
+    fake_sim = SimpleNamespace(_interactive_scene=SimpleNamespace(articulations={"robot": robot}))
+    monkeypatch.setattr(sim_utils.SimulationContext, "instance", classmethod(lambda cls: fake_sim))
+    monkeypatch.setattr(NewtonManager, "_cl_site_index_map", {})
+    sensor = _make_sensor({SITE_LABEL: (None, [[0, 1]])})
+
+    sensor._initialize_backend_impl()
+
+    assert sensor.body_names == ["right_ankle_roll_link", "left_ankle_roll_link"]
+    assert wp.to_torch(sensor._site_indices).tolist() == [1, 0]

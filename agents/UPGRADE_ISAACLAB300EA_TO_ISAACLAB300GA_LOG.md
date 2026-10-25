@@ -119,3 +119,5 @@ Implements `agents/UPGRADE_OVPHYSX_PLAN.md`; results in its §10.
 - The shadowing command now handles a `slice(None)` joint selection, which OvPhysX produces because its joint order equals the policy order.
 - The perceptive Newton Play task now uses the training reset offset (`[0, 0, 0.05]`); before, only Newton training set it.
 - The G1 joints use the policy order on every backend (`ArticulationCfg.joint_ordering`); the motion reference reads the order from the articulation cfg. PhysX and Newton reset draws now follow that order, so their resets differ from EA value for value (manifest D10); the network I/O does not change.
+- The G1 bodies use `G1_29DOF_BODY_ORDER` (Isaac Sim PhysX order) on every backend; volume points follow it.
+- Fixed: PhysX volume points read the feet of other environments (rigid-body view rows are body-major, the sensor assumed environment-major; also in EA). Parkour's `volume_points_penetration` reward on PhysX changes accordingly (manifest D11).

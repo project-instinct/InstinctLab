@@ -130,10 +130,11 @@ docker compose --env-file .env.base run --rm --no-deps instinctlab -c \
 ```
 
 Each backend has its own native joint and body order. The G1 cfgs set `ArticulationCfg.joint_ordering` to
-`G1_29DOF_POLICY_JOINT_ORDER_V1`, so `robot.joint_names` and every joint-indexed tensor use the policy order on all
-backends; components that read the robot through their own views (the motion reference) take the order from the
-articulation cfg (`instinctlab.utils.prims.articulation_name_order`). Bodies still follow the backend order.
-Observations, actions and commands select joints and bodies by name, so the network I/O is the same on every backend.
+`G1_29DOF_POLICY_JOINT_ORDER_V1` and `body_ordering` to `G1_29DOF_BODY_ORDER` (Isaac Sim PhysX's order), both in
+`assets/unitree_g1.py`, so joint- and body-indexed robot tensors use the same order on every backend. Components that
+read the robot through their own views (motion reference, volume points) take the order from the articulation cfg
+(`instinctlab.utils.prims`). Observations, actions and commands select joints and bodies by name, so the network I/O
+is the same on every backend.
 
 ### Validated matrix
 

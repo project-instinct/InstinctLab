@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import torch
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
@@ -17,6 +18,35 @@ from instinctlab.utils.backend_dispatch import create_backend_component
 
 if TYPE_CHECKING:
     from instinctlab.sensors.volume_points.volume_points_cfg import VolumePointsCfg
+
+
+_ENV_INDEX = re.compile(r"/env_(\d+)(?:/|$)")
+
+
+def env_body_rows(prim_paths: list[str], body_suffixes: list[str], device) -> torch.Tensor:
+    """Rows of a rigid-body view in (environment, body) order.
+
+    Rigid-body views over several body globs do not keep an environment-major order (a PhysX view lists each glob's
+    matches in turn), so the rows are mapped through their prim paths.
+
+    Args:
+        prim_paths: The view's prim paths, one per row.
+        body_suffixes: The sensor's bodies, as paths relative to the robot root, in sensor order.
+        device: Device of the returned index tensor.
+
+    Returns:
+        Row indices; ``rows.view(num_envs, num_bodies)`` gives the row of each environment and sensor body.
+    """
+    rows = {}
+    for row, path in enumerate(prim_paths):
+        env_match = _ENV_INDEX.search(path)
+        body_ids = [i for i, suffix in enumerate(body_suffixes) if path.endswith(suffix)]
+        if env_match is None or len(body_ids) != 1:
+            raise RuntimeError(f"Cannot map the body '{path}' to an environment and a sensor body.")
+        rows[(int(env_match.group(1)), body_ids[0])] = row
+    env_ids = sorted({env_id for env_id, _ in rows})
+    order = [rows[(env_id, body_id)] for env_id in env_ids for body_id in range(len(body_suffixes))]
+    return torch.tensor(order, dtype=torch.long, device=device)
 
 
 class VolumePointsBase(SensorBase):
