@@ -147,3 +147,17 @@ def pose_ref_mask_legacy(
     ).to(
         torch.float
     )  # (num_envs, num_frames, 3)
+
+def reference_frame_index(
+    env: ManagerBasedEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference")
+) -> torch.Tensor:
+    """Index of the reference frame the robot is currently aiming at, as a float observation.
+
+    Stored alongside each transition so an imagined rollout can be seeded from a replayed state and
+    still know where in the clip it started. ``-1`` means the clip ran out (the manager's own sentinel).
+
+    Returns:
+        (num_envs, 1)
+    """
+    motion_reference: MotionReferenceManagerBase = env.scene[asset_cfg.name]
+    return motion_reference.aiming_frame_idx.to(torch.float32).unsqueeze(-1)

@@ -71,6 +71,13 @@ from .observations.body import (
     root_tannorm_w,
 )
 from .observations.command import command_mask
+from .observations.world_frame import (
+    body_link_ang_vel_w,
+    body_link_lin_vel_w,
+    body_link_pos_w,
+    body_link_quat_w,
+    body_root_pos_w,
+)
 from .observations.expanded import (
     expanded_base_ang_vel,
     expanded_joint_pos_rel,
@@ -84,6 +91,7 @@ from .observations.motion_reference import (
     pose_ref_mask,
     pose_ref_mask_legacy,
     ref_frame_interval,
+    reference_frame_index,
     reference_progress,
     time_from_reference_update,
 )

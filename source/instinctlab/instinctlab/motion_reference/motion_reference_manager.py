@@ -251,6 +251,16 @@ class MotionReferenceManagerBase(SensorBase):
         return self._ALL_INDICES
 
     @property
+    def reference_time_s(self) -> torch.Tensor:
+        """Absolute time since the start of each env's assigned motion. Shape: (num_envs,).
+
+        Tasks that need reference frames ahead of the current one (for example to imagine future
+        steps) sample from this cursor instead of ``reference_frame``, which only exposes the current
+        frame and is memoised against it.
+        """
+        return self._timestamp_torch
+
+    @property
     def time_passed_from_update(self) -> torch.Tensor:
         return self._timestamp_torch - self._timestamp_last_update_torch
 
