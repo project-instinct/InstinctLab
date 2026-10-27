@@ -16,7 +16,7 @@ import instinctlab.tasks  # noqa: F401
 from instinctlab.utils import instinct_rl_cli as cli
 
 TASK = "Instinct-SuperMimic-Plane-G1-Newton-v0"
-NUM_ENVS, STEPS = 8, 12
+NUM_ENVS, STEPS = 32, 12
 
 parser = cli.build_train_parser()
 args_cli, overrides = cli.parse_cli(
@@ -53,11 +53,13 @@ with launch_simulation(env_cfg, args_cli):
     obs, extras = env.get_observations()
     states = [current_state(extras["observations"])]
     actions = []
+    reset_steps = []
     for _ in range(STEPS):
         action = torch.zeros(NUM_ENVS, action_dim, device="cuda")
         obs, rew, dones, extras = env.step(action)
         states.append(current_state(extras["observations"]))
         actions.append(unwrapped.action_manager.action.clone())
+        reset_steps.append(dones.reshape(-1).bool())
 
     pack = extras["observations"]
     state = states[-1]
@@ -71,9 +73,10 @@ with launch_simulation(env_cfg, args_cli):
         hist_terms[name] = held
     history_action = hist_terms["last_action"].reshape(NUM_ENVS, h, -1)
 
-    imagination.refresh_reference_window(imagination.goal_window)
-    imagination.select_reference_rows(torch.arange(NUM_ENVS, device=state.device))
-    ref_index = torch.zeros(NUM_ENVS, dtype=torch.long, device=state.device)
+    # Seed the reference exactly as a replayed rollout would: from the cursor recorded with the state.
+    ref_index = imagination.begin_rollout(
+        {"ref_cursor": pack["ref_cursor"]}, torch.arange(NUM_ENVS, device=state.device), imagination.goal_window
+    )
 
     # the trailing window, oldest first, current last -- the same layout the replay sampling yields
     history_state = torch.stack(states[-h:]).permute(1, 0, 2).contiguous()
@@ -81,9 +84,19 @@ with launch_simulation(env_cfg, args_cli):
     # ``last_action`` history
     history_action = torch.stack(actions[-h:]).permute(1, 0, 2).contiguous()
 
-    imag = imagination.policy_obs(state, None, None, ref_index, history_state, history_action)
+    split = imagination.split_obs_pack(pack)
+    context = torch.cat([split[n].reshape(NUM_ENVS, -1) for n in imagination.context_format], dim=-1)
+    imag = imagination.policy_obs(state, context, None, ref_index, history_state, history_action)
     real = pack["policy"]
     real = real if torch.is_tensor(real) else torch.cat([v.reshape(v.shape[0], -1) for v in real.values()], dim=-1)
+
+    # An environment that reset inside the window has a manager history that restarted at the reset,
+    # while the recorded window spans both episodes; only uninterrupted windows are comparable.
+    # (The first frame of the window may itself be a reset frame; resets *after* it break the window.)
+    h_ = imagination.history_length
+    intact = ~torch.stack(reset_steps[-(h_ - 1) :]).any(dim=0)
+    print(f"environments with an uninterrupted {h_}-frame window: {int(intact.sum())}/{NUM_ENVS}")
+    imag, real = imag[intact], real[intact]
 
     # compare per term, using the manager's declared layout
     offset = 0

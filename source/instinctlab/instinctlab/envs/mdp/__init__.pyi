@@ -71,18 +71,6 @@ from .observations.body import (
     root_tannorm_w,
 )
 from .observations.command import command_mask
-from .observations.sim_context import (
-    joint_calibration_offset,
-    rigid_body_com,
-    rigid_body_friction,
-)
-from .observations.world_frame import (
-    body_link_ang_vel_w,
-    body_link_lin_vel_w,
-    body_link_pos_w,
-    body_link_quat_w,
-    body_root_pos_w,
-)
 from .observations.expanded import (
     expanded_base_ang_vel,
     expanded_joint_pos_rel,
@@ -96,7 +84,7 @@ from .observations.motion_reference import (
     pose_ref_mask,
     pose_ref_mask_legacy,
     ref_frame_interval,
-    reference_frame_index,
+    reference_cursor,
     reference_progress,
     time_from_reference_update,
 )
@@ -123,6 +111,14 @@ from .observations.reference_masked_proprioception import (
     joint_pos_reference_masked,
     joint_pos_rel_reference_masked,
     link_pos_reference_masked,
+)
+from .observations.sim_context import joint_calibration_offset, rigid_body_com, rigid_body_friction
+from .observations.world_frame import (
+    body_link_ang_vel_w,
+    body_link_lin_vel_w,
+    body_link_pos_w,
+    body_link_quat_w,
+    body_root_pos_w,
 )
 from .rewards.motion_reference import (
     base_position_imitation_gauss,

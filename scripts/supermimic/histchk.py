@@ -47,11 +47,15 @@ with launch_simulation(env_cfg, args_cli):
     pack = extras["observations"]
     real_policy = pack["policy"]
     real_critic = pack["critic"]
-    real_policy = real_policy if torch.is_tensor(real_policy) else torch.cat(
-        [v.reshape(v.shape[0], -1) for v in real_policy.values()], dim=-1
+    real_policy = (
+        real_policy
+        if torch.is_tensor(real_policy)
+        else torch.cat([v.reshape(v.shape[0], -1) for v in real_policy.values()], dim=-1)
     )
-    real_critic = real_critic if torch.is_tensor(real_critic) else torch.cat(
-        [v.reshape(v.shape[0], -1) for v in real_critic.values()], dim=-1
+    real_critic = (
+        real_critic
+        if torch.is_tensor(real_critic)
+        else torch.cat([v.reshape(v.shape[0], -1) for v in real_critic.values()], dim=-1)
     )
 
     split = imagination.split_obs_pack(pack)
@@ -63,12 +67,15 @@ with launch_simulation(env_cfg, args_cli):
         NUM_ENVS, imagination.history_length, unwrapped.action_manager.total_action_dim, device=state.device
     )
 
-    imagination.refresh_reference_window(imagination.goal_window)
-    imagination.select_reference_rows(torch.arange(NUM_ENVS, device=state.device))
-    ref_index = torch.zeros(NUM_ENVS, dtype=torch.long, device=state.device)
+    # Seed the reference exactly as a replayed rollout would: from the cursor recorded with the state.
+    ref_index = imagination.begin_rollout(
+        {"ref_cursor": pack["ref_cursor"]}, torch.arange(NUM_ENVS, device=state.device), imagination.goal_window
+    )
 
     imag_policy = imagination.policy_obs(state, None, None, ref_index, history_state, history_action)
-    imag_critic = imagination.critic_obs(state, None, ref_index)
+    split = imagination.split_obs_pack(pack)
+    context = torch.cat([split[n].reshape(NUM_ENVS, -1) for n in imagination.context_format], dim=-1)
+    imag_critic = imagination.critic_obs(state, context, ref_index, unwrapped.action_manager.action)
 
     print(f"\nreal policy {tuple(real_policy.shape)}  imagined policy {tuple(imag_policy.shape)}")
     print(f"real critic {tuple(real_critic.shape)}  imagined critic {tuple(imag_critic.shape)}")

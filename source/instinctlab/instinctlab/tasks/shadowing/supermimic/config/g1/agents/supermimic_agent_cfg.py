@@ -27,12 +27,17 @@ from instinctlab.utils.wrappers.instinct_rl import (
 
 @configclass
 class SuperMimicPolicyCfg(InstinctRlActorCriticCfg):
-    """Actor/critic sizes shared with the PPO baseline so the comparison is like for like."""
+    """Actor and critic networks.
+
+    The critic is the paper's MLP (256, 128) (Table A.4). The actor is a plain MLP rather than the paper's
+    motion encoder (2048, 1024, 512, 256) -> 32-d tanh latent -> decoder (2048, 1024, 512, 256): that
+    split exists to share one decoder across goal interfaces, and this task trains a single interface.
+    """
 
     class_name = "ActorCritic"
     init_noise_std = 1.0
     actor_hidden_dims = [512, 256, 128]
-    critic_hidden_dims = [512, 256, 128]
+    critic_hidden_dims = [256, 128]
     activation = "elu"
 
 
@@ -53,16 +58,8 @@ class SuperMimicAlgorithmCfg:
     """Runtime constructor arguments, resolved by the runner. Not YAML-serialisable by design."""
 
     # -- paper settings --
-    horizon: int = 8
-    """H: imagined rollout length.
-
-    The paper uses H = 32 (Sec. 3.3). Measured on this task, the world model's open-loop error reaches
-    its own data spread (normalised error 1.0, i.e. the prediction is no better than the mean) at step 9
-    and grows to 5x by step 32 -- see ``instinctlab/horizonchk.py``. Backpropagating through steps the
-    model cannot predict trains the policy on fabricated dynamics, which in testing drove the real
-    environment reward *down* (0.93 -> 0.37) while the imagined return rose. H is therefore held at the
-    edge of the model's competence. Raise it only alongside a measured increase in usable horizon.
-    """
+    horizon: int = 32
+    """H: imagined rollout length (paper Sec. 3.3, Table A.5)."""
     wm_horizon: int = 8
     """k: autoregressive window the world model is fit on (Eq. 1)."""
     num_imagined: int = 4096
@@ -85,6 +82,8 @@ class SuperMimicAlgorithmCfg:
     policy_learning_rate: float = 2e-4
     critic_learning_rate: float = 2e-4
     policy_grad_value_clip: float = 0.1
+    policy_chunk_size: int = 512
+    """Imagined rollouts per differentiable policy pass; bounds activation memory, not the batch."""
     collection_noise_std: float = 0.1
     gamma: float = 0.99
     lam: float = 0.95
@@ -94,12 +93,17 @@ class SuperMimicAlgorithmCfg:
     """Reported by the runner's logger; the effective rates are the per-learner ones above."""
 
     # Quaternions are not a vector space, so they are regressed absolutely; everything else as a delta.
+    # World positions in particular must be deltas: environments are laid out on a grid tens of metres
+    # wide, so an absolute link position is dominated by which environment it is in, not by the motion.
     world_model_predict_delta: tuple = (
         "root_pos_w",
         "root_lin_vel_w",
         "root_ang_vel_w",
         "joint_pos",
         "joint_vel",
+        "body_link_pos_w",
+        "body_link_lin_vel_w",
+        "body_link_ang_vel_w",
     )
     world_model_hidden_sizes: tuple = (2048, 2048, 2048)
 

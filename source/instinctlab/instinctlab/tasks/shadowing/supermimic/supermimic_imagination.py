@@ -28,12 +28,10 @@ unprofitable (App. A), which is also what makes every term here a pure function 
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import numpy as np
-from typing import OrderedDict, Sequence
-
 import torch
+from dataclasses import dataclass
+from typing import OrderedDict, Sequence
 
 from isaaclab.utils.math import (
     axis_angle_from_quat,
@@ -47,12 +45,11 @@ from isaaclab.utils.math import (
     yaw_quat,
 )
 
-from instinctlab.utils.math import quat_to_tan_norm
-
 from instinctlab.tasks.shadowing.supermimic.config.g1.supermimic_rewards_cfg import (
     PAPER_REWARD_STDS,
     PAPER_REWARD_WEIGHTS,
 )
+from instinctlab.utils.math import quat_to_tan_norm
 
 # ---------------------------------------------------------------------------------------------------
 # Layouts
@@ -76,7 +73,7 @@ REWARD_TERMS = (
 )
 
 
-def make_state_format(num_links: int, num_joints: int) -> "OrderedDict[str, tuple]":
+def make_state_format(num_links: int, num_joints: int) -> OrderedDict[str, tuple]:
     """World-model state layout.
 
     Component names mirror ``ArticulationData`` attributes, so the reward formulas below read the same
@@ -98,7 +95,7 @@ def make_state_format(num_links: int, num_joints: int) -> "OrderedDict[str, tupl
     return fmt
 
 
-def state_size(fmt: "OrderedDict[str, tuple]") -> int:
+def state_size(fmt: OrderedDict[str, tuple]) -> int:
     total = 0
     for shape in fmt.values():
         n = 1
@@ -108,7 +105,7 @@ def state_size(fmt: "OrderedDict[str, tuple]") -> int:
     return total
 
 
-def _seg(fmt: "OrderedDict[str, tuple]", name: str) -> slice:
+def _seg(fmt: OrderedDict[str, tuple], name: str) -> slice:
     start = 0
     for key, shape in fmt.items():
         n = 1
@@ -120,7 +117,7 @@ def _seg(fmt: "OrderedDict[str, tuple]", name: str) -> slice:
     raise KeyError(f"{name} not in state format; have {list(fmt)}")
 
 
-def unpack_state(state: torch.Tensor, fmt: "OrderedDict[str, tuple]") -> dict[str, torch.Tensor]:
+def unpack_state(state: torch.Tensor, fmt: OrderedDict[str, tuple]) -> dict[str, torch.Tensor]:
     """Split a flat ``(B, state_size)`` state into named tensors."""
     return {name: state[..., _seg(fmt, name)].reshape(state.shape[0], *shape) for name, shape in fmt.items()}
 
@@ -172,7 +169,7 @@ class ReferenceWindow:
     def horizon(self) -> int:
         return self.base_pos_w.shape[1]
 
-    def at(self, ref_index: torch.Tensor) -> "ReferenceWindow":
+    def at(self, ref_index: torch.Tensor) -> ReferenceWindow:
         """One step per env, where ``ref_index`` is a *column offset* into this window.
 
         Column ``j`` is the reference at ``t + j * control_dt``, so ``ref_index`` starts at 0 and
@@ -203,13 +200,11 @@ class ReferenceWindow:
             base_pos_height_mask=pick(self.base_pos_height_mask),
         )
 
-    def rows(self, index: torch.Tensor) -> "ReferenceWindow":
+    def rows(self, index: torch.Tensor) -> ReferenceWindow:
         """Select one row per output sample, keeping every frame column."""
-        return ReferenceWindow(
-            **{name: getattr(self, name)[index] for name in self._FIELD_NAMES}
-        )
+        return ReferenceWindow(**{name: getattr(self, name)[index] for name in self._FIELD_NAMES})
 
-    def goal_window(self, ref_index: torch.Tensor, length: int) -> "ReferenceWindow":
+    def goal_window(self, ref_index: torch.Tensor, length: int) -> ReferenceWindow:
         """Columns ``ref_index .. ref_index+length-1``: the goal encoder's K-frame sequence.
 
         Unrolled into ``length`` single-frame windows rather than one tensor, so the reward cores and
@@ -349,9 +344,7 @@ def body_position_reward(
     std: float = PAPER_REWARD_STDS["body_position"],
 ) -> torch.Tensor:
     """``exp(-mean_b ||p_b - p_b^des||^2 / std^2)``; the paper's Body Position term."""
-    base_pos, delta_quat = relative_world_anchor(
-        root_pos_w, root_quat_w, ref.base_pos_w[:, 0], ref.base_quat_w[:, 0]
-    )
+    base_pos, delta_quat = relative_world_anchor(root_pos_w, root_quat_w, ref.base_pos_w[:, 0], ref.base_quat_w[:, 0])
     ref_pos = anchor_positions(ref.link_pos_w[:, 0], base_pos, delta_quat, ref.base_pos_w[:, 0])
     sq = torch.sum(torch.square(link_pos_w - ref_pos), dim=-1)
     return _kernel(torch.mean(sq, dim=-1), std)
@@ -509,7 +502,7 @@ class SuperMimicImagination:
     def __init__(
         self,
         *,
-        state_format: "OrderedDict[str, tuple]",
+        state_format: OrderedDict[str, tuple],
         soft_joint_pos_limits: torch.Tensor,
         default_joint_pos: torch.Tensor,
         policy_term_order: list[str],
@@ -517,10 +510,11 @@ class SuperMimicImagination:
         reference_joint_ids: torch.Tensor | slice | None = None,
         policy_joint_ids: torch.Tensor | slice | None = None,
         critic_link_ids: torch.Tensor | slice | None = None,
-        context_format: "OrderedDict[str, tuple] | dict[str, tuple] | None" = None,
+        context_format: OrderedDict[str, tuple] | dict[str, tuple] | None = None,
         goal_window: int = 10,
         history_terms: Sequence[str] = (),
         history_length: int = 0,
+        policy_noise_halfwidth: torch.Tensor | None = None,
         termination_temperature: float = 0.02,
         motion_reference=None,
         ref_window: ReferenceWindow | None = None,
@@ -530,12 +524,9 @@ class SuperMimicImagination:
         self.state_format = OrderedDict(state_format)
         self.state_size = state_size(self.state_format)
         self.num_joints = int(np.prod(self.state_format["joint_pos"])) if "joint_pos" in self.state_format else 0
-        self.num_links = (
-            int(self.state_format["body_link_pos_w"][0]) if "body_link_pos_w" in self.state_format else 0
-        )
+        self.num_links = int(self.state_format["body_link_pos_w"][0]) if "body_link_pos_w" in self.state_format else 0
         # optional: turns a replayed absolute frame index into a window-relative column offset
         self.motion_reference = motion_reference
-        self._window_scratch = None
         self.soft_joint_pos_limits = soft_joint_pos_limits
         # Two joint orders are in play. The world-model state carries joints in the policy's order, so
         # ``joint_pos`` observations subtract ``_default_joint_pos`` directly. The reference buffer is
@@ -557,7 +548,7 @@ class SuperMimicImagination:
         self._critic_link_ids: torch.Tensor | slice = slice(None) if critic_link_ids is None else critic_link_ids
         # The simulation context the world model is conditioned on (friction, CoM, joint calibration),
         # supplied by the caller from the env's ``sim_context`` group. Empty when a task has none.
-        self.context_format: "OrderedDict[str, tuple]" = OrderedDict(context_format or {})
+        self.context_format: OrderedDict[str, tuple] = OrderedDict(context_format or {})
         self.policy_term_order = list(policy_term_order)
         self.critic_term_order = list(critic_term_order)
         # Paper Table A.1: the policy sees the last ``history_length`` proprioceptive frames. The
@@ -571,9 +562,11 @@ class SuperMimicImagination:
             raise ValueError(f"history terms {missing} are not in the policy observation group")
         self.termination_temperature = termination_temperature
         self.ref_window = ref_window
-        self._env_ref_window: ReferenceWindow | None = None
         self._sample_ref_window: ReferenceWindow | None = None
-        self._prev_action: torch.Tensor | None = None
+        # Paper Sec. 3.3: "the model emits the noise-free observation, we re-add sensor noise". Half-width
+        # of the uniform noise for every dimension of the flat policy observation (zero where a term
+        # carries none), or None to imagine noise-free observations.
+        self.policy_noise_halfwidth = policy_noise_halfwidth
 
     #: Observation group carrying the world-model state.
     STATE_GROUP = "wm_state"
@@ -599,9 +592,7 @@ class SuperMimicImagination:
             return {}
         total = int(sum(int(np.prod(shape)) for shape in layout.values()))
         if group.shape[-1] != total:
-            raise ValueError(
-                f"{group_name} carries {group.shape[-1]} values but its layout describes {total}"
-            )
+            raise ValueError(f"{group_name} carries {group.shape[-1]} values but its layout describes {total}")
         out = {}
         start = 0
         for name, shape in layout.items():
@@ -616,55 +607,60 @@ class SuperMimicImagination:
         """Install the reference snapshot for the upcoming rollout."""
         self.ref_window = window
 
-    def refresh_reference_window(self, horizon: int) -> ReferenceWindow:
-        """Rebuild the snapshot from the manager's current time, reusing one scratch buffer.
+    #: Observation groups the replay must store per transition so a rollout can be seeded from it.
+    SEED_GROUPS = ("ref_cursor",)
+    #: Simulation-context term holding the per-joint calibration offset.
+    JOINT_OFFSET_TERM = "joint_offset"
 
-        Called once per update rather than per rollout step: the reference does not change while the
-        world model is rolled forward.
+    def _joint_offset(self, context: torch.Tensor | None) -> torch.Tensor | None:
+        """The calibration offset ``(B, J)`` carried in the context, or None when the task has none."""
+        if context is None or self.JOINT_OFFSET_TERM not in self.context_format:
+            return None
+        return unpack_state(context, self.context_format)[self.JOINT_OFFSET_TERM]
+
+    def begin_rollout(self, seeds: dict[str, torch.Tensor], env_index: torch.Tensor, horizon: int) -> torch.Tensor:
+        """Build the reference window of a batch of rollouts seeded from replayed states.
+
+        Paper Sec. 3.3: each imagined rollout starts from a replay-buffer state, and the goal is read
+        from the reference motion. The reference must be the one *that state* was tracking, so the
+        window is looked up from the cursor recorded with the state (its clip and the time inside it),
+        not from wherever its environment is now. Using the environment's current position pairs a
+        state with an unrelated stretch of motion, and the policy is then taught to track a goal its
+        state does not correspond to.
+
+        Args:
+            seeds: ``{"ref_cursor": (B, 2)}`` as recorded by the ``reference_cursor`` term.
+            env_index: ``(B,)`` environment each sample came from, for its world origin.
+            horizon: Imagined steps ``H``.
+
+        Returns:
+            ``(B,)`` column index of the start frame, i.e. zeros.
         """
         if self.motion_reference is None:
             raise RuntimeError("this imagination was built without a motion reference manager")
-        from instinctlab.motion_reference.motion_reference_data import MotionReferenceData
+        manager = self.motion_reference
+        if len(manager.motion_buffers) != 1:
+            raise NotImplementedError("reference cursors are only defined for a single motion buffer")
+        buffer = next(iter(manager.motion_buffers.values()))
 
-        # The window must span the rollout *plus* the K-frame goal look-ahead: at imagined step t the
-        # goal terms read columns t .. t + K - 1, so ``horizon`` alone would clamp the goal to the last
-        # column for most of the rollout and quietly feed the policy a frozen future.
+        cursor = seeds["ref_cursor"].to(manager.device)
+        env_index = env_index.to(manager.device).long()
+        # The window spans the rollout *plus* the K-frame goal look-ahead: at imagined step t the goal
+        # terms read columns t .. t + K - 1, and the critic bootstrap reads column H.
         num_frames = int(horizon) + int(self.goal_window)
-        if self._window_scratch is None or self._window_scratch.validity.shape[1] != num_frames:
-            self._window_scratch = MotionReferenceData.make_empty(
-                num_envs=self.motion_reference.count,
-                num_frames=num_frames,
-                num_joints=self.motion_reference.num_joints,
-                num_links=self.motion_reference.num_link_of_interests,
-                device=self.motion_reference.device,
-            )
-        self.ref_window = build_reference_window(
-            self.motion_reference, horizon=num_frames - 1, scratch=self._window_scratch
-        )
-        self._env_ref_window = None
-        self._sample_ref_window = None
-        return self.ref_window
+        start = 1.0 if manager.cfg.data_start_from == "one_frame_interval" else 0.0
+        offsets = torch.arange(num_frames, device=manager.device, dtype=torch.float32) + start
+        clip_time_s = cursor[:, 1:2] + offsets.unsqueeze(0) * manager.frame_interval_s[env_index].unsqueeze(-1)
 
-    def select_reference_rows(self, env_index: torch.Tensor) -> None:
-        """Expand the per-environment window to one row per imagined sample.
-
-        Rollouts are seeded from replay states drawn across environments, so a window with one row per
-        env cannot be indexed by sample. ``env_index[i]`` says which env sample ``i`` came from.
-        """
-        if self.ref_window is None:
-            raise RuntimeError("no reference window to reindex; call refresh_reference_window first")
-        self._env_ref_window = self.ref_window
-        self._sample_ref_window = self.ref_window.rows(env_index.to(self.ref_window.base_pos_w.device).long())
+        frames = buffer.gather_frames(cursor[:, 0].round().long(), clip_time_s, manager.env_origins[env_index])
+        self._sample_ref_window = ReferenceWindow(**frames)
         self.ref_window = self._sample_ref_window
+        return torch.zeros(cursor.shape[0], dtype=torch.long, device=manager.device)
 
     def subset_reference_rows(self, sample_index: torch.Tensor) -> None:
-        """Narrow the sample-level window to a batch subset (e.g. one policy chunk).
-
-        Distinct from :meth:`select_reference_rows`: that one indexes *environments*, this one indexes
-        the already-expanded sample rows.
-        """
-        if getattr(self, "_sample_ref_window", None) is None:
-            raise RuntimeError("no sample-level window; call select_reference_rows first")
+        """Narrow the rollout's reference window to a batch subset (e.g. one policy chunk)."""
+        if self._sample_ref_window is None:
+            raise RuntimeError("no rollout window; call begin_rollout first")
         keep = sample_index.to(self._sample_ref_window.base_pos_w.device).long()
         if int(keep.max()) >= self._sample_ref_window.base_pos_w.shape[0]:
             raise IndexError(
@@ -733,14 +729,28 @@ class SuperMimicImagination:
 
     # -- observations ------------------------------------------------------------------------------
 
-    def _term_value(self, name: str, s: dict[str, torch.Tensor], prev_action: torch.Tensor | None):
+    def _term_value(
+        self,
+        name: str,
+        s: dict[str, torch.Tensor],
+        prev_action: torch.Tensor | None,
+        joint_offset: torch.Tensor | None = None,
+    ):
         """Value of a manager observation term, built from state.
 
         Only terms derivable from the imagined state are supported. Anything else raises: a wrong
         observation would corrupt the policy gradient silently, which is worse than failing.
+
+        ``joint_offset`` is the per-sample calibration offset ``(B, J)`` from the simulation context. The
+        environment observes ``q - q0`` with its *randomized* default pose ``q0 = nominal + offset``, so
+        the offset must be subtracted too or every imagined joint observation is off by it.
         """
         if name == "joint_pos":
-            return s["joint_pos"] - self._default_joint_pos
+            rel = s["joint_pos"] - self._default_joint_pos
+            if joint_offset is None:
+                return rel
+            # broadcast a (B, J) offset over the frame axis of a (B, H, J) history
+            return rel - (joint_offset.unsqueeze(1) if rel.dim() == 3 else joint_offset)
         if name == "joint_vel":
             return s["joint_vel"]
         if name == "base_ang_vel":
@@ -749,7 +759,7 @@ class SuperMimicImagination:
             return quat_apply_inverse(s["root_quat_w"], s["root_lin_vel_w"])
         if name == "projected_gravity":
             gravity = torch.tensor([0.0, 0.0, -1.0], device=s["root_quat_w"].device, dtype=s["root_quat_w"].dtype)
-            return quat_apply_inverse(s["root_quat_w"], gravity.expand(s["root_quat_w"].shape[0], 3))
+            return quat_apply_inverse(s["root_quat_w"], gravity.expand(*s["root_quat_w"].shape[:-1], 3))
         if name == "last_action":
             # At the first imagined step there is no previous action. The environment's own value at
             # reset is zeros, so use the same thing rather than failing.
@@ -765,13 +775,11 @@ class SuperMimicImagination:
             return self._to_base_frame(s["body_link_pos_w"][:, body_ids], s["root_pos_w"], s["root_quat_w"])
         if name == "link_rot":
             body_ids = self._critic_link_ids
-            link_quat_b = self._to_base_frame_quat(
-                s["body_link_quat_w"][:, body_ids], s["root_quat_w"]
-            )
+            link_quat_b = self._to_base_frame_quat(s["body_link_quat_w"][:, body_ids], s["root_quat_w"])
             return quat_to_tan_norm(link_quat_b)
         raise NotImplementedError(
             f"observation term {name!r} is not derivable from the world-model state; "
-            f"either add it to the state layout or exclude it from the imagined observation"
+            "either add it to the state layout or exclude it from the imagined observation"
         )
 
     def _goal_values(
@@ -866,11 +874,10 @@ class SuperMimicImagination:
         """
         s = unpack_state(state, self.state_format)
         needs_goal = any(t in self.policy_term_order for t in self._GOAL_TERMS)
-        goals = (
-            self._goal_values(s["root_pos_w"], s["root_quat_w"], ref_index) if needs_goal else {}
-        )
+        goals = self._goal_values(s["root_pos_w"], s["root_quat_w"], ref_index) if needs_goal else {}
 
-        past = self._history_terms(history_state, history_action) if self.history_terms else {}
+        joint_offset = self._joint_offset(context)
+        past = self._history_terms(history_state, history_action, joint_offset) if self.history_terms else {}
 
         parts = []
         for name in self.policy_term_order:
@@ -879,12 +886,15 @@ class SuperMimicImagination:
             elif name in past:
                 value = past[name]
             else:
-                value = self._term_value(name, s, prev_action)
+                value = self._term_value(name, s, prev_action, joint_offset)
             parts.append(value.reshape(value.shape[0], -1))
         return torch.cat(parts, dim=-1)
 
     def _history_terms(
-        self, history_state: torch.Tensor | None, history_action: torch.Tensor | None
+        self,
+        history_state: torch.Tensor | None,
+        history_action: torch.Tensor | None,
+        joint_offset: torch.Tensor | None = None,
     ) -> dict[str, torch.Tensor]:
         """Per-term ``(B, H, D)`` history over the trailing ``history_length`` frames.
 
@@ -916,7 +926,7 @@ class SuperMimicImagination:
                 out[name] = history_action.reshape(batch, h, -1)
                 continue
             # a state-only term: evaluate it on every frame at once
-            out[name] = self._term_value(name, frames, None)
+            out[name] = self._term_value(name, frames, None, joint_offset)
         return out
 
     def advance_history(
@@ -941,20 +951,35 @@ class SuperMimicImagination:
         state: torch.Tensor,
         context: torch.Tensor | None,
         ref_index: torch.Tensor | None,
+        prev_action: torch.Tensor | None,
     ) -> torch.Tensor:
+        """Assemble the critic observation group. Paper: the critic is V(s, g, xi), so the simulation
+        context terms are filled from ``context`` rather than derived from state."""
         s = unpack_state(state, self.state_format)
         needs_goal = any(t in self.critic_term_order for t in self._GOAL_TERMS)
-        goals = (
-            self._goal_values(s["root_pos_w"], s["root_quat_w"], ref_index) if needs_goal else {}
-        )
+        goals = self._goal_values(s["root_pos_w"], s["root_quat_w"], ref_index) if needs_goal else {}
+        ctx = unpack_state(context, self.context_format) if context is not None and self.context_format else {}
 
         parts = []
         for name in self.critic_term_order:
-            value = goals[name] if name in goals else self._term_value(name, s, self._prev_action)
+            if name in goals:
+                value = goals[name]
+            elif name in ctx:
+                value = ctx[name]
+            else:
+                value = self._term_value(name, s, prev_action, ctx.get(self.JOINT_OFFSET_TERM))
             parts.append(value.reshape(value.shape[0], -1))
         return torch.cat(parts, dim=-1)
 
     def add_obs_noise(self, obs: torch.Tensor) -> torch.Tensor:
-        """No-op: the runner's normaliser handles scaling, and the paper's per-term noise is applied
-        by the caller that knows the term boundaries."""
-        return obs
+        """Re-add the policy's sensor noise to a noise-free imagined observation (paper Sec. 3.3).
+
+        Applied to the raw observation, before normalisation, exactly where the environment applies
+        it. Uniform per dimension, matching the ``UniformNoiseCfg`` of each term.
+        """
+        if self.policy_noise_halfwidth is None:
+            return obs
+        width = self.policy_noise_halfwidth.to(device=obs.device, dtype=obs.dtype)
+        if width.shape[-1] != obs.shape[-1]:
+            raise ValueError(f"noise layout has {width.shape[-1]} dims, observation has {obs.shape[-1]}")
+        return obs + (2.0 * torch.rand_like(obs) - 1.0) * width

@@ -155,6 +155,92 @@ class AmassMotion(MotionBuffer):
             - self._motion_buffer_start_time_s
         ).to(self.output_device)
 
+    def motion_cursor(self, env_ids: torch.Tensor, timestamp: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Where each environment currently is in the motion library.
+
+        A cursor is the clip an environment is playing and the time inside that clip. Together with the
+        environment's origin it is everything needed to look the reference up again later, after the
+        environment has moved on or been reset onto another clip.
+
+        Args:
+            env_ids: ``(N,)`` environments assigned to this buffer.
+            timestamp: ``(N,)`` time since each environment's reference started, in seconds (the
+                manager's ``reference_time_s``).
+
+        Returns:
+            ``(motion_ids, clip_time_s)``, each ``(N,)``, on the output device.
+        """
+        assigned_ids = self.env_ids_to_assigned_ids(env_ids).to(self.buffer_device)
+        motion_ids = self._assigned_env_motion_selection[assigned_ids]
+        clip_time_s = self._motion_buffer_start_time_s[assigned_ids] + timestamp.to(self.buffer_device)
+        return motion_ids.to(self.output_device), clip_time_s.to(self.output_device)
+
+    def gather_frames(
+        self,
+        motion_ids: torch.Tensor,
+        clip_time_s: torch.Tensor,
+        origins: torch.Tensor,
+    ) -> dict[str, torch.Tensor]:
+        """Reference frames for arbitrary ``(clip, time)`` cursors, independent of environment state.
+
+        :meth:`fill_motion_data` reads through each environment's *current* assignment, so it can only
+        answer "what is this environment tracking now". A model-based learner seeds rollouts from
+        replayed states recorded at other times and on other clips, and needs the reference those
+        states were actually tracking. This indexes the motion library directly by cursor, using the
+        same frame selection, validity and origin offset as :meth:`fill_motion_data`.
+
+        Args:
+            motion_ids: ``(B,)`` motion indices, as returned by :meth:`motion_cursor`.
+            clip_time_s: ``(B, F)`` times inside each clip.
+            origins: ``(B, 3)`` world offset of each sample's environment.
+
+        Returns:
+            ``{field: (B, F, ...)}`` for the world-frame base and link fields, joint position and
+            velocity, and ``validity`` (False once a time is past the end of its clip).
+        """
+        seqs = self._all_motion_sequences
+        motion_ids = motion_ids.to(self.buffer_device).long()
+        clip_time_s = clip_time_s.to(self.buffer_device)
+        batch, num_frames = clip_time_s.shape
+
+        frames = torch.round(clip_time_s * seqs.framerate[motion_ids].unsqueeze(-1))  # (B, F)
+        lengths = seqs.buffer_length[motion_ids].unsqueeze(-1)  # (B, 1)
+        validity = frames < lengths
+        frames = torch.where(validity, frames, lengths - 1).long()
+
+        flat_motion = motion_ids.unsqueeze(-1).expand(batch, num_frames).reshape(-1)
+        flat_frame = frames.reshape(-1)
+
+        def take(field: str) -> torch.Tensor:
+            data = getattr(seqs, field)[flat_motion, flat_frame]
+            return data.reshape(batch, num_frames, *data.shape[1:]).to(self.output_device)
+
+        out = {
+            field: take(field)
+            for field in (
+                "base_pos_w",
+                "base_quat_w",
+                "link_pos_w",
+                "link_quat_w",
+                "link_lin_vel_w",
+                "link_ang_vel_w",
+                "joint_pos",
+                "joint_vel",
+            )
+        }
+        offset = origins.to(self.output_device)
+        out["base_pos_w"] = out["base_pos_w"] + offset.unsqueeze(1)
+        out["link_pos_w"] = out["link_pos_w"] + offset.unsqueeze(1).unsqueeze(1)
+        out["validity"] = validity.to(self.output_device)
+        # AMASS provides all joints/links, so all masks are valid (as in ``fill_motion_data``)
+        joint_mask = torch.ones_like(out["joint_pos"], dtype=torch.bool)
+        frame_mask = torch.ones_like(out["validity"])
+        out["joint_pos_mask"] = joint_mask
+        out["joint_vel_mask"] = joint_mask
+        out["base_pos_plane_mask"] = frame_mask
+        out["base_pos_height_mask"] = frame_mask
+        return out
+
     """
     Operations.
     """

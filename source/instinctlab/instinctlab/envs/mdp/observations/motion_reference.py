@@ -148,16 +148,29 @@ def pose_ref_mask_legacy(
         torch.float
     )  # (num_envs, num_frames, 3)
 
-def reference_frame_index(
+
+def reference_cursor(
     env: ManagerBasedEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference")
 ) -> torch.Tensor:
-    """Index of the reference frame the robot is currently aiming at, as a float observation.
+    """Which clip each environment is tracking and how far into it, as ``[motion_id, clip_time_s]``.
 
-    Stored alongside each transition so an imagined rollout can be seeded from a replayed state and
-    still know where in the clip it started. ``-1`` means the clip ran out (the manager's own sentinel).
+    Stored alongside each transition so a rollout seeded from a replayed state can look up the
+    reference *that state* was tracking, rather than whatever its environment is tracking now. The
+    environment origin is not included: it is fixed per environment and recovered from the env index.
+
+    The motion id is carried as a float so the term fits a float observation group; ids are small
+    integers, which float32 represents exactly.
 
     Returns:
-        (num_envs, 1)
+        (num_envs, 2)
     """
     motion_reference: MotionReferenceManagerBase = env.scene[asset_cfg.name]
-    return motion_reference.aiming_frame_idx.to(torch.float32).unsqueeze(-1)
+    out = torch.zeros(env.num_envs, 2, device=env.device)
+    for buffer in motion_reference.motion_buffers.values():
+        env_ids = motion_reference.ALL_INDICES[buffer.assigned_env_slice]
+        if env_ids.numel() == 0:
+            continue
+        motion_ids, clip_time_s = buffer.motion_cursor(env_ids, motion_reference.reference_time_s[env_ids])
+        out[env_ids, 0] = motion_ids.to(out.dtype)
+        out[env_ids, 1] = clip_time_s.to(out.dtype)
+    return out

@@ -16,16 +16,17 @@ sync. This module only turns those into a differentiable view of the task's MDP.
 
 from __future__ import annotations
 
+import numpy as np
+import torch
+
+from isaaclab.utils.noise import UniformNoiseCfg
+
 from instinctlab.tasks.shadowing.supermimic.supermimic_imagination import SuperMimicImagination
 
 #: Observation group carrying the world-model state.
 WM_STATE_GROUP = "wm_state"
-#: Observation group carrying the reference frame index. ``ref_index`` is that group's single term.
-REF_INDEX_GROUP = "ref_index"
 #: Observation group carrying the simulation context (randomized physics parameters).
 SIM_CONTEXT_GROUP = "sim_context"
-#: Extra replay key the algorithm stores alongside each transition.
-REF_INDEX_KEY = "ref_index"
 
 
 def build_imagination(env, obs_format) -> SuperMimicImagination:
@@ -83,8 +84,34 @@ def build_imagination(env, obs_format) -> SuperMimicImagination:
         # observation has to reproduce that arrangement exactly.
         history_terms=_history_terms(observation_manager, "policy"),
         history_length=_history_length(observation_manager, "policy"),
+        policy_noise_halfwidth=_noise_halfwidth(observation_manager, "policy"),
         motion_reference=motion_reference,
     )
+
+
+def _noise_halfwidth(observation_manager, group: str) -> torch.Tensor | None:
+    """Per-dimension half-width of the group's uniform sensor noise, in the flat observation layout.
+
+    Read from the term configs so the imagined noise is the noise the environment applies. Only
+    zero-mean additive uniform noise is reproduced; any other noise model raises, because imagining it
+    wrongly would train the policy on a different input distribution than it is deployed with.
+    """
+    if not observation_manager.cfg.__dict__[group].enable_corruption:
+        return None
+    widths = []
+    for cfg, dim in zip(observation_manager._group_obs_term_cfgs[group], observation_manager.group_obs_term_dim[group]):
+        size = int(np.prod(dim))
+        noise = cfg.noise
+        if noise is None:
+            widths.append(torch.zeros(size))
+            continue
+        if not isinstance(noise, UniformNoiseCfg) or noise.operation != "add":
+            raise NotImplementedError(f"cannot imagine noise {type(noise).__name__} ({noise.operation})")
+        n_min, n_max = float(noise.n_min), float(noise.n_max)
+        if abs(n_min + n_max) > 1e-9:
+            raise NotImplementedError(f"cannot imagine non-zero-mean noise U[{n_min}, {n_max}]")
+        widths.append(torch.full((size,), n_max))
+    return torch.cat(widths)
 
 
 def _nominal_default_joint_pos(robot, joint_ids) -> torch.Tensor:
@@ -133,6 +160,6 @@ def _history_length(observation_manager, group: str) -> int:
         }
         raise ValueError(
             f"terms of the {group!r} group use different history lengths {per_term}; the imagined "
-            f"observation stacks a single window, so they must agree"
+            "observation stacks a single window, so they must agree"
         )
     return lengths.pop()

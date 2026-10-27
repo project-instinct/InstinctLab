@@ -4,7 +4,7 @@ SuperMimic trains a motion-tracking policy by backpropagating through a learned 
 task provides three things beyond a normal tracking task:
 
 * the reference motion stack (LAFAN1, converted to InstinctLab npz),
-* a **world-model state layout** (the ``wm_state`` and ``ref_index`` observation groups) whose term
+* a **world-model state layout** (the ``wm_state``, ``ref_cursor`` and ``sim_context`` observation groups) whose term
   names *are* the world-model state component names, and
 * a provider for the algorithm's differentiable view of the MDP
   (``supermimic_provider.py``), named by the agent config and resolved by the runner.
@@ -29,25 +29,20 @@ from isaaclab.managers import ObservationGroupCfg as ObsGroupCfg
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.configclass import configclass
+from isaaclab.utils.noise import UniformNoiseCfg
 
 import instinctlab.envs.mdp as instinct_mdp
-
 import instinctlab.tasks.shadowing.beyondmimic.beyondmimic_env_cfg as beyondmimic_cfg
-from instinctlab.assets.unitree_g1 import (
-    G1_29DOF_POLICY_JOINT_ORDER_V1,
-    G1_29DOF_TORSOBASE_POPSICLE_CFG,
-)
+from instinctlab.assets.unitree_g1 import G1_29DOF_POLICY_JOINT_ORDER_V1, G1_29DOF_TORSOBASE_POPSICLE_CFG
 from instinctlab.motion_reference import MotionReferenceManagerCfg
 from instinctlab.motion_reference.motion_files.amass_motion_cfg import AmassMotionCfg as AmassMotionCfgBase
 from instinctlab.motion_reference.utils import motion_interpolate_bilinear
-from instinctlab.utils.config import set_cfg_joint_order
-from instinctlab.tasks.shadowing.beyondmimic.config.g1.beyondmimic_plane_cfg import (
-    G1BeyondMimicPlaneEnvCfg,
-)
+from instinctlab.tasks.shadowing.beyondmimic.config.g1.beyondmimic_plane_cfg import G1BeyondMimicPlaneEnvCfg
 from instinctlab.tasks.shadowing.supermimic.config.g1.supermimic_rewards_cfg import (
-    SuperMimicRewardsCfg,
     SuperMimicPaperTerminationsCfg,
+    SuperMimicRewardsCfg,
 )
+from instinctlab.utils.config import set_cfg_joint_order
 
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
 
@@ -60,12 +55,11 @@ SUPER_MIMIC_GOAL_WINDOW = 10
 #: Paper Table A.1: the policy sees the last 10 proprioceptive observations.
 SUPER_MIMIC_OBS_HISTORY = 10
 
-#: Terms of the policy group that carry observation history. Deliberately *not* the four reference
-#: terms: those already span the K = 10 future window, so stacking 10 frames of history would square
-#: the goal window instead of adding memory. These are the proprioceptive terms the paper describes.
-SUPER_MIMIC_HISTORY_TERMS = ("base_lin_vel", "base_ang_vel", "joint_pos", "joint_vel", "last_action")
-
-
+#: Terms of the policy group that carry observation history: exactly the proprioceptive observation of
+#: Table A.1 (joint positions, joint velocities, base angular velocity, projected gravity, previous
+#: action). Deliberately *not* the four reference terms: those already span the K = 10 future window,
+#: so stacking 10 frames of history would square the goal window instead of adding memory.
+SUPER_MIMIC_HISTORY_TERMS = ("base_ang_vel", "projected_gravity", "joint_pos", "joint_vel", "last_action")
 
 
 @configclass
@@ -182,11 +176,12 @@ class SuperMimicObsExtrasCfg:
             self.concatenate_terms = False
 
     @configclass
-    class RefIndexCfg(ObsGroupCfg):
-        """Reference frame index, stored per transition so a rollout can be re-seeded from replay."""
+    class RefCursorCfg(ObsGroupCfg):
+        """Which clip and time each transition was tracking, so a rollout seeded from a replayed state
+        reads the reference that state was actually tracking (paper Sec. 3.3)."""
 
-        ref_index = ObsTerm(
-            func=instinct_mdp.reference_frame_index,
+        ref_cursor = ObsTerm(
+            func=instinct_mdp.reference_cursor,
             params={"asset_cfg": SceneEntityCfg("motion_reference")},
         )
 
@@ -228,7 +223,7 @@ class SuperMimicObsExtrasCfg:
             self.concatenate_terms = False
 
     wm_state = WmStateCfg()
-    ref_index = RefIndexCfg()
+    ref_cursor = RefCursorCfg()
     sim_context = SimContextCfg()
 
 
@@ -268,7 +263,7 @@ class G1SuperMimicEnvCfg(G1BeyondMimicPlaneEnvCfg):
         # depend on which design happened to be applied first.
         # the observation manager iterates the groups of ``observations``, so the extra groups are
         # attached there rather than kept as a sibling config
-        for group_name in ("wm_state", "ref_index", "sim_context"):
+        for group_name in ("wm_state", "ref_cursor", "sim_context"):
             setattr(self.observations, group_name, getattr(self.observations_extra, group_name))
 
         # The world-model state must be in the *policy* joint order: the imagination subtracts the
@@ -280,6 +275,41 @@ class G1SuperMimicEnvCfg(G1BeyondMimicPlaneEnvCfg):
             term = getattr(self.observations.wm_state, term_name)
             # a fresh selector per term: scene-entity resolution mutates the cfg it is given
             term.params["asset_cfg"] = set_cfg_joint_order(SceneEntityCfg("robot"), joint_order)
+        # the calibration offset is subtracted from the policy-order ``joint_pos``, so it is ordered alike
+        self.observations.sim_context.joint_offset.params["asset_cfg"] = set_cfg_joint_order(
+            SceneEntityCfg("robot"), joint_order
+        )
+
+        # Paper Table A.1: the proprioceptive observation is joint positions, joint velocities, base
+        # angular velocity, projected gravity and the previous action. BeyondMimic's base linear
+        # velocity is not part of it, and projected gravity is added with its listed noise.
+        self.observations.policy.base_lin_vel = None
+        self.observations.policy.projected_gravity = ObsTerm(
+            func=mdp.projected_gravity, noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05)
+        )
+        # The goal is read from the reference motion; the paper puts sensor noise on the proprioception
+        # only (Table A.1), so BeyondMimic's noise on the reference position/rotation commands is dropped.
+        self.observations.policy.position_ref.noise = None
+        self.observations.policy.rotation_ref.noise = None
+        # Paper: the critic is V(s, g, xi). It sees the simulation context alongside state and goal.
+        self.observations.critic.friction = ObsTerm(
+            func=instinct_mdp.rigid_body_friction, params={"asset_cfg": SceneEntityCfg("robot")}
+        )
+        self.observations.critic.base_com = ObsTerm(
+            func=instinct_mdp.rigid_body_com,
+            params={"asset_cfg": SceneEntityCfg("robot", body_names=("torso_link",), preserve_order=True)},
+        )
+        self.observations.critic.joint_offset = ObsTerm(
+            func=instinct_mdp.joint_calibration_offset,
+            params={"asset_cfg": set_cfg_joint_order(SceneEntityCfg("robot"), joint_order)},
+        )
+
+        # Paper App. A: BeyondMimic's root-velocity pushes are omitted -- they inject state
+        # discontinuities the deterministic world model cannot capture.
+        self.events.push_robot = None
+        # Paper Table A.3: friction coefficients mu ~ U[0.3, 1.2].
+        self.events.physics_material.params["static_friction_range"] = (0.3, 1.2)
+        self.events.physics_material.params["dynamic_friction_range"] = (0.3, 1.2)
 
         # Paper Table A.1: proprioceptive history. ``flatten_history_dim`` (default) makes each term
         # report ``history * dim``, and the observation manager appends the current frame before
@@ -303,3 +333,7 @@ class G1SuperMimicEnvCfg(G1BeyondMimicPlaneEnvCfg):
         else:
             self.rewards = beyondmimic_cfg.BeyondMimicSingleRewardsCfg()
             self.terminations = beyondmimic_cfg.BeyondMimicTerminationCfg()
+
+        # The parent names the run before the overrides above, so its tags (``_linVelObs``, no
+        # ``_noPush``) would describe a different MDP than this one.
+        self.run_name = f"G1SuperMimic_{MOTION_NAME}_{self.super_mimic_design}"
