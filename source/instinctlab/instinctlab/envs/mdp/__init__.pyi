@@ -71,6 +71,11 @@ from .observations.body import (
     root_tannorm_w,
 )
 from .observations.command import command_mask
+from .observations.sim_context import (
+    joint_calibration_offset,
+    rigid_body_com,
+    rigid_body_friction,
+)
 from .observations.world_frame import (
     body_link_ang_vel_w,
     body_link_lin_vel_w,

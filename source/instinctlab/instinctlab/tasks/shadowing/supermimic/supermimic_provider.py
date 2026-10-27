@@ -22,6 +22,8 @@ from instinctlab.tasks.shadowing.supermimic.supermimic_imagination import SuperM
 WM_STATE_GROUP = "wm_state"
 #: Observation group carrying the reference frame index. ``ref_index`` is that group's single term.
 REF_INDEX_GROUP = "ref_index"
+#: Observation group carrying the simulation context (randomized physics parameters).
+SIM_CONTEXT_GROUP = "sim_context"
 #: Extra replay key the algorithm stores alongside each transition.
 REF_INDEX_KEY = "ref_index"
 
@@ -59,8 +61,13 @@ def build_imagination(env, obs_format) -> SuperMimicImagination:
     return SuperMimicImagination(
         state_format=dict(obs_format[WM_STATE_GROUP]),
         soft_joint_pos_limits=robot.data.soft_joint_pos_limits.torch[0],
-        # default pose in the policy's joint order, matching the ``wm_state`` group's joint order
-        default_joint_pos=robot.data.default_joint_pos.torch[0][joint_pos_cmd._asset_joint_ids],
+        # The *nominal* default pose, in the policy's joint order to match the ``wm_state`` group.
+        # Deliberately not the live ``default_joint_pos``: that carries each environment's randomized
+        # calibration offset, and the imagination builds one observation for a batch drawn from many
+        # envs. Using a single env's calibrated pose would bias every other env's ``joint_pos``
+        # observation by up to the offset. The offset is modelled explicitly instead, through the
+        # ``sim_context`` group.
+        default_joint_pos=_nominal_default_joint_pos(robot, joint_pos_cmd._asset_joint_ids),
         policy_term_order=list(observation_manager.active_terms["policy"]),
         critic_term_order=list(observation_manager.active_terms["critic"]),
         # Two index spaces: the reference buffer is in the motion's joint order, the robot in the
@@ -69,6 +76,7 @@ def build_imagination(env, obs_format) -> SuperMimicImagination:
         reference_joint_ids=joint_pos_cmd._motion_reference_joint_ids,
         policy_joint_ids=joint_pos_cmd._asset_joint_ids,
         critic_link_ids=None,
+        context_format=_context_format(obs_format),
         goal_window=motion_reference.cfg.num_frames,
         # Read the history layout off the observation terms rather than restating it: the manager is
         # the authority on both which terms carry history and how many frames, and the imagined
@@ -77,6 +85,22 @@ def build_imagination(env, obs_format) -> SuperMimicImagination:
         history_length=_history_length(observation_manager, "policy"),
         motion_reference=motion_reference,
     )
+
+
+def _nominal_default_joint_pos(robot, joint_ids) -> torch.Tensor:
+    """The un-randomized default joint pose, reindexed into the policy's joint order."""
+    nominal = getattr(robot.data, "default_joint_pos_nominal", None)
+    pose = robot.data.default_joint_pos.torch[0] if nominal is None else nominal
+    return pose[joint_ids]
+
+
+def _context_format(obs_format) -> dict:
+    """The simulation-context layout, or an empty layout when the task supplies none.
+
+    Read from the observation group rather than restated, so the algorithm's context vector and the
+    group the env collects cannot drift apart.
+    """
+    return dict(obs_format.get(SIM_CONTEXT_GROUP, {}))
 
 
 def _term_cfgs(observation_manager, group: str):

@@ -517,6 +517,7 @@ class SuperMimicImagination:
         reference_joint_ids: torch.Tensor | slice | None = None,
         policy_joint_ids: torch.Tensor | slice | None = None,
         critic_link_ids: torch.Tensor | slice | None = None,
+        context_format: "OrderedDict[str, tuple] | dict[str, tuple] | None" = None,
         goal_window: int = 10,
         history_terms: Sequence[str] = (),
         history_length: int = 0,
@@ -554,9 +555,9 @@ class SuperMimicImagination:
         # The state's link axis is already in the critic observation's order, so no re-selection happens
         # by default. ``critic_link_ids`` exists only for tasks whose state and critic select differently.
         self._critic_link_ids: torch.Tensor | slice = slice(None) if critic_link_ids is None else critic_link_ids
-        # The protocol declares a context layout; this task feeds the world model no simulation context
-        # (no friction / CoM / calibration terms), which is a documented deviation from the paper.
-        self.context_format: "OrderedDict[str, tuple]" = OrderedDict()
+        # The simulation context the world model is conditioned on (friction, CoM, joint calibration),
+        # supplied by the caller from the env's ``sim_context`` group. Empty when a task has none.
+        self.context_format: "OrderedDict[str, tuple]" = OrderedDict(context_format or {})
         self.policy_term_order = list(policy_term_order)
         self.critic_term_order = list(critic_term_order)
         # Paper Table A.1: the policy sees the last ``history_length`` proprioceptive frames. The
@@ -574,26 +575,37 @@ class SuperMimicImagination:
         self._sample_ref_window: ReferenceWindow | None = None
         self._prev_action: torch.Tensor | None = None
 
+    #: Observation group carrying the world-model state.
+    STATE_GROUP = "wm_state"
+    #: Observation group carrying the simulation context.
+    CONTEXT_GROUP = "sim_context"
+
     def split_obs_pack(self, pack: dict) -> dict[str, torch.Tensor]:
-        """Slice the flat ``wm_state`` observation group into named state components.
+        """Slice the flat ``wm_state`` / ``sim_context`` groups into named components.
 
         The observation pipeline ships one concatenated tensor per group, while the algorithm works in
-        named components (that is what the replay stores and what the reward cores index). The layout
-        lives here, so this is the only place that knows the offsets.
+        named components (that is what the replay stores and what the reward cores index). The layouts
+        live here, so this is the only place that knows the offsets.
         """
-        group = pack.get("wm_state")
-        if group is None:
+        out = self._split_group(pack, self.STATE_GROUP, self.state_format)
+        out.update(self._split_group(pack, self.CONTEXT_GROUP, self.context_format))
+        return out
+
+    @staticmethod
+    def _split_group(pack: dict, group_name: str, layout) -> dict[str, torch.Tensor]:
+        """Slice one flat observation group according to ``layout`` (``{name: shape}``)."""
+        group = pack.get(group_name)
+        if group is None or not layout:
             return {}
-        if group.shape[-1] != self.state_size:
+        total = int(sum(int(np.prod(shape)) for shape in layout.values()))
+        if group.shape[-1] != total:
             raise ValueError(
-                f"wm_state carries {group.shape[-1]} values but the state layout describes {self.state_size}"
+                f"{group_name} carries {group.shape[-1]} values but its layout describes {total}"
             )
         out = {}
         start = 0
-        for name, shape in self.state_format.items():
-            n = 1
-            for d in shape:
-                n *= int(d)
+        for name, shape in layout.items():
+            n = int(np.prod(shape))
             out[name] = group[..., start : start + n].reshape(group.shape[0], *shape)
             start += n
         return out

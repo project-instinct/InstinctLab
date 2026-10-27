@@ -194,8 +194,42 @@ class SuperMimicObsExtrasCfg:
             self.enable_corruption = False
             self.concatenate_terms = False
 
+    @configclass
+    class SimContextCfg(ObsGroupCfg):
+        """The randomized simulation parameters the dynamics model is conditioned on.
+
+        Paper Sec. 3.2 supplies the world model with a simulation context so it can represent that the
+        same action produces different outcomes in different worlds. These read the values the
+        randomization events actually realized rather than re-sampling them, which would disagree with
+        the physics that is running.
+
+        Corruption is off and terms stay unflattened for the same reasons as ``wm_state``.
+        """
+
+        friction = ObsTerm(
+            func=instinct_mdp.rigid_body_friction,
+            params={"asset_cfg": SceneEntityCfg("robot")},
+        )
+        base_com = ObsTerm(
+            # Must select the body whose CoM the parent task actually randomizes, which is the torso
+            # (``base_com`` event, ``body_names="torso_link"``). Reading a body that is never
+            # randomized yields a constant, so the world model would condition on a value that carries
+            # no information and would not notice the bug.
+            func=instinct_mdp.rigid_body_com,
+            params={"asset_cfg": SceneEntityCfg("robot", body_names=("torso_link",), preserve_order=True)},
+        )
+        joint_offset = ObsTerm(
+            func=instinct_mdp.joint_calibration_offset,
+            params={"asset_cfg": SceneEntityCfg("robot")},
+        )
+
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.concatenate_terms = False
+
     wm_state = WmStateCfg()
     ref_index = RefIndexCfg()
+    sim_context = SimContextCfg()
 
 
 SUPER_MIMIC_DESIGNS = ("paper", "beyondmimic")
@@ -234,7 +268,7 @@ class G1SuperMimicEnvCfg(G1BeyondMimicPlaneEnvCfg):
         # depend on which design happened to be applied first.
         # the observation manager iterates the groups of ``observations``, so the extra groups are
         # attached there rather than kept as a sibling config
-        for group_name in ("wm_state", "ref_index"):
+        for group_name in ("wm_state", "ref_index", "sim_context"):
             setattr(self.observations, group_name, getattr(self.observations_extra, group_name))
 
         # The world-model state must be in the *policy* joint order: the imagination subtracts the
