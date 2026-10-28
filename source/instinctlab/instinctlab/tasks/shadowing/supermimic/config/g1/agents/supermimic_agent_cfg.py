@@ -109,6 +109,11 @@ class SuperMimicAlgorithmCfg:
     """Imagined rollouts per differentiable policy pass; bounds activation memory, not the batch (the
     chunks' gradients are accumulated into one step). The pass is launch-bound, so fewer chunks are
     faster: 512 -> 2048 cut the policy fit from 7.7 s to 2.0 s per update at ~9 GB of activations."""
+    policy_cuda_graph: bool = True
+    """Replay each policy chunk (rollout + backward) as one captured CUDA graph instead of launching its
+    ~10^5 kernels from Python."""
+    world_model_cuda_graph: bool = True
+    """Likewise for each world-model batch (k-step loss + backward)."""
     collection_noise_std: float = 0.1
     gamma: float = 0.99
     lam: float = 0.95

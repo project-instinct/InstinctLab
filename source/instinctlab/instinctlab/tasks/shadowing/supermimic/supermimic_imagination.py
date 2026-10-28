@@ -49,7 +49,6 @@ from instinctlab.tasks.shadowing.supermimic.config.g1.supermimic_rewards_cfg imp
     PAPER_REWARD_STDS,
     PAPER_REWARD_WEIGHTS,
 )
-from instinctlab.utils.math import quat_to_tan_norm
 
 # ---------------------------------------------------------------------------------------------------
 # Layouts
@@ -461,6 +460,26 @@ def root_deviation(
     return height_error, tilt_error
 
 
+def quat_to_tan_norm(q: torch.Tensor) -> torch.Tensor:
+    """``instinctlab.utils.math.quat_to_tan_norm`` in closed form: the rotated x and z axes (x, y, z, w).
+
+    The library version is TorchScript and writes its constant axes through a host scalar, which a
+    captured CUDA graph cannot contain; this one builds the six components directly.
+    """
+    x, y, z, w = q.unbind(-1)
+    return torch.stack(
+        (
+            1.0 - 2.0 * (y * y + z * z),
+            2.0 * (x * y + w * z),
+            2.0 * (x * z - w * y),
+            2.0 * (x * z + w * y),
+            2.0 * (y * z - w * x),
+            1.0 - 2.0 * (x * x + y * y),
+        ),
+        dim=-1,
+    )
+
+
 def _projected_gravity(quat_w: torch.Tensor) -> torch.Tensor:
     """World gravity ``(0, 0, -1)`` in the frame of ``quat_w`` (x, y, z, w), i.e. ``mdp.projected_gravity``,
     in closed form: the negated third row of the rotation matrix."""
@@ -607,6 +626,30 @@ class SuperMimicImagination:
     #: Observation group carrying the simulation context.
     CONTEXT_GROUP = "sim_context"
 
+    def to(self, device: torch.device | str) -> SuperMimicImagination:
+        """Put every constant the imagined step reads on ``device``.
+
+        Indexing a device tensor with a Python list, or mixing in a CPU constant, copies host-to-device
+        on every call: a stream synchronisation in eager mode and an error inside a captured CUDA graph.
+        Index lists become device index tensors; slices stay slices.
+        """
+
+        def move(value):
+            if value is None or isinstance(value, slice):
+                return value
+            if torch.is_tensor(value):
+                return value.to(device)
+            return torch.as_tensor(list(value), dtype=torch.long, device=device)
+
+        self.soft_joint_pos_limits = move(self.soft_joint_pos_limits)
+        self._default_joint_pos = move(self._default_joint_pos)
+        self._goal_default_joint_pos = move(self._goal_default_joint_pos)
+        self.goal_joint_ids = move(self.goal_joint_ids)
+        self._critic_link_ids = move(self._critic_link_ids)
+        if self.policy_noise_halfwidth is not None:
+            self.policy_noise_halfwidth = self.policy_noise_halfwidth.to(device)
+        return self
+
     def _reward_scale(self, like: torch.Tensor) -> torch.Tensor:
         """``weight * step_dt`` per reward term, built once per device and dtype (a host-to-device copy
         on every imagined step would synchronise the stream)."""
@@ -739,7 +782,20 @@ class SuperMimicImagination:
                 f"sample index {int(keep.max())} is out of range for "
                 f"{self._sample_ref_window.base_pos_w.shape[0]} window rows"
             )
-        self.ref_window = self._sample_ref_window.rows(keep)
+        # Written into one persistent window per batch size, so the tensors a captured CUDA graph reads
+        # keep their addresses from rollout to rollout.
+        buffers = self.__dict__.setdefault("_row_windows", {})
+        size = int(keep.numel())
+        source = self._sample_ref_window
+        target = buffers.get(size)
+        if target is None or any(
+            getattr(target, n).shape[1:] != getattr(source, n).shape[1:] for n in ReferenceWindow._FIELD_NAMES
+        ):
+            target = buffers[size] = source.rows(keep)
+        else:
+            for name in ReferenceWindow._FIELD_NAMES:
+                torch.index_select(getattr(source, name), 0, keep, out=getattr(target, name))
+        self.ref_window = target
 
     def _ref(self, ref_index: torch.Tensor | None) -> ReferenceWindow | None:
         if self.ref_window is None or ref_index is None:

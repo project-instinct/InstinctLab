@@ -77,11 +77,9 @@ def _exp(r: torch.Tensor) -> torch.Tensor:
 
 def _tan_norm(q: torch.Tensor) -> torch.Tensor:
     """Sign-invariant 6-D rotation feature: the rotated x and z axes."""
-    ex = torch.zeros(*q.shape[:-1], 3, dtype=q.dtype, device=q.device)
-    ez = torch.zeros_like(ex)
-    ex[..., 0] = 1.0
-    ez[..., 2] = 1.0
-    return torch.cat((_rotate(q, ex), _rotate(q, ez)), dim=-1)
+    from instinctlab.tasks.shadowing.supermimic.supermimic_imagination import quat_to_tan_norm
+
+    return quat_to_tan_norm(q)
 
 
 def _normalize(q: torch.Tensor) -> torch.Tensor:

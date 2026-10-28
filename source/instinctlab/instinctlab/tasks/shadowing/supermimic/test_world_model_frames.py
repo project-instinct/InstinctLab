@@ -121,3 +121,11 @@ def _slices(fmt):
         out[name] = slice(offset, offset + size)
         offset += size
     return out
+
+
+def test_closed_form_tan_norm_matches_the_library():
+    from instinctlab.tasks.shadowing.supermimic.supermimic_imagination import quat_to_tan_norm as closed_form
+    from instinctlab.utils.math import quat_to_tan_norm as library
+
+    q = _quat(16, torch.Generator().manual_seed(4))
+    assert torch.allclose(closed_form(q), library(q), atol=1e-12)

@@ -87,7 +87,7 @@ def build_imagination(env, obs_format) -> SuperMimicImagination:
         policy_noise_halfwidth=_noise_halfwidth(observation_manager, "policy"),
         motion_reference=motion_reference,
         step_dt=float(unwrapped.step_dt),
-    )
+    ).to(unwrapped.device)
 
 
 def _noise_halfwidth(observation_manager, group: str) -> torch.Tensor | None:
