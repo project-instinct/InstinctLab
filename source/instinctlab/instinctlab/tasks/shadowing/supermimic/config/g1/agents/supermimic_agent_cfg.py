@@ -114,19 +114,11 @@ class SuperMimicAlgorithmCfg:
     learning_rate: float = 2e-4
     """Reported by the runner's logger; the effective rates are the per-learner ones above."""
 
-    # Quaternions are not a vector space, so they are regressed absolutely; everything else as a delta.
-    # World positions in particular must be deltas: environments are laid out on a grid tens of metres
-    # wide, so an absolute link position is dominated by which environment it is in, not by the motion.
-    world_model_predict_delta: tuple = (
-        "root_pos_w",
-        "root_lin_vel_w",
-        "root_ang_vel_w",
-        "joint_pos",
-        "joint_vel",
-        "body_link_pos_w",
-        "body_link_lin_vel_w",
-        "body_link_ang_vel_w",
-    )
+    # Every component is regressed as a one-step change, so the fitting error of every dimension is
+    # measured on the same scale (its typical change per step). Quaternions included: a 20 ms rotation is
+    # small, an additive change followed by the world model's renormalisation is its first-order step,
+    # and fitting them absolutely would weight their error by their full spread, about 25x less.
+    world_model_predict_delta: str = "all"
     world_model_hidden_sizes: tuple = (2048, 2048, 2048)
 
 
