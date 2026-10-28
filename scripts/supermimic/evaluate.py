@@ -202,12 +202,22 @@ with launch_simulation(env_cfg, args_cli):
                 break
             time.sleep(60)
             continue
-        # the newest checkpoint may still be being written; give it a moment
-        time.sleep(5)
         path = todo[0]
-        done_paths.add(os.path.basename(path))
+        # Checkpoints hold the replay (several GB), so one may still be being written: take it only once
+        # it has not changed for a minute, and retry later if it still cannot be read.
+        if WATCH and time.time() - os.path.getmtime(path) < 60:
+            time.sleep(30)
+            continue
         t0 = time.time()
-        res = evaluate(path)
+        try:
+            res = evaluate(path)
+        except RuntimeError as err:
+            if not WATCH or "zip archive" not in str(err):
+                raise
+            print(f"[eval] {os.path.basename(path)} not readable yet ({err}); retrying", flush=True)
+            time.sleep(60)
+            continue
+        done_paths.add(os.path.basename(path))
         with open(path.replace(".pt", "_eval.json"), "w") as f:
             json.dump(res, f, indent=1)
         print(
