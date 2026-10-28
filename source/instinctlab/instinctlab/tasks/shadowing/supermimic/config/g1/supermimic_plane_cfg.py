@@ -28,6 +28,7 @@ The scene must be built at class-definition time (not in ``__post_init__``): the
 import os
 
 from isaaclab.envs import mdp
+from isaaclab.managers import EventTermCfg
 from isaaclab.managers import ObservationGroupCfg as ObsGroupCfg
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import SceneEntityCfg
@@ -83,7 +84,9 @@ class SuperMimicAmassMotionCfg(AmassMotionCfgBase):
     buffer_device = "output_device"
     motion_interpolate_func = motion_interpolate_bilinear
     velocity_estimation_method = "frontbackward"
-    motion_bin_length_s = 1.0  # reset-bin length used by the return-based reset curriculum
+    motion_bin_length_s = 1.0  # paper App. D.1: 1 s bins for return-based reset sampling
+    # resets draw (clip, bin) pairs from one distribution over every bin of the library
+    env_starting_stub_sampling_strategy = "concat_motion_bins"
 
 
 motion_reference_cfg = MotionReferenceManagerCfg(
@@ -316,6 +319,23 @@ class G1SuperMimicEnvCfg(G1BeyondMimicPlaneEnvCfg):
         # The world model must also learn the steps that end episodes (falls), so the pre-reset
         # observations are reported too (``infos["final_observations"]``).
         self.compute_final_obs = True
+
+        # Paper App. D.1: return-based reset sampling over 1 s bins replaces BeyondMimic's failure-count
+        # adaptive sampling. Runs every control step, after the step's resets.
+        self.curriculum.beyond_adaptive_sampling = None
+        self.events.bin_fail_counter_smoothing = None
+        self.events.return_based_reset_sampling = EventTermCfg(
+            func=instinct_mdp.return_based_reset_sampling,
+            mode="interval",
+            interval_range_s=(self.sim.dt * self.decimation,) * 2,
+            is_global_time=True,
+            params={
+                "reference_name": "motion_reference",
+                "gamma": 0.99,
+                # positive tracking weights (4 x 1 + 2 x 0.5) times the control interval
+                "max_step_reward": 5.0 * self.sim.dt * self.decimation,
+            },
+        )
 
         # Paper App. A: BeyondMimic's root-velocity pushes are omitted -- they inject state
         # discontinuities the deterministic world model cannot capture.

@@ -61,6 +61,7 @@ from .events.randomization import (
     randomize_default_joint_pos,
     randomize_ray_offsets,
 )
+from .events.return_sampling import return_based_reset_sampling
 from .events.terrain import register_virtual_obstacle_to_sensor
 from .observations.body import (
     base_heading_w,

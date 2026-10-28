@@ -10,6 +10,7 @@ Usage (inside the container)::
 
     CKPT=<run>/model_N.pt python scripts/supermimic/evaluate.py
     RUN=<run dir> python scripts/supermimic/evaluate.py           # every checkpoint not yet in eval.csv
+    RUN=<run dir> EVERY=1000 WATCH=1 python scripts/supermimic/evaluate.py   # keep scoring new ones
 
 Results go to ``<run dir>/eval.csv`` (one row per checkpoint) and ``<checkpoint>_eval.json``.
 """
@@ -27,6 +28,8 @@ from instinctlab.utils import instinct_rl_cli as cli
 TASK = os.environ.get("TASK", "Instinct-SuperMimic-Plane-G1-Newton-v0")
 CKPT = os.environ.get("CKPT")
 RUN = os.environ.get("RUN")
+EVERY = int(os.environ.get("EVERY", "1"))  # only checkpoints whose iteration is a multiple of this
+WATCH = os.environ.get("WATCH", "0") == "1"  # keep polling the run directory for new checkpoints
 if (CKPT is None) == (RUN is None):
     raise SystemExit("set exactly one of CKPT (one checkpoint) or RUN (every checkpoint of a run)")
 
@@ -56,12 +59,19 @@ env_cfg, agent_cfg = cli.resolve_train_cfg(TASK, overrides)
 motion_name, motion_cfg = next(iter(env_cfg.scene.motion_reference.motion_buffers.items()))
 motion_cfg.motion_start_from_middle_range = [0.0, 0.0]  # from the first frame
 motion_cfg.motion_bin_length_s = None  # no return-based start sampling
+motion_cfg.env_starting_stub_sampling_strategy = "independent"  # a clip per env, chosen below
 env_cfg.observations.policy.enable_corruption = False  # no observation noise
 env_cfg.episode_length_s = 1.0e5  # the clip end, not a time limit, ends the episode
 env_cfg.events.physics_material.params["static_friction_range"] = (1.0, 1.0)
 env_cfg.events.physics_material.params["dynamic_friction_range"] = (1.0, 1.0)
 env_cfg.events.physics_material.params["restitution_range"] = (0.0, 0.0)
-for name in ("add_joint_default_pos", "base_com", "push_robot", "bin_fail_counter_smoothing"):
+for name in (
+    "add_joint_default_pos",
+    "base_com",
+    "push_robot",
+    "bin_fail_counter_smoothing",
+    "return_based_reset_sampling",
+):
     if hasattr(env_cfg.events, name):
         setattr(env_cfg.events, name, None)
 if hasattr(env_cfg, "curriculum") and hasattr(env_cfg.curriculum, "beyond_adaptive_sampling"):
@@ -84,8 +94,8 @@ env_cfg.scene.num_envs = NUM_CLIPS
 def checkpoints() -> list[str]:
     if CKPT is not None:
         return [CKPT]
-    found = glob.glob(os.path.join(RUN, "model_*.pt"))
-    return sorted(found, key=lambda p: int(re.search(r"model_(\d+)\.pt$", p).group(1)))
+    found = [(int(re.search(r"model_(\d+)\.pt$", p).group(1)), p) for p in glob.glob(os.path.join(RUN, "model_*.pt"))]
+    return [p for it, p in sorted(found) if it % EVERY == 0]
 
 
 with launch_simulation(env_cfg, args_cli):
@@ -185,9 +195,17 @@ with launch_simulation(env_cfg, args_cli):
     elif out_csv is not None:
         with open(out_csv, "w") as f:
             f.write("iteration,checkpoint,norm_return,norm_return_framewise,n_failed,failed,eval_at\n")
-    for path in checkpoints():
-        if os.path.basename(path) in done_paths:
+    while True:
+        todo = [p for p in checkpoints() if os.path.basename(p) not in done_paths]
+        if not todo:
+            if not WATCH:
+                break
+            time.sleep(60)
             continue
+        # the newest checkpoint may still be being written; give it a moment
+        time.sleep(5)
+        path = todo[0]
+        done_paths.add(os.path.basename(path))
         t0 = time.time()
         res = evaluate(path)
         with open(path.replace(".pt", "_eval.json"), "w") as f:
