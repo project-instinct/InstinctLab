@@ -12,8 +12,10 @@ task provides three things beyond a normal tracking task:
 The observation groups are configured here; the provider is referenced by dotted path, because it can
 only be built once the simulator is running.
 
-Data: ``~/Datasets/LAFAN1_G1_retargetted_instinctnpz`` -- the 40 LAFAN1 clips converted with
-``scripts/lafan1_csv_to_instinct.py`` (2.45 h, matching the paper's dataset size).
+Data: ``~/Datasets/UbisoftLAFAN1_GMR_g1_29dof_torsoBase_retargetted_instinctnpz`` -- LAFAN1 retargeted to
+the G1 with ``torso_link`` as the base, which is the root link of the asset this task uses
+(``g1_29dof_torsobase_popsicle.urdf``). Unitree's official LAFAN1 release is pelvis-based and must not be
+used here: its base pose describes a different link than the articulation's root.
 
 This file subclasses the BeyondMimic G1 task and swaps the motion buffer, so tracking rewards,
 terminations and action scaling are shared with the existing implementation instead of duplicated.
@@ -46,7 +48,7 @@ from instinctlab.utils.config import set_cfg_joint_order
 
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
 
-LAFAN1_G1_PATH = os.path.expanduser("~/Datasets/LAFAN1_G1_retargetted_instinctnpz")
+LAFAN1_G1_PATH = os.path.expanduser("~/Datasets/UbisoftLAFAN1_GMR_g1_29dof_torsoBase_retargetted_instinctnpz")
 MOTION_NAME = "Lafan1"
 
 #: Paper App. A: the goal encoder sees a K = 10 future reference sequence.
@@ -67,7 +69,7 @@ class SuperMimicAmassMotionCfg(AmassMotionCfgBase):
     """LAFAN1 motions for SuperMimic.
 
     ``filtered_motion_selection_filepath`` is left as ``None`` so every ``*retargetted.npz`` under
-    ``path`` is used; the converted dataset holds exactly the paper's 40 clips.
+    ``path`` is used (77 clips).
     """
 
     path = LAFAN1_G1_PATH
