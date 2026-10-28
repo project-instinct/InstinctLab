@@ -168,6 +168,11 @@ class InstinctRlVecEnvWrapper(VecEnv):
         # move extra observations to the extras dict
 
         extras["observations"] = obs_pack
+        # With ``compute_final_obs`` the env also reports the observations of finished episodes from
+        # before their reset. Popped so a step without resets cannot leave a stale one behind.
+        final_obs = extras.pop("final_obs", None)
+        if final_obs is not None:
+            extras["final_observations"] = self._flatten_all_obs_groups(final_obs)
         # move time out information to the extras dict
         # this is only needed for infinite horizon tasks
         if not self.unwrapped.cfg.is_finite_horizon:

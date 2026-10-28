@@ -295,7 +295,11 @@ class G1SuperMimicEnvCfg(G1BeyondMimicPlaneEnvCfg):
         # only (Table A.1), so BeyondMimic's noise on the reference position/rotation commands is dropped.
         self.observations.policy.position_ref.noise = None
         self.observations.policy.rotation_ref.noise = None
-        # Paper: the critic is V(s, g, xi). It sees the simulation context alongside state and goal.
+        # Paper Eq. 2-3: the critic is V(s, g, xi) -- world-model state, goal and sim context, no action.
+        # BeyondMimic's critic also reads ``last_action``. In imagination that is the policy's own last
+        # action, so the bootstrap V(s_H) would pass a gradient straight into a_{H-1} along an input the
+        # critic only ever saw on-policy; the policy then climbs the critic's extrapolation.
+        self.observations.critic.last_action = None
         self.observations.critic.friction = ObsTerm(
             func=instinct_mdp.rigid_body_friction, params={"asset_cfg": SceneEntityCfg("robot")}
         )
@@ -307,6 +311,11 @@ class G1SuperMimicEnvCfg(G1BeyondMimicPlaneEnvCfg):
             func=instinct_mdp.joint_calibration_offset,
             params={"asset_cfg": set_cfg_joint_order(SceneEntityCfg("robot"), joint_order)},
         )
+
+        # The env resets a finished episode inside ``step``, so the state it returns is the next episode's.
+        # The world model must also learn the steps that end episodes (falls), so the pre-reset
+        # observations are reported too (``infos["final_observations"]``).
+        self.compute_final_obs = True
 
         # Paper App. A: BeyondMimic's root-velocity pushes are omitted -- they inject state
         # discontinuities the deterministic world model cannot capture.

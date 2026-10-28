@@ -100,7 +100,7 @@ with launch_simulation(env_cfg, args_cli):
             obs, extra_obs, _, dones, _ = runner.rollout_step(obs, extra_obs)
             action = unwrapped.action_manager.action.clone()
             terms = unwrapped.reward_manager._termwise_reward_buf["rewards"]
-            env_rewards.append(torch.stack([terms[n].clone() for n in REWARD_TERMS], dim=-1))
+            env_rewards.append(torch.stack([terms[n].clone() for n in REWARD_TERMS], dim=-1) * unwrapped.step_dt)
             env_term.append(torch.stack([unwrapped.termination_manager.get_term(n) for n in term_names], -1).any(-1))
             # a reset replaces the observed state with the new episode's
             env_done.append(dones.reshape(-1).bool().to(device))
@@ -178,7 +178,7 @@ with launch_simulation(env_cfg, args_cli):
     print("\n[3] policy gradient vs central finite difference along the gradient (ratio 1.0 = consistent)")
     for horizon in (1, 2, 4, 8, 16, 32):
         alg.horizon = horizon
-        objective, _ = alg._imagined_return(idx)
+        objective = alg._imagined_return(idx)[0]
         grads = torch.autograd.grad(objective, params, allow_unused=True)
         grads = [g if g is not None else torch.zeros_like(p) for g, p in zip(grads, params)]
         norm = float(torch.sqrt(sum((g * g).sum() for g in grads)))

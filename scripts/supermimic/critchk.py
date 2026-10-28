@@ -81,7 +81,8 @@ with launch_simulation(env_cfg, args_cli):
         extra = infos["observations"]
         extra.setdefault("policy", obs)
         terms = unwrapped.reward_manager._termwise_reward_buf["rewards"]
-        reward = torch.stack([terms[n] for n in REWARD_TERMS], dim=-1).sum(-1)  # imagination's scale
+        # the manager's term buffer is weighted but not yet multiplied by dt; the imagination's reward is
+        reward = torch.stack([terms[n] for n in REWARD_TERMS], dim=-1).sum(-1) * unwrapped.step_dt
         return runner._prepare_extra_obs(extra), extra, reward, dones.reshape(-1).bool().to(device)
 
     with torch.no_grad():
@@ -128,7 +129,7 @@ with launch_simulation(env_cfg, args_cli):
             obs, extra, reward, done = env_step(act(obs))
             if step == 0:
                 terms = unwrapped.reward_manager._termwise_reward_buf["rewards"]
-                real_terms1 = torch.stack([terms[n].clone() for n in REWARD_TERMS], dim=-1)
+                real_terms1 = torch.stack([terms[n].clone() for n in REWARD_TERMS], dim=-1) * unwrapped.step_dt
             real_states.append(pack_state(extra)[0])
             real_rewards.append(reward)
             real_dones.append(done)

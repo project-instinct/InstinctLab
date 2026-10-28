@@ -518,6 +518,7 @@ class SuperMimicImagination:
         termination_temperature: float = 0.02,
         motion_reference=None,
         ref_window: ReferenceWindow | None = None,
+        step_dt: float = 1.0,
     ) -> None:
         # The layout is supplied by the caller (normally the ``wm_state`` observation group), not
         # derived here: term names are the state component names, so there is one vocabulary.
@@ -561,6 +562,11 @@ class SuperMimicImagination:
         if missing:
             raise ValueError(f"history terms {missing} are not in the policy observation group")
         self.termination_temperature = termination_temperature
+        # The env's reward manager multiplies every weighted term by the control interval, so the reward
+        # the simulator hands the agent is ``dt`` times the weighted sum. The imagined reward is scaled the
+        # same way: the critic's targets, the gradient clipping and the paper's normalised return
+        # (H-step reward / (H * 0.1), 0.1 = (4 * 1 + 2 * 0.5) * 0.02) all assume that scale.
+        self.step_dt = float(step_dt)
         self.ref_window = ref_window
         self._sample_ref_window: ReferenceWindow | None = None
         # Paper Sec. 3.3: "the model emits the noise-free observation, we re-add sensor noise". Half-width
@@ -572,6 +578,14 @@ class SuperMimicImagination:
     STATE_GROUP = "wm_state"
     #: Observation group carrying the simulation context.
     CONTEXT_GROUP = "sim_context"
+
+    def world_model_parameterization(self):
+        """How the world model reads this state and predicts its change: heading-invariant features and
+        frame-local increments (``world_model_frames``), so the dynamics need not be learned separately
+        for every environment origin and heading."""
+        from instinctlab.tasks.shadowing.supermimic.world_model_frames import HeadingFrameParameterization
+
+        return HeadingFrameParameterization(self.state_format)
 
     def split_obs_pack(self, pack: dict) -> dict[str, torch.Tensor]:
         """Slice the flat ``wm_state`` / ``sim_context`` groups into named components.
@@ -657,6 +671,26 @@ class SuperMimicImagination:
         self.ref_window = self._sample_ref_window
         return torch.zeros(cursor.shape[0], dtype=torch.long, device=manager.device)
 
+    def rollout_start_valid(
+        self, seeds: dict[str, torch.Tensor], env_index: torch.Tensor, horizon: int
+    ) -> torch.Tensor:
+        """``(B,)`` True where the clip still has a reference frame ``horizon`` steps after the start.
+
+        A rollout that runs past its clip's end would end in the dataset-exhausted termination, a
+        bookkeeping event rather than a failure, and its zero bootstrap would teach the critic that
+        states near a clip end are worthless. Such starts are not imagined from.
+        """
+        manager = self.motion_reference
+        buffer = next(iter(manager.motion_buffers.values()))
+        seqs = buffer._all_motion_sequences
+        cursor = seeds["ref_cursor"].to(manager.device)
+        motion_ids = cursor[:, 0].round().long().to(buffer.buffer_device)
+        start = 1.0 if manager.cfg.data_start_from == "one_frame_interval" else 0.0
+        env_index = env_index.to(manager.device).long()
+        t_end = cursor[:, 1] + (int(horizon) + start) * manager.frame_interval_s[env_index]
+        frame = torch.round(t_end.to(buffer.buffer_device) * seqs.framerate[motion_ids])
+        return (frame < seqs.buffer_length[motion_ids]).to(cursor.device)
+
     def subset_reference_rows(self, sample_index: torch.Tensor) -> None:
         """Narrow the rollout's reference window to a batch subset (e.g. one policy chunk)."""
         if self._sample_ref_window is None:
@@ -692,7 +726,7 @@ class SuperMimicImagination:
         prev_action: torch.Tensor,
         ref_index: torch.Tensor | None,
     ) -> torch.Tensor:
-        """Per-term reward, ``(B, num_terms)``, differentiable w.r.t. ``state`` and ``action``."""
+        """Per-term reward times ``step_dt``, ``(B, num_terms)``, differentiable w.r.t. state and action."""
         ref = self._ref(ref_index)
         if ref is None:
             raise ValueError("SuperMimic reward needs a reference window and ref_index")
@@ -713,7 +747,7 @@ class SuperMimicImagination:
             device=state.device,
             dtype=state.dtype,
         )
-        return torch.stack(terms, dim=-1) * weights
+        return torch.stack(terms, dim=-1) * (weights * self.step_dt)
 
     def termination_prob(self, state: torch.Tensor, ref_index: torch.Tensor | None) -> torch.Tensor:
         ref = self._ref(ref_index)

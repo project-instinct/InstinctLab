@@ -91,13 +91,14 @@ class SuperMimicAlgorithmCfg:
     critic_epochs: int = 5
     critic_mini_batches: int = 4
     updates_per_iteration: int = 2
-    wm_warmup_iterations: int = 3
+    wm_warmup_iterations: int = 250
     """World-model-only iterations before the first policy update.
 
     The paper trains the two in one loop from the start (Sec. 3.1), which assumes a replay buffer that is
-    already populated. In this implementation the buffer starts empty, so an H = 32 rollout through an
-    untrained model diverges immediately and would poison the critic. Three warmup iterations cost
-    seconds and give the model a usable k-step fit first.
+    already populated. Here the buffer starts empty. 250 iterations (1250 env steps, filling the
+    1000-step buffer, and 5000 world-model batches) match the 500 warmup iterations at 2.5 env steps
+    each of the public reproduction that reaches the paper's 0.82 return
+    (github.com/zita-ch/supermimic_vibed). With 40 warmup iterations every run with the critic diverged.
     """
 
     world_model_learning_rate: float = 2e-4
