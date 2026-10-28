@@ -15,7 +15,8 @@ only be built once the simulator is running.
 Data: ``~/Datasets/UbisoftLAFAN1_GMR_g1_29dof_torsoBase_retargetted_instinctnpz`` -- LAFAN1 retargeted to
 the G1 with ``torso_link`` as the base, which is the root link of the asset this task uses
 (``g1_29dof_torsobase_popsicle.urdf``). Unitree's official LAFAN1 release is pelvis-based and must not be
-used here: its base pose describes a different link than the articulation's root.
+used here: its base pose describes a different link than the articulation's root. Training uses the
+paper's 40 clips (2.45 h) of the folder's 77, listed in ``lafan1_paper_40clips.yaml``.
 
 This file subclasses the BeyondMimic G1 task and swaps the motion buffer, so tracking rewards,
 terminations and action scaling are shared with the existing implementation instead of duplicated.
@@ -49,6 +50,8 @@ from instinctlab.utils.config import set_cfg_joint_order
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
 
 LAFAN1_G1_PATH = os.path.expanduser("~/Datasets/UbisoftLAFAN1_GMR_g1_29dof_torsoBase_retargetted_instinctnpz")
+#: The paper's 40 LAFAN1 clips (Fig. 4), as file names inside ``LAFAN1_G1_PATH``.
+LAFAN1_PAPER_SELECTION = os.path.join(os.path.dirname(__file__), "lafan1_paper_40clips.yaml")
 MOTION_NAME = "Lafan1"
 
 #: Paper App. A: the goal encoder sees a K = 10 future reference sequence.
@@ -68,13 +71,12 @@ SUPER_MIMIC_HISTORY_TERMS = ("base_ang_vel", "projected_gravity", "joint_pos", "
 class SuperMimicAmassMotionCfg(AmassMotionCfgBase):
     """LAFAN1 motions for SuperMimic.
 
-    ``filtered_motion_selection_filepath`` is left as ``None`` so every ``*retargetted.npz`` under
-    ``path`` is used (77 clips).
+    Uses the paper's 40-clip subset (2.45 h) of the 77 sequences in ``path``.
     """
 
     path = LAFAN1_G1_PATH
     retargetting_func = None
-    filtered_motion_selection_filepath = None
+    filtered_motion_selection_filepath = LAFAN1_PAPER_SELECTION
     motion_start_from_middle_range = [0.0, 0.8]
     motion_start_height_offset = 0.0
     ensure_link_below_zero_ground = False

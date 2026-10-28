@@ -1,0 +1,45 @@
+# The 40 LAFAN1 clips (2.45 h) used by SuperMimic (arXiv:2610.28480v1, Fig. 4: "LAFAN1 (40 clips, 2.45 h)").
+# These are the clips of Unitree's G1 LAFAN1 retarget release; the file names refer to the torso-based
+# retarget in ~/Datasets/UbisoftLAFAN1_GMR_g1_29dof_torsoBase_retargetted_instinctnpz, whose base is the
+# articulation's root link (torso_link). Paths are relative to that dataset folder.
+selected_files:
+  - dance1_subject1_retargetted.npz
+  - dance1_subject2_retargetted.npz
+  - dance1_subject3_retargetted.npz
+  - dance2_subject1_retargetted.npz
+  - dance2_subject2_retargetted.npz
+  - dance2_subject3_retargetted.npz
+  - dance2_subject4_retargetted.npz
+  - dance2_subject5_retargetted.npz
+  - fallAndGetUp1_subject1_retargetted.npz
+  - fallAndGetUp1_subject4_retargetted.npz
+  - fallAndGetUp1_subject5_retargetted.npz
+  - fallAndGetUp2_subject2_retargetted.npz
+  - fallAndGetUp2_subject3_retargetted.npz
+  - fallAndGetUp3_subject1_retargetted.npz
+  - fight1_subject2_retargetted.npz
+  - fight1_subject3_retargetted.npz
+  - fight1_subject5_retargetted.npz
+  - fightAndSports1_subject1_retargetted.npz
+  - fightAndSports1_subject4_retargetted.npz
+  - jumps1_subject1_retargetted.npz
+  - jumps1_subject2_retargetted.npz
+  - jumps1_subject5_retargetted.npz
+  - run1_subject2_retargetted.npz
+  - run1_subject5_retargetted.npz
+  - run2_subject1_retargetted.npz
+  - run2_subject4_retargetted.npz
+  - sprint1_subject2_retargetted.npz
+  - sprint1_subject4_retargetted.npz
+  - walk1_subject1_retargetted.npz
+  - walk1_subject2_retargetted.npz
+  - walk1_subject5_retargetted.npz
+  - walk2_subject1_retargetted.npz
+  - walk2_subject3_retargetted.npz
+  - walk2_subject4_retargetted.npz
+  - walk3_subject1_retargetted.npz
+  - walk3_subject2_retargetted.npz
+  - walk3_subject3_retargetted.npz
+  - walk3_subject4_retargetted.npz
+  - walk3_subject5_retargetted.npz
+  - walk4_subject1_retargetted.npz
