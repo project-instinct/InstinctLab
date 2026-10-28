@@ -19,24 +19,46 @@ import os
 from isaaclab.utils.configclass import configclass
 
 from instinctlab.utils.wrappers.instinct_rl import (
-    InstinctRlActorCriticCfg,
+    InstinctRlEncoderActorCriticCfg,
+    InstinctRlMlpCfg,
     InstinctRlNormalizerCfg,
     InstinctRlOnPolicyRunnerCfg,
 )
 
 
 @configclass
-class SuperMimicPolicyCfg(InstinctRlActorCriticCfg):
-    """Actor and critic networks.
+class MotionEncoderCfg(InstinctRlMlpCfg):
+    """Paper Table A.4: motion encoder, MLP (2048, 1024, 512, 256) over the K = 10 future reference frames,
+    to a 32-d latent bounded by tanh."""
 
-    The critic is the paper's MLP (256, 128) (Table A.4). The actor is a plain MLP rather than the paper's
-    motion encoder (2048, 1024, 512, 256) -> 32-d tanh latent -> decoder (2048, 1024, 512, 256): that
-    split exists to share one decoder across goal interfaces, and this task trains a single interface.
+    component_names = ["joint_pos_ref", "joint_vel_ref", "position_ref", "rotation_ref"]
+    hidden_sizes = [2048, 1024, 512, 256]
+    output_size = 32
+    nonlinearity = "ELU"
+    output_nonlinearity = "Tanh"
+    # the decoder sees the latent in place of the raw reference terms
+    takeout_input_components = True
+
+
+@configclass
+class SuperMimicEncoderConfigs:
+    motion = MotionEncoderCfg()
+
+
+@configclass
+class SuperMimicPolicyCfg(InstinctRlEncoderActorCriticCfg):
+    """Paper Table A.4 networks.
+
+    * policy: motion encoder -> 32-d latent z, then the decoder MLP (2048, 1024, 512, 256) over z and the
+      last 10 frames of the proprioceptive observation;
+    * critic: MLP (256, 128) over state, goal and simulation context (the ``critic`` group).
     """
 
-    class_name = "ActorCritic"
+    class_name = "EncoderActorCritic"
     init_noise_std = 1.0
-    actor_hidden_dims = [512, 256, 128]
+    encoder_configs: SuperMimicEncoderConfigs = SuperMimicEncoderConfigs()
+    critic_encoder_configs = None
+    actor_hidden_dims = [2048, 1024, 512, 256]
     critic_hidden_dims = [256, 128]
     activation = "elu"
 
@@ -124,7 +146,10 @@ class G1SuperMimicRunnerCfg(InstinctRlOnPolicyRunnerCfg):
     algorithm: SuperMimicAlgorithmCfg = SuperMimicAlgorithmCfg()
     normalizers: SuperMimicNormalizersCfg = SuperMimicNormalizersCfg()
 
-    num_steps_per_env = 24
+    num_steps_per_env = 5
+    """Paper Table A.5: update-to-data ratio 0.4, i.e. 0.4 learner updates (one world-model fit plus one
+    policy update) per vectorised environment step. With ``updates_per_iteration = 2`` that is 5 steps.
+    Collecting 24 steps per 2 updates gave the world model about 5x fewer fits per transition."""
     max_iterations = 30000
     save_interval = 1000
     log_interval = 10
