@@ -122,7 +122,8 @@ with launch_simulation(env_cfg, args_cli):
     @torch.no_grad()
     def evaluate(path: str) -> dict:
         # the learners and normalisers only: the replay in the checkpoint is not needed
-        ckpt = torch.load(path, weights_only=True, map_location=device)
+        # on the CPU: the checkpoint also holds the replay buffer (several GB), which is not needed here
+        ckpt = torch.load(path, weights_only=True, map_location="cpu")
         runner.alg.actor_critic.load_state_dict(ckpt["model_state_dict"])
         for name, normalizer in runner.normalizers.items():
             normalizer.load_state_dict(ckpt[f"{name}_normalizer_state_dict"])

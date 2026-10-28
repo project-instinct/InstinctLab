@@ -169,13 +169,18 @@ class ReferenceWindow:
     def horizon(self) -> int:
         return self.base_pos_w.shape[1]
 
-    def at(self, ref_index: torch.Tensor) -> ReferenceWindow:
+    def at(self, ref_index: torch.Tensor | int) -> ReferenceWindow:
         """One step per env, where ``ref_index`` is a *column offset* into this window.
 
         Column ``j`` is the reference at ``t + j * control_dt``, so ``ref_index`` starts at 0 and
         :meth:`SuperMimicImagination.advance` adds one per imagined step. Past the end the last column
         is clamped; ``validity`` records that the clip ran out.
+
+        An ``int`` is one column for every row -- the case of a batch of rollouts started together --
+        and is a slice rather than a gather.
         """
+        if isinstance(ref_index, int):
+            return self.columns(ref_index, 1)
         offset = ref_index.clamp(0, self.horizon - 1)
 
         def pick(t: torch.Tensor) -> torch.Tensor:
@@ -199,6 +204,15 @@ class ReferenceWindow:
             base_pos_plane_mask=pick(self.base_pos_plane_mask),
             base_pos_height_mask=pick(self.base_pos_height_mask),
         )
+
+    def columns(self, start: int, length: int) -> ReferenceWindow:
+        """Columns ``start .. start + length - 1`` for every row, the last column repeated past the end."""
+        if start >= 0 and start + length <= self.horizon:
+            return ReferenceWindow(
+                **{name: getattr(self, name)[:, start : start + length] for name in self._FIELD_NAMES}
+            )
+        idx = torch.arange(start, start + length, device=self.base_pos_w.device).clamp(0, self.horizon - 1)
+        return ReferenceWindow(**{name: getattr(self, name).index_select(1, idx) for name in self._FIELD_NAMES})
 
     def rows(self, index: torch.Tensor) -> ReferenceWindow:
         """Select one row per output sample, keeping every frame column."""
@@ -443,13 +457,27 @@ def root_deviation(
     ``|e_p,z| > 0.25 m or e_tilt > 0.8``).
     """
     height_error = root_pos_w[..., 2] - ref.base_pos_w[:, 0, 2]
-    gravity = torch.tensor([0.0, 0.0, -1.0], device=root_pos_w.device, dtype=root_pos_w.dtype).expand(
-        root_pos_w.shape[0], 3
-    )
-    grav_robot = quat_apply_inverse(root_quat_w, gravity)
-    grav_ref = quat_apply_inverse(ref.base_quat_w[:, 0], gravity)
-    tilt_error = torch.abs(grav_robot[:, 2] - grav_ref[:, 2])
+    tilt_error = torch.abs(_gravity_z_in_frame(root_quat_w) - _gravity_z_in_frame(ref.base_quat_w[:, 0]))
     return height_error, tilt_error
+
+
+def _projected_gravity(quat_w: torch.Tensor) -> torch.Tensor:
+    """World gravity ``(0, 0, -1)`` in the frame of ``quat_w`` (x, y, z, w), i.e. ``mdp.projected_gravity``,
+    in closed form: the negated third row of the rotation matrix."""
+    x, y, z, w = quat_w.unbind(-1)
+    return torch.stack(
+        (-2.0 * (x * z - w * y), -2.0 * (y * z + w * x), 2.0 * (x * x + y * y) - 1.0),
+        dim=-1,
+    )
+
+
+def _gravity_z_in_frame(quat_w: torch.Tensor) -> torch.Tensor:
+    """z-component of the world gravity direction ``(0, 0, -1)`` in the frame of ``quat_w`` (x, y, z, w).
+
+    ``quat_apply_inverse(q, (0, 0, -1))[..., 2]`` in closed form, ``2 (x^2 + y^2) - 1``, without
+    building the constant vector on every call.
+    """
+    return 2.0 * (quat_w[..., 0] * quat_w[..., 0] + quat_w[..., 1] * quat_w[..., 1]) - 1.0
 
 
 def termination_prob(
@@ -578,6 +606,16 @@ class SuperMimicImagination:
     STATE_GROUP = "wm_state"
     #: Observation group carrying the simulation context.
     CONTEXT_GROUP = "sim_context"
+
+    def _reward_scale(self, like: torch.Tensor) -> torch.Tensor:
+        """``weight * step_dt`` per reward term, built once per device and dtype (a host-to-device copy
+        on every imagined step would synchronise the stream)."""
+        key = (like.device, like.dtype)
+        cache = self.__dict__.setdefault("_reward_scale_cache", {})
+        if key not in cache:
+            weights = torch.tensor([self.REWARD_WEIGHTS[name] for name in REWARD_TERMS], dtype=torch.float64)
+            cache[key] = (weights * self.step_dt).to(device=like.device, dtype=like.dtype)
+        return cache[key]
 
     def world_model_parameterization(self):
         """How the world model reads this state and predicts its change: heading-invariant features and
@@ -742,12 +780,7 @@ class SuperMimicImagination:
             action_smoothness_penalty(action, prev_action),
             joint_limit_penalty(s["joint_pos"], self.soft_joint_pos_limits),
         ]
-        weights = torch.tensor(
-            [self.REWARD_WEIGHTS[name] for name in REWARD_TERMS],
-            device=state.device,
-            dtype=state.dtype,
-        )
-        return torch.stack(terms, dim=-1) * (weights * self.step_dt)
+        return torch.stack(terms, dim=-1) * self._reward_scale(state)
 
     def termination_prob(self, state: torch.Tensor, ref_index: torch.Tensor | None) -> torch.Tensor:
         ref = self._ref(ref_index)
@@ -792,8 +825,7 @@ class SuperMimicImagination:
         if name == "base_lin_vel":
             return quat_apply_inverse(s["root_quat_w"], s["root_lin_vel_w"])
         if name == "projected_gravity":
-            gravity = torch.tensor([0.0, 0.0, -1.0], device=s["root_quat_w"].device, dtype=s["root_quat_w"].dtype)
-            return quat_apply_inverse(s["root_quat_w"], gravity.expand(*s["root_quat_w"].shape[:-1], 3))
+            return _projected_gravity(s["root_quat_w"])
         if name == "last_action":
             # At the first imagined step there is no previous action. The environment's own value at
             # reset is zeros, so use the same thing rather than failing.
@@ -828,16 +860,23 @@ class SuperMimicImagination:
         """
         if self.ref_window is None or ref_index is None:
             raise ValueError("reference observations need a reference window and ref_index")
-        frames = self.ref_window.goal_window(ref_index, self.goal_window)
-        pos = torch.stack([f.base_pos_w[:, 0] for f in frames], dim=1)  # (B, K, 3)
-        quat = torch.stack([f.base_quat_w[:, 0] for f in frames], dim=1)  # (B, K, 4)
-        jpos = torch.stack([f.joint_pos[:, 0] for f in frames], dim=1)  # (B, K, J)
-        jvel = torch.stack([f.joint_vel[:, 0] for f in frames], dim=1)
-        jpos_mask = torch.stack([f.joint_pos_mask[:, 0] for f in frames], dim=1)
-        jvel_mask = torch.stack([f.joint_vel_mask[:, 0] for f in frames], dim=1)
-        plane = torch.stack([f.base_pos_plane_mask[:, 0] for f in frames], dim=1)  # (B, K)
-        height = torch.stack([f.base_pos_height_mask[:, 0] for f in frames], dim=1)
-        valid = torch.stack([f.validity[:, 0] for f in frames], dim=1)
+        if isinstance(ref_index, int):
+            # every row at the same column: the K goal frames are one slice of the window
+            w = self.ref_window.columns(ref_index, self.goal_window)
+            pos, quat, jpos, jvel = w.base_pos_w, w.base_quat_w, w.joint_pos, w.joint_vel
+            jpos_mask, jvel_mask = w.joint_pos_mask, w.joint_vel_mask
+            plane, height, valid = w.base_pos_plane_mask, w.base_pos_height_mask, w.validity
+        else:
+            frames = self.ref_window.goal_window(ref_index, self.goal_window)
+            pos = torch.stack([f.base_pos_w[:, 0] for f in frames], dim=1)  # (B, K, 3)
+            quat = torch.stack([f.base_quat_w[:, 0] for f in frames], dim=1)  # (B, K, 4)
+            jpos = torch.stack([f.joint_pos[:, 0] for f in frames], dim=1)  # (B, K, J)
+            jvel = torch.stack([f.joint_vel[:, 0] for f in frames], dim=1)
+            jpos_mask = torch.stack([f.joint_pos_mask[:, 0] for f in frames], dim=1)
+            jvel_mask = torch.stack([f.joint_vel_mask[:, 0] for f in frames], dim=1)
+            plane = torch.stack([f.base_pos_plane_mask[:, 0] for f in frames], dim=1)  # (B, K)
+            height = torch.stack([f.base_pos_height_mask[:, 0] for f in frames], dim=1)
+            valid = torch.stack([f.validity[:, 0] for f in frames], dim=1)
 
         ids = self.goal_joint_ids if self.goal_joint_ids is not None else slice(None)
         # default pose is (num_joints,): broadcast along the joint axis of the (B, K, J) window
@@ -1013,7 +1052,10 @@ class SuperMimicImagination:
         """
         if self.policy_noise_halfwidth is None:
             return obs
-        width = self.policy_noise_halfwidth.to(device=obs.device, dtype=obs.dtype)
+        width = self.policy_noise_halfwidth
+        if width.device != obs.device or width.dtype != obs.dtype:
+            # moved once: the tensor is kept on the observation's device from then on
+            width = self.policy_noise_halfwidth = width.to(device=obs.device, dtype=obs.dtype)
         if width.shape[-1] != obs.shape[-1]:
             raise ValueError(f"noise layout has {width.shape[-1]} dims, observation has {obs.shape[-1]}")
         return obs + (2.0 * torch.rand_like(obs) - 1.0) * width

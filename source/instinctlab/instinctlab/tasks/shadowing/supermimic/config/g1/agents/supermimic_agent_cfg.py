@@ -105,8 +105,10 @@ class SuperMimicAlgorithmCfg:
     policy_learning_rate: float = 2e-4
     critic_learning_rate: float = 2e-4
     policy_grad_value_clip: float = 0.1
-    policy_chunk_size: int = 512
-    """Imagined rollouts per differentiable policy pass; bounds activation memory, not the batch."""
+    policy_chunk_size: int = 2048
+    """Imagined rollouts per differentiable policy pass; bounds activation memory, not the batch (the
+    chunks' gradients are accumulated into one step). The pass is launch-bound, so fewer chunks are
+    faster: 512 -> 2048 cut the policy fit from 7.7 s to 2.0 s per update at ~9 GB of activations."""
     collection_noise_std: float = 0.1
     gamma: float = 0.99
     lam: float = 0.95
