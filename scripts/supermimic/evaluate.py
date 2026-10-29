@@ -11,6 +11,9 @@ Usage (inside the container)::
     CKPT=<run>/model_N.pt python scripts/supermimic/evaluate.py
     RUN=<run dir> python scripts/supermimic/evaluate.py           # every checkpoint not yet in eval.csv
     RUN=<run dir> EVERY=1000 WATCH=1 python scripts/supermimic/evaluate.py   # keep scoring new ones
+    CKPT=<ckpt> VIZ=newton CLIPS=walk1_subject1,dance2_subject3 python scripts/supermimic/evaluate.py
+        # watch it: a viewer, paced at real time, with the reference shown as markers; CLIPS limits
+        # the evaluation to the named clips (default all 40)
 
 Results go to ``<run dir>/eval.csv`` (one row per checkpoint) and ``<checkpoint>_eval.json``.
 """
@@ -30,6 +33,8 @@ CKPT = os.environ.get("CKPT")
 RUN = os.environ.get("RUN")
 EVERY = int(os.environ.get("EVERY", "1"))  # only checkpoints whose iteration is a multiple of this
 WATCH = os.environ.get("WATCH", "0") == "1"  # keep polling the run directory for new checkpoints
+VIZ = os.environ.get("VIZ")  # a visualizer (e.g. "newton"): watch the evaluation at real time
+CLIPS = [c for c in os.environ.get("CLIPS", "").split(",") if c]
 if (CKPT is None) == (RUN is None):
     raise SystemExit("set exactly one of CKPT (one checkpoint) or RUN (every checkpoint of a run)")
 
@@ -48,7 +53,9 @@ POSITIVE_TERMS = (
 
 parser = cli.build_train_parser()
 args_cli, overrides = cli.parse_cli(
-    parser, argv=["--task", TASK, "--num_envs", "1", "--run_name", "evaluate"], require_run_name=True
+    parser,
+    argv=["--task", TASK, "--num_envs", "1", "--run_name", "evaluate"] + (["--viz", VIZ] if VIZ else []),
+    require_run_name=True,
 )
 
 from isaaclab.app import launch_simulation  # noqa: E402
@@ -87,8 +94,27 @@ if "randomize_joint_pos_range" in reset_params:
 with open(os.path.expanduser(motion_cfg.filtered_motion_selection_filepath)) as f:
     import yaml
 
-    NUM_CLIPS = len(yaml.safe_load(f)["selected_files"])
+    selection = yaml.safe_load(f)["selected_files"]
+if CLIPS:
+    chosen = [f for f in selection if f.replace("_retargetted.npz", "") in CLIPS]
+    if len(chosen) != len(CLIPS):
+        raise SystemExit(
+            f"unknown clips in CLIPS: {sorted(set(CLIPS) - {f.replace('_retargetted.npz', '') for f in chosen})}"
+        )
+    os.makedirs("logs/supermimic_eval", exist_ok=True)
+    motion_cfg.filtered_motion_selection_filepath = os.path.abspath("logs/supermimic_eval/clips.yaml")
+    with open(motion_cfg.filtered_motion_selection_filepath, "w") as f:
+        yaml.dump({"selected_files": chosen}, f)
+    selection = chosen
+NUM_CLIPS = len(selection)
 env_cfg.scene.num_envs = NUM_CLIPS
+if VIZ:
+    # show the reference: a ghost robot posed from the clip, and its links as markers on the robot
+    from instinctlab.assets.unitree_g1 import G1_REFERENCE_CFG
+
+    env_cfg.scene.robot_reference = G1_REFERENCE_CFG.replace(prim_path="{ENV_REGEX_NS}/RobotReference")
+    env_cfg.scene.motion_reference.visualizing_marker_types = ["relative_links"]
+    env_cfg.scene.motion_reference.debug_vis = True
 
 
 def checkpoints() -> list[str]:
@@ -155,7 +181,10 @@ with launch_simulation(env_cfg, args_cli):
         failed = torch.zeros(NUM_CLIPS, dtype=torch.bool, device=device)
         limit = int(clip_steps.max()) + 10
         for _ in range(limit):
+            tic = time.time()
             obs, reward, dones, _ = env.step(policy(obs))
+            if VIZ:
+                time.sleep(max(0.0, step_dt - (time.time() - tic)))
             reward = reward.reshape(NUM_CLIPS, -1).sum(-1).to(device)
             ret += torch.where(running, reward, 0.0)
             steps += running.float()
