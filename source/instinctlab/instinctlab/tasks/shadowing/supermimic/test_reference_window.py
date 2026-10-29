@@ -14,16 +14,17 @@ The second is checked by stepping the environment and confirming that a freshly 
 
 import torch
 
+from instinctlab.tasks.shadowing.supermimic import supermimic_imagination as si
+from instinctlab.tasks.shadowing.supermimic.config.g1.supermimic_rewards_cfg import PAPER_REWARD_WEIGHTS
 from instinctlab.tasks.shadowing.supermimic.supermimic_imagination import (
     REWARD_TERMS,
     build_reference_window,
     make_state_format,
     unpack_state,
 )
-from instinctlab.tasks.shadowing.supermimic import supermimic_imagination as si
-from instinctlab.tasks.shadowing.supermimic.config.g1.supermimic_rewards_cfg import PAPER_REWARD_WEIGHTS
 
 WINDOW_FIELDS = ("base_pos_w", "base_quat_w", "link_pos_w", "link_quat_w", "link_lin_vel_w", "link_ang_vel_w")
+
 
 def _live_state(env, imag):
     """A state vector holding the real robot pose, so quaternion math is well defined."""
@@ -46,7 +47,6 @@ def _live_state(env, imag):
         "body_link_ang_vel_w": robot.data.body_link_ang_vel_w.torch[:, body_ids],
     }
     return torch.cat([parts[name].reshape(parts[name].shape[0], -1) for name in imag.state_format], dim=-1)
-
 
 
 def test_column_zero_matches_current_reference(mr):
@@ -197,3 +197,28 @@ def test_goal_window_is_the_configured_k_frames(env, mr, imagination):
     assert got["rotation_ref"].shape == (mr.count, K, 6), "tannorm rotation is 6-D"
     for name, value in got.items():
         assert torch.isfinite(value).all(), f"{name} has non-finite entries"
+
+
+def test_reference_data_is_valid_right_after_a_reset(env, mr, step_env):
+    """The reference must describe the newly drawn clip as soon as an environment resets.
+
+    Isaac Lab keeps a sensor's cleared reset output cached until its next positive-time update; the
+    motion reference is a derived query, so its reset rows must be recomputed on the next read instead
+    of reading as zeros (commands and observations are computed right after a reset).
+    """
+    env.reset()
+    robot = env.unwrapped.scene["robot"]
+    base = mr.data.base_pos_w[:, 0]
+    # the reset event places the robot on the reference, up to its small pose randomization
+    gap = (base - robot.data.root_pos_w.torch).norm(dim=-1).max().item()
+    assert gap < 0.2, f"reference base is {gap:.3f} m from the robot right after env.reset()"
+
+    # a partial reset after a step: only the reset rows are redrawn, and they are valid at once
+    step_env()
+    ids = torch.tensor([0], device=mr.device)
+    before = mr.data.base_pos_w[1:, 0].clone()
+    mr.reset(ids)
+    after = mr.data
+    assert after.base_pos_w[0, 0, 2].item() > 0.3, "reset row of the reference reads as cleared"
+    assert after.validity[0, 0].item()
+    assert torch.equal(after.base_pos_w[1:, 0], before), "rows that were not reset must not change"

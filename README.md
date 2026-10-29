@@ -41,8 +41,8 @@ This branch runs on Isaac Lab `main` inside Docker. The validated revisions are:
 |---|---|
 | Python | `3.12` |
 | Isaac Sim | `6.2.0-rc.14` (from the Isaac Lab base image) |
-| Isaac Lab | `main` at `8c9b995cb95c74ec81498ae948ce4c1d4e20ae00` (package `41.0.1`) |
-| Instinct-RL | `574c8d50cdd16618cf8f4e0df553f84759c1d837` (package `1.0.3`) |
+| Isaac Lab | `main` at `b03345bbf2c9a54eb03f9bd823ae19c0ca3a014e` (package `41.0.2`) |
+| Instinct-RL | `6b15c412bab95723e1b6729ec20c5604c6a45ee0` (package `1.0.3`, branch `integrate/ACP-SuperMimic`) |
 | PyTorch | `2.11.0+cu130` (needs NVIDIA driver 580 or newer) |
 | Warp | `1.17.0` |
 | Newton | `1.8.0.dev0` |
@@ -50,6 +50,9 @@ This branch runs on Isaac Lab `main` inside Docker. The validated revisions are:
 | Gymnasium | `1.3.0` |
 
 Use the full source SHAs rather than the floating branch heads when reproducing an experiment.
+
+The base image `isaac-lab-base:8c9b995cb` was built from Isaac Lab `8c9b995cb`. The container mounts the
+Isaac Lab clone's `source` over the image's install, so the clone's revision above is the one that runs.
 
 The conda environment for Isaac Lab EA `release/3.0.0` (Isaac Sim 6.0.1) does not run this branch.
 

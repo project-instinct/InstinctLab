@@ -360,6 +360,12 @@ class MotionReferenceManagerBase(SensorBase):
         self._reset_data(env_ids)
         self._resample_buffer_collate_params(env_ids)
         self._resample_update_period(env_ids)
+        # The reference is a derived query: it is defined by the newly drawn clip and start time, so the
+        # cleared rows are stale, not a measurement. Isaac Lab's sensor reset keeps cleared outputs cached
+        # until the next positive-time update (Isaac Lab PR #8780), which left commands and observations
+        # computed right after a reset reading zeros. Flag the rows outdated so the next ``data`` read
+        # refills them.
+        self._is_outdated_torch[env_ids] = True
 
     def _resolve_env_ids(self, env_ids: torch.Tensor | slice | None) -> torch.Tensor:
         """Resolve an environment selector to a 1-D index tensor on the manager device."""
