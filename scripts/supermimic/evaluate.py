@@ -14,6 +14,9 @@ Usage (inside the container)::
     CKPT=<ckpt> VIZ=newton CLIPS=walk1_subject1,dance2_subject3 python scripts/supermimic/evaluate.py
         # watch it: a viewer, paced at real time, with the reference shown as markers; CLIPS limits
         # the evaluation to the named clips (default all 40)
+    CKPT=<ckpt> VIZ=newton_gl VIDEO=1 python scripts/supermimic/evaluate.py
+        # record one video per clip (camera following the robot) plus an overview, under
+        # <run dir>/videos/<checkpoint>/
 
 Results go to ``<run dir>/eval.csv`` (one row per checkpoint) and ``<checkpoint>_eval.json``.
 """
@@ -35,6 +38,10 @@ EVERY = int(os.environ.get("EVERY", "1"))  # only checkpoints whose iteration is
 WATCH = os.environ.get("WATCH", "0") == "1"  # keep polling the run directory for new checkpoints
 VIZ = os.environ.get("VIZ")  # a visualizer (e.g. "newton"): watch the evaluation at real time
 CLIPS = [c for c in os.environ.get("CLIPS", "").split(",") if c]
+VIDEO = os.environ.get("VIDEO", "0") == "1"  # record a video per clip (needs VIZ)
+VIDEO_STRIDE = int(os.environ.get("VIDEO_STRIDE", "2"))  # one frame every n control steps (2 -> 25 fps)
+if VIDEO and not VIZ:
+    raise SystemExit("VIDEO=1 needs a visualizer, e.g. VIZ=newton_gl")
 if (CKPT is None) == (RUN is None):
     raise SystemExit("set exactly one of CKPT (one checkpoint) or RUN (every checkpoint of a run)")
 
@@ -155,6 +162,68 @@ with launch_simulation(env_cfg, args_cli):
     max_step_reward = sum(weights.values()) * step_dt
     term_names = list(unwrapped.termination_manager.active_terms)
 
+    class ClipRecorder:
+        """One video per clip from a camera that follows its robot, plus a fixed overview of all clips.
+
+        The visualizer renders one view at a time, so every captured step re-aims the camera at each
+        running clip in turn. A clip's video stops when its episode ends (its last frame is the end of
+        the clip, or the fall); the robot then resets and is no longer recorded.
+        """
+
+        def __init__(self, checkpoint: str):
+            import cv2
+
+            self.cv2 = cv2
+            self.viz = unwrapped.sim.visualizers[0]
+            self.robot = unwrapped.scene["robot"]
+            name = os.path.splitext(os.path.basename(checkpoint))[0]
+            self.out_dir = os.path.join(os.path.dirname(os.path.abspath(checkpoint)), "videos", name)
+            os.makedirs(self.out_dir, exist_ok=True)
+            self.fps = max(1, round(1.0 / (step_dt * VIDEO_STRIDE)))
+            self.writers: dict[str, object] = {}
+            self.open = torch.ones(NUM_CLIPS, dtype=torch.bool)
+            origins = unwrapped.scene.env_origins.cpu()
+            centre = origins.mean(0)
+            spread = float((origins - centre).norm(dim=-1).max()) + 3.0
+            self.overview = (
+                (centre + torch.tensor([spread, -spread, 0.8 * spread])).tolist(),
+                (centre + torch.tensor([0.0, 0.0, 0.5])).tolist(),
+            )
+
+        def _frame(self, eye, target):
+            self.viz.set_camera_view(eye, target)
+            frame = self.viz.render_rgb_array()
+            frame = frame.numpy() if hasattr(frame, "numpy") else frame
+            return self.cv2.cvtColor(frame[..., :3], self.cv2.COLOR_RGB2BGR)
+
+        def _write(self, key: str, frame):
+            writer = self.writers.get(key)
+            if writer is None:
+                h, w = frame.shape[:2]
+                writer = self.cv2.VideoWriter(
+                    os.path.join(self.out_dir, f"{key}.mp4"), self.cv2.VideoWriter_fourcc(*"mp4v"), self.fps, (w, h)
+                )
+                self.writers[key] = writer
+            writer.write(frame)
+
+        def capture(self, running: torch.Tensor):
+            self.open &= running.cpu()
+            root = self.robot.data.root_pos_w.torch.cpu()
+            for i in self.open.nonzero().flatten().tolist():
+                x, y, z = root[i].tolist()
+                self._write(clip_names[i], self._frame((x + 1.9, y - 1.9, 1.35), (x, y, 0.7)))
+            self._write("overview_all_clips", self._frame(*self.overview))
+
+        def close(self, failed: torch.Tensor):
+            for writer in self.writers.values():
+                writer.release()
+            # mark the clips that failed in the file name
+            for i in failed.nonzero().flatten().tolist():
+                src = os.path.join(self.out_dir, f"{clip_names[i]}.mp4")
+                if os.path.exists(src):
+                    os.replace(src, os.path.join(self.out_dir, f"{clip_names[i]}_FAILED.mp4"))
+            print(f"[eval] videos in {self.out_dir} ({self.fps} fps)", flush=True)
+
     @torch.no_grad()
     def evaluate(path: str) -> dict:
         # the learners and normalisers only: the replay in the checkpoint is not needed
@@ -180,10 +249,11 @@ with launch_simulation(env_cfg, args_cli):
         running = torch.ones(NUM_CLIPS, dtype=torch.bool, device=device)
         failed = torch.zeros(NUM_CLIPS, dtype=torch.bool, device=device)
         limit = int(clip_steps.max()) + 10
-        for _ in range(limit):
+        recorder = ClipRecorder(path) if VIDEO else None
+        for step in range(limit):
             tic = time.time()
             obs, reward, dones, _ = env.step(policy(obs))
-            if VIZ:
+            if recorder is None and VIZ:
                 time.sleep(max(0.0, step_dt - (time.time() - tic)))
             reward = reward.reshape(NUM_CLIPS, -1).sum(-1).to(device)
             ret += torch.where(running, reward, 0.0)
@@ -194,8 +264,13 @@ with launch_simulation(env_cfg, args_cli):
             ).any(0)
             failed |= running & done & fail.to(device)
             running &= ~done
+            # after this step's resets are known: a clip that just ended shows its reset pose now
+            if recorder is not None and step % VIDEO_STRIDE == 0:
+                recorder.capture(running)
             if not bool(running.any()):
                 break
+        if recorder is not None:
+            recorder.close(failed)
         if bool(running.any()):
             raise RuntimeError(f"{int(running.sum())} clips did not end within {limit} steps")
 
