@@ -13,3 +13,12 @@ register_backend_tasks(
     entry_point="instinctlab.envs.manager_based_rl_env:InstinctRlEnv",
     instinct_rl_cfg_entry_point=f"{agents.__name__}.supermimic_agent_cfg:G1SuperMimicRunnerCfg",
 )
+
+# PPO-Sim baseline (paper Sec. 4.1): the same task and networks, trained with BeyondMimic's PPO.
+register_backend_tasks(
+    "Instinct-SuperMimic-PPO-Plane-G1",
+    env_cfg_entry_point=f"{task_entry}.supermimic_plane_cfg:G1SuperMimicEnvCfg",
+    play_env_cfg_entry_point=f"{task_entry}.supermimic_plane_cfg:G1SuperMimicEnvCfg",
+    entry_point="instinctlab.envs.manager_based_rl_env:InstinctRlEnv",
+    instinct_rl_cfg_entry_point=f"{agents.__name__}.supermimic_ppo_cfg:G1SuperMimicPPORunnerCfg",
+)
