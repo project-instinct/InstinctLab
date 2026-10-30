@@ -119,6 +119,8 @@ class SuperMimicAlgorithmCfg:
     lam: float = 0.95
     use_critic: bool = True
     replay_capacity: int = 1000
+    replay_checkpoint: str = "latest"
+    """Keep only the newest replay buffer, in ``replay_latest.pt`` beside the checkpoints."""
     learning_rate: float = 2e-4
     """Reported by the runner's logger; the effective rates are the per-learner ones above."""
 
@@ -152,6 +154,8 @@ class G1SuperMimicRunnerCfg(InstinctRlOnPolicyRunnerCfg):
     Collecting 24 steps per 2 updates gave the world model about 5x fewer fits per transition."""
     max_iterations = 30000
     save_interval = 1000
+    """Checkpoints hold the networks and optimizers (~225 MB); the replay buffer is kept once, as the
+    newest copy in ``replay_latest.pt`` (``algorithm.replay_checkpoint``)."""
     log_interval = 10
     experiment_name = "g1_supermimic"
 
