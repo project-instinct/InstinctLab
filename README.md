@@ -42,7 +42,7 @@ This branch runs on Isaac Lab `main` inside Docker. The validated revisions are:
 | Python | `3.12` |
 | Isaac Sim | `6.2.0-rc.14` (from the Isaac Lab base image) |
 | Isaac Lab | `main` at `b03345bbf2c9a54eb03f9bd823ae19c0ca3a014e` (package `41.0.2`) |
-| Instinct-RL | `6b15c412bab95723e1b6729ec20c5604c6a45ee0` (package `1.0.3`, branch `integrate/ACP-SuperMimic`) |
+| Instinct-RL | `051642b77d6929c72d140685d8399a5cdae756eb` (package `1.0.3`, branch `integrate/ACP-SuperMimic`) |
 | PyTorch | `2.11.0+cu130` (needs NVIDIA driver 580 or newer) |
 | Warp | `1.17.0` |
 | Newton | `1.8.0.dev0` |

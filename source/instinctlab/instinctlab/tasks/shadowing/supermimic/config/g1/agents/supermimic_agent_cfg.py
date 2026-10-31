@@ -114,6 +114,9 @@ class SuperMimicAlgorithmCfg:
     ~10^5 kernels from Python."""
     world_model_cuda_graph: bool = True
     """Likewise for each world-model batch (k-step loss + backward)."""
+    mixed_precision: str | None = None
+    """``"bfloat16"`` runs the learner's network passes under autocast; ``None`` keeps float32 (TF32
+    matmuls). Collection and the deployed policy are float32 either way."""
     collection_noise_std: float = 0.1
     gamma: float = 0.99
     lam: float = 0.95
