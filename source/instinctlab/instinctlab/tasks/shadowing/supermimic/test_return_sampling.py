@@ -26,6 +26,7 @@ def _setup():
         reward_buf=torch.zeros(2),
         reset_buf=torch.zeros(2, dtype=torch.bool),
         reset_time_outs=torch.zeros(2, dtype=torch.bool),
+        step_dt=0.5,
     )
     term = return_based_reset_sampling(SimpleNamespace(params={}), env)
     return env, buffer, term
@@ -71,3 +72,31 @@ def test_truncated_episode_is_bootstrapped():
     term(env, None, gamma=GAMMA)
     bootstrap = GAMMA * 0.08 / (1.0 - GAMMA)
     assert torch.isclose(term.bin_return[1], torch.tensor(0.2 * (0.08 + bootstrap)), atol=1e-5)
+
+
+def test_failure_share_starts_one_bin_before_the_failure():
+    """``failure_share`` moves that share of the reset distribution to the bin before where episodes fell;
+    a clip's first bin keeps itself, and a time-out does not count as a failure."""
+
+    def run(failure_share, time_out=False):
+        env, buffer, term = _setup()
+        # env 1 starts in clip 1 at 2.2 s (global bin 4) and ends after one 0.5 s step, at 2.7 s: still bin 4
+        env.reward_buf = torch.tensor([0.05, 0.05])
+        env.reset_buf = torch.tensor([False, True])
+        env.reset_time_outs = torch.tensor([False, time_out])
+        term(env, None, gamma=GAMMA, failure_share=failure_share)
+        return term, buffer._motion_bin_weights._concatenated_tensor.clone()
+
+    _, base = run(0.0)
+    term, probs = run(0.3)
+    assert torch.allclose(term.bin_failure, torch.tensor([0.0, 0.0, 0.0, 0.0, 0.1]))
+    expected = 0.7 * base
+    expected[3] += 0.3  # the bin before global bin 4, in the same clip
+    assert torch.allclose(probs, expected / expected.sum(), atol=1e-6)
+    assert term.previous_bin.tolist() == [0, 0, 2, 2, 3]
+
+    # a truncated episode is no failure: with no failure recorded the distribution is unchanged
+    _, base = run(0.0, time_out=True)
+    term, probs = run(0.3, time_out=True)
+    assert torch.equal(term.bin_failure, torch.zeros(5))
+    assert torch.allclose(probs, base, atol=1e-6)

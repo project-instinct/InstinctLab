@@ -22,3 +22,12 @@ register_backend_tasks(
     entry_point="instinctlab.envs.manager_based_rl_env:InstinctRlEnv",
     instinct_rl_cfg_entry_point=f"{agents.__name__}.supermimic_ppo_cfg:G1SuperMimicPPORunnerCfg",
 )
+
+# InstantTrack's learner and reset changes (github.com/Huy-Quang-Dao/instantTrack, v1.1) on the SuperMimic task.
+register_backend_tasks(
+    "Instinct-InstantTrack-Plane-G1",
+    env_cfg_entry_point=f"{task_entry}.instanttrack_plane_cfg:G1InstantTrackEnvCfg",
+    play_env_cfg_entry_point=f"{task_entry}.instanttrack_plane_cfg:G1InstantTrackEnvCfg",
+    entry_point="instinctlab.envs.manager_based_rl_env:InstinctRlEnv",
+    instinct_rl_cfg_entry_point=f"{agents.__name__}.instanttrack_agent_cfg:G1InstantTrackRunnerCfg",
+)

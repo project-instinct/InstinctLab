@@ -117,6 +117,9 @@ class SuperMimicAlgorithmCfg:
     mixed_precision: str | None = None
     """``"bfloat16"`` runs the learner's network passes under autocast; ``None`` keeps float32 (TF32
     matmuls). Collection and the deployed policy are float32 either way."""
+    policy_ema_decay: float | None = None
+    """Polyak average of the policy weights that checkpoints, evaluation and export use; ``None`` keeps none."""
+    fused_optimizers: bool = False
     collection_noise_std: float = 0.1
     gamma: float = 0.99
     lam: float = 0.95
