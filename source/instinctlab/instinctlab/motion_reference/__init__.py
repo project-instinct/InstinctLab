@@ -8,10 +8,13 @@ FAQ:
 """
 
 from .motion_reference_cfg import MotionReferenceManagerCfg
+from .motion_reference_contact_data import ContactMotionReferenceData, ContactMotionSequence
 from .motion_reference_data import MotionReferenceData, MotionReferenceState, MotionSequence
 from .motion_reference_hoi_data import HoiMotionReferenceData, HoiMotionReferenceState, HoiMotionSequence
 
 __all__ = [
+    "ContactMotionReferenceData",
+    "ContactMotionSequence",
     "HoiMotionReferenceData",
     "HoiMotionReferenceState",
     "HoiMotionSequence",

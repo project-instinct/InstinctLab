@@ -626,6 +626,12 @@ class MotionReferenceManagerBase(SensorBase):
             scene_object_names = getattr(self.cfg, "scene_object_names", [])
             make_empty_kwargs["num_objects"] = len(scene_object_names)
             make_empty_kwargs["scene_object_names"] = scene_object_names
+        if "contact_body_names" in sig.parameters:
+            if not self.cfg.contact_body_names:
+                raise ValueError(
+                    f"{self.cfg.data_class_type.__name__} needs MotionReferenceManagerCfg.contact_body_names"
+                )
+            make_empty_kwargs["contact_body_names"] = list(self.cfg.contact_body_names)
         return make_empty_kwargs
 
     def _prepare_state_class_kwargs(self) -> dict:

@@ -42,6 +42,11 @@ class MotionReferenceManagerCfg(SensorBaseCfg):
     NOTE: If using RigidObjectCollection, these should be the names of the objects within the collection.
     """
 
+    contact_body_names: list[str] = []
+    """ Bodies whose contact schedule a contact data class (e.g. ``ContactMotionReferenceData``) carries, in the order
+    of its contact fields. Must match the motion buffers' ``contact_body_names``.
+    """
+
     robot_model_path: str | None = None
     """ Robot model (urdf) path to build the robot kinematics chain.
         If None, assuming the motion_data file is already in the robot model's form.
