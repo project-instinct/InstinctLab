@@ -8,7 +8,7 @@ the dataset end are disabled.
 
 Usage::
 
-    isaaclab -p scripts/acp_check_contact_labels.py --task Instinct-ACP-Tracker-G1-Play-v0 --num_envs 64 --viz none
+    isaaclab -p scripts/acp/check_contact_labels.py --task Instinct-ACP-Tracker-G1-Play-v0 --num_envs 64 --viz none
 """
 
 import gymnasium as gym
