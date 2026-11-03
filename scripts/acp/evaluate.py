@@ -1,8 +1,10 @@
 """Checkpoint evaluation of an ACP tracker on its reference clips (stage-1 gate ACP-G2 of the reproduction plan).
 
-Every clip of the task's motion buffer plays once from its first frame, one environment per clip, with friction 1.0,
-no domain randomization, no observation noise and a deterministic policy. A clip succeeds when it reaches its end
-without a failure termination (base height, tilt, or foot/hand height deviation from the reference). During the
+Every clip of the task's motion buffer plays once from each start phase in ``START_PHASES`` (fractions of the clip
+duration; default the first frame and the middle), one environment per clip, with friction 1.0, no domain
+randomization, no observation noise and a deterministic policy. A clip succeeds when it reaches its end from that
+start without a failure termination (the task's base height and tilt terminations). Progress is the fraction of the
+remaining clip that was played. During the
 rollouts the geometric contact labels are compared with the simulated contacts (net force above 1 N) of the 9
 contact bodies, and the contact position error is the distance between robot and reference body while the
 reference body is in contact.
@@ -11,8 +13,9 @@ Usage (inside the container)::
 
     CKPT=<run>/model_N.pt isaaclab -p scripts/acp/evaluate.py
     RUN=<run dir> EVERY=2000 isaaclab -p scripts/acp/evaluate.py      # every such checkpoint not yet in eval.csv
+    CKPT=... START_PHASES=0,0.25,0.5,0.75 isaaclab -p scripts/acp/evaluate.py
 
-Results go to ``<run dir>/eval.csv`` (one row per checkpoint) and ``<checkpoint>_eval.json``.
+Results go to ``<run dir>/eval.csv`` (one row per checkpoint and start phase) and ``<checkpoint>_eval.json``.
 """
 
 import glob
@@ -29,6 +32,7 @@ TASK = os.environ.get("TASK", "Instinct-ACP-Tracker-G1-v0")
 CKPT = os.environ.get("CKPT")
 RUN = os.environ.get("RUN")
 EVERY = int(os.environ.get("EVERY", "1"))
+START_PHASES = [float(p) for p in os.environ.get("START_PHASES", "0,0.5").split(",")]
 CONTACT_FORCE_THRESHOLD = 1.0
 if (CKPT is None) == (RUN is None):
     raise SystemExit("set exactly one of CKPT (one checkpoint) or RUN (every checkpoint of a run)")
@@ -97,6 +101,17 @@ with launch_simulation(env_cfg, args_cli):
 
     AmassMotion._sample_assigned_env_motion_selection = _clip_per_env
 
+    # Every clip starts at the evaluated phase of its duration.
+    start_phase = [0.0]
+
+    def _start_at_phase(self, assigned_ids):
+        motion_ids = self._assigned_env_motion_selection[assigned_ids]
+        sequences = self._all_motion_sequences
+        clip_length_s = sequences.buffer_length[motion_ids] / sequences.framerate[motion_ids]
+        self._motion_buffer_start_time_s[assigned_ids] = start_phase[0] * clip_length_s
+
+    AmassMotion._sample_env_motion_start_time = _start_at_phase
+
     sim = gym.make(TASK, cfg=env_cfg)
     unwrapped = sim.unwrapped
     env = InstinctRlVecEnvWrapper(sim)
@@ -115,19 +130,15 @@ with launch_simulation(env_cfg, args_cli):
     step_dt = float(unwrapped.step_dt)
 
     @torch.no_grad()
-    def evaluate(path: str) -> dict:
-        ckpt = torch.load(path, weights_only=True, map_location="cpu")
-        runner.alg.actor_critic.load_state_dict(ckpt["model_state_dict"])
-        for name, normalizer in runner.normalizers.items():
-            normalizer.load_state_dict(ckpt[f"{name}_normalizer_state_dict"])
-        policy = runner.get_inference_policy(device)
-
+    def evaluate(policy, phase: float) -> dict:
+        start_phase[0] = phase
         sim.reset()
         obs, _ = env.get_observations()
         clip = buffer._assigned_env_motion_selection.to(device)
         if not torch.equal(clip, torch.arange(NUM_CLIPS, device=device)):
             raise RuntimeError("environments are not assigned one clip each")
-        clip_steps = torch.floor(buffer.complete_motion_lengths.to(device) / step_dt + 1e-6) - 1.0
+        # control steps from the start to the clip's last frame
+        clip_steps = (torch.floor(buffer.assigned_motion_lengths.to(device) / step_dt + 1e-6) - 1.0).clamp_min(1.0)
 
         running = torch.ones(NUM_CLIPS, dtype=torch.bool, device=device)
         failed = torch.zeros(NUM_CLIPS, dtype=torch.bool, device=device)
@@ -180,8 +191,7 @@ with launch_simulation(env_cfg, args_cli):
             for i, name in enumerate(term.body_names)
         }
         return {
-            "checkpoint": path,
-            "iteration": ckpt.get("iter"),
+            "start_phase": phase,
             "success": float(success.float().mean()),
             "n_failed": int(failed.sum()),
             "per_category": per_category,
@@ -196,25 +206,33 @@ with launch_simulation(env_cfg, args_cli):
         done_paths = {line.split(",")[1] for line in open(out_csv).read().strip().splitlines()[1:]}
     elif out_csv is not None:
         with open(out_csv, "w") as f:
-            f.write("iteration,checkpoint,success,n_failed,per_category,eval_at\n")
+            f.write("iteration,checkpoint,start_phase,success,n_failed,per_category,eval_at\n")
     for path in [p for p in checkpoints() if os.path.basename(p) not in done_paths]:
-        t0 = time.time()
-        res = evaluate(path)
+        ckpt = torch.load(path, weights_only=True, map_location="cpu")
+        runner.alg.actor_critic.load_state_dict(ckpt["model_state_dict"])
+        for name, normalizer in runner.normalizers.items():
+            normalizer.load_state_dict(ckpt[f"{name}_normalizer_state_dict"])
+        policy = runner.get_inference_policy(device)
+        results = {"checkpoint": path, "iteration": ckpt.get("iter"), "by_start_phase": {}}
+        for phase in START_PHASES:
+            t0 = time.time()
+            res = evaluate(policy, phase)
+            results["by_start_phase"][str(phase)] = res
+            summary = " ".join(f"{c}={v['success']:.0%}" for c, v in res["per_category"].items())
+            print(
+                f"[eval] {os.path.basename(path)} (iteration {results['iteration']}) from phase {phase}: success"
+                f" {res['success']:.1%}, failed {res['n_failed']}/{NUM_CLIPS}; {summary} [{time.time() - t0:.0f} s]",
+                flush=True,
+            )
+            for name, v in res["per_body"].items():
+                print(f"[eval]   {name:22s} {v}", flush=True)
+            if out_csv is not None:
+                per_category = "|".join(f"{c}:{v['success']:.3f}" for c, v in res["per_category"].items())
+                with open(out_csv, "a") as f:
+                    f.write(
+                        f"{results['iteration']},{os.path.basename(path)},{phase},{res['success']:.4f},"
+                        f"{res['n_failed']},{per_category},{time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                    )
         with open(path.replace(".pt", "_eval.json"), "w") as f:
-            json.dump(res, f, indent=1)
-        summary = " ".join(f"{c}={v['success']:.0%}" for c, v in res["per_category"].items())
-        print(
-            f"[eval] {os.path.basename(path)} (iteration {res['iteration']}): success {res['success']:.1%},"
-            f" failed {res['n_failed']}/{NUM_CLIPS}; {summary} [{time.time() - t0:.0f} s]",
-            flush=True,
-        )
-        for name, v in res["per_body"].items():
-            print(f"[eval]   {name:22s} {v}", flush=True)
-        if out_csv is not None:
-            per_category = "|".join(f"{c}:{v['success']:.3f}" for c, v in res["per_category"].items())
-            with open(out_csv, "a") as f:
-                f.write(
-                    f"{res['iteration']},{os.path.basename(path)},{res['success']:.4f},{res['n_failed']},"
-                    f"{per_category},{time.strftime('%Y-%m-%d %H:%M:%S')}\n"
-                )
+            json.dump(results, f, indent=1)
     sim.close()
