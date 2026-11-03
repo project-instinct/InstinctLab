@@ -6,8 +6,8 @@ command reads its current frame and provides, per contact body,
 - the next contact target: position of the next contact onset at or after the current frame (zero where there is
   none within the motion buffer's onset horizon), in the robot body-yaw frame,
 - whether the reference is in contact now,
-- a goal: the reference base pose a fixed lookahead ahead, as a horizontal direction clipped to
-  ``goal_max_distance`` plus the relative heading.
+- a goal: the reference base pose a per-episode lookahead ahead (see ``TerrainContactMotionCfg``), as ACP's
+  bounded horizontal direction plus the relative heading.
 
 Mirrored references are not supported (the manager does not mirror contact fields), so a manager with symmetric
 augmentation raises.
@@ -86,16 +86,15 @@ class ContactScheduleCommand(CommandTerm):
 
     @property
     def goal_b(self) -> torch.Tensor:
-        """``(N, 3)``: goal direction (x, y) in the robot body-yaw frame, norm <= ``goal_max_distance``, and the
-        reference heading relative to the robot's."""
+        """``(N, 3)``: goal direction ``d_xy / max(|d_xy|, goal_radius)`` with ``d_xy`` the horizontal goal displacement
+        in the robot body-yaw frame, and the goal heading relative to the robot's, wrapped to [-pi, pi)."""
         root_quat = self.robot.data.root_quat_w.torch
         offset = math_utils.quat_apply_inverse(
             math_utils.yaw_quat(root_quat), self._frame.goal_pos_w[:, 0] - self.robot.data.root_pos_w.torch
         )[:, :2]
-        norm = offset.norm(dim=-1, keepdim=True)
-        offset = offset * torch.clamp(self.cfg.goal_max_distance / norm.clamp_min(1e-6), max=1.0)
+        direction = offset / offset.norm(dim=-1, keepdim=True).clamp_min(self.cfg.goal_radius)
         relative_heading = math_utils.wrap_to_pi(heading(self._frame.goal_quat_w[:, 0]) - heading(root_quat))
-        return torch.cat([offset, relative_heading.unsqueeze(-1)], dim=-1)
+        return torch.cat([direction, relative_heading.unsqueeze(-1)], dim=-1)
 
     def _update_metrics(self):
         pass
@@ -119,7 +118,8 @@ class ContactScheduleCommandCfg(CommandTermCfg):
 
     asset_name: str = "robot"
     motion_reference: SceneEntityCfg = SceneEntityCfg("motion_reference")
-    goal_max_distance: float = 1.0
+    goal_radius: float = 0.3
+    """ ACP's r for reference-following goals. """
     resampling_time_range: tuple[float, float] = (1e9, 1e9)
 
 

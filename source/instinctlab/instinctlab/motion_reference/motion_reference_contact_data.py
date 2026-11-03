@@ -12,13 +12,7 @@ import instinctlab.utils.torch as torch_utils
 
 from .motion_reference_data import MotionReferenceData, MotionSequence
 
-CONTACT_FIELDS_WITH_FRAME_DIM = (
-    "contact_flag",
-    "next_contact_pos_w",
-    "next_contact_valid",
-    "goal_pos_w",
-    "goal_quat_w",
-)
+CONTACT_FIELDS_WITH_FRAME_DIM = ("contact_flag", "next_contact_pos_w", "next_contact_valid")
 
 
 @dataclass
@@ -37,12 +31,6 @@ class ContactMotionSequence(MotionSequence):
 
     next_contact_valid: torch.Tensor = None  # type: ignore
     """ Whether that onset exists within the onset horizon. Shape: [N, num_frames, num_contact_bodies], bool. """
-
-    goal_pos_w: torch.Tensor = None  # type: ignore
-    """ Base position a fixed lookahead after the frame, clamped to the clip end. Shape: [N, num_frames, 3]. """
-
-    goal_quat_w: torch.Tensor = None  # type: ignore
-    """ Base orientation at the same time, (x, y, z, w). Shape: [N, num_frames, 4]. """
 
     attrs_with_frame_dim: tuple = MotionSequence.attrs_with_frame_dim + CONTACT_FIELDS_WITH_FRAME_DIM
 
@@ -66,24 +54,27 @@ class ContactMotionSequence(MotionSequence):
             contact_flag=concat((num_contact_bodies,), torch.bool),  # type: ignore
             next_contact_pos_w=concat((num_contact_bodies, 3)),  # type: ignore
             next_contact_valid=concat((num_contact_bodies,), torch.bool),  # type: ignore
-            goal_pos_w=concat((3,)),  # type: ignore
-            goal_quat_w=concat((4,)),  # type: ignore
         )
-        return_.goal_quat_w.fill_data(torch.tensor([0.0, 0.0, 0.0, 1.0], device=device))  # type: ignore
         return return_
 
 
 @dataclass
 class ContactMotionReferenceData(MotionReferenceData):
     """Motion reference data with the contact schedule of ``contact_body_names`` (fields of
-    :class:`ContactMotionSequence`). The inherited ``reset`` clears them: flags False, positions 0, quaternions identity.
+    :class:`ContactMotionSequence`) and a goal. The inherited ``reset`` clears them: flags False, positions 0,
+    quaternions identity.
     """
 
     contact_flag: torch.Tensor = None  # type: ignore
     next_contact_pos_w: torch.Tensor = None  # type: ignore
     next_contact_valid: torch.Tensor = None  # type: ignore
+
     goal_pos_w: torch.Tensor = None  # type: ignore
+    """ Reference base position a per-episode lookahead after the frame, clamped to the clip end. [N, num_frames, 3].
+    """
+
     goal_quat_w: torch.Tensor = None  # type: ignore
+    """ Reference base orientation at the same time, (x, y, z, w). Shape: [N, num_frames, 4]. """
 
     contact_body_names: list[str] = None  # type: ignore
     """ Names of the contact bodies, in the order of the last dimension of the contact fields. """

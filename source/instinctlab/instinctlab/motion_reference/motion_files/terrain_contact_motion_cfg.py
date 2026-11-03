@@ -22,5 +22,6 @@ class TerrainContactMotionCfg(TerrainMotionCfg):
     contact_onset_horizon_s: float = 1.5
     """ A next contact onset further ahead than this is not a target. """
 
-    goal_lookahead_s: float = 2.0
-    """ The goal is the base pose this far ahead of each frame, clamped to the clip end. """
+    goal_lookahead_range_s: tuple[float, float] = (0.5, 1.5)
+    """ The goal is the reference base pose this far ahead of each frame, capped at the clip end; sampled uniformly
+    per episode (ACP, Supp. "Observation encoding and curricula"). """

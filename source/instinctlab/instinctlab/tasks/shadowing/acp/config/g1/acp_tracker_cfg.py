@@ -11,6 +11,7 @@ import os
 import yaml
 
 import isaaclab.envs.mdp as mdp
+from isaaclab.managers import CurriculumTermCfg
 from isaaclab.managers import ObservationGroupCfg as ObsGroupCfg
 from isaaclab.managers import ObservationTermCfg as ObsTermCfg
 from isaaclab.managers import RewardTermCfg as RewTermCfg
@@ -62,11 +63,11 @@ class ACPTerrainContactMotionCfg(TerrainContactMotionCfg):
     ensure_link_below_zero_ground = False
     motion_start_from_middle_range = [0.0, 0.0]
     motion_start_height_offset = 0.0
-    motion_bin_length_s = 1.0
+    motion_bin_length_s = 0.02  # one control step, so CSI sets the start phase exactly
     buffer_device = "output_device"
     motion_interpolate_func = motion_interpolate_bilinear
     velocity_estimation_method = "frontbackward"
-    env_starting_stub_sampling_strategy = "concat_motion_bins"
+    env_starting_stub_sampling_strategy = "independent"
 
 
 @configclass
@@ -221,6 +222,15 @@ class ACPRewardGroupsCfg(MultiRewardCfg):
     rewards = ACPRewardsCfg()
 
 
+@configclass
+class ACPCurriculumCfg:
+    # ACP stage 1: Curriculum State Initialization (Supp. Table "Stage-1 initialization curriculum")
+    csi = CurriculumTermCfg(
+        func=instinct_mdp.CurriculumStateInitialization,
+        params={"initial_phase": 0.9, "completion_phase": 0.99, "phase_step": 0.05, "phase_range": (0.0, 0.99)},
+    )
+
+
 def _num_terrains(metadata_yaml: str) -> int:
     with open(metadata_yaml) as f:
         return len(yaml.safe_load(f)["terrains"])
@@ -243,6 +253,7 @@ class G1ACPTrackerEnvCfg(G1PerceptiveShadowingEnvCfg):
     # ACP states no termination conditions ("configured failure conditions"), so SuperMimic's stated ones are used:
     # root height error > 0.25 m or z-only tilt error > 0.8, no end-effector termination.
     terminations: SuperMimicPaperTerminationsCfg = SuperMimicPaperTerminationsCfg()
+    curriculum: ACPCurriculumCfg = ACPCurriculumCfg()
 
     def __post_init__(self):
         if self.sim.physics is None:
@@ -275,6 +286,10 @@ class G1ACPTrackerEnvCfg(G1PerceptiveShadowingEnvCfg):
         # friction range of the paper (Table S2)
         self.events.physics_material.params["static_friction_range"] = (0.3, 1.2)
         self.events.physics_material.params["dynamic_friction_range"] = (0.3, 1.2)
+        # reset noise of ACP (Supp. Table S2): joints U(-0.2, 0.2) rad around the reference, base height +U(0, 0.05) m
+        self.events.bin_fail_counter_smoothing = None
+        self.events.reset_robot.params["randomize_pose_range"] = {"z": (0.0, 0.05)}
+        self.events.reset_robot.params["randomize_joint_pos_range"] = (-0.2, 0.2)
         self.run_name = "g1ACPTracker"
 
 
@@ -283,11 +298,9 @@ class G1ACPTrackerEnvCfg_PLAY(G1ACPTrackerEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.scene.num_envs = 16
-        self.curriculum.beyond_adaptive_sampling = None
-        self.events.bin_fail_counter_smoothing = None
+        self.curriculum.csi = None
         motion = self.scene.motion_reference.motion_buffers["TerrainMotion"]
         motion.motion_bin_length_s = None
-        motion.env_starting_stub_sampling_strategy = "independent"
         self.events.physics_material = None
         self.events.add_joint_default_pos = None
         self.events.base_com = None

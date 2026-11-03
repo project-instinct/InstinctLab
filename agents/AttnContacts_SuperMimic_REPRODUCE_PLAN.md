@@ -850,7 +850,7 @@ Built so far:
 | Piece | Where | Notes |
 |---|---|---|
 | Contact reference data (A-M11, terrain variant) | `IL/motion_reference/motion_reference_contact_data.py` (`ContactMotionSequence`, `ContactMotionReferenceData`), `IL/motion_reference/motion_files/terrain_contact_motion.py` (`TerrainContactMotion(TerrainMotion)`) | contact keys read at load and resampled to the buffer framerate; fields `contact_flag`, `next_contact_pos_w`, `next_contact_valid` (next onset at or after the frame within 1.5 s), `goal_pos_w`/`goal_quat_w` (base pose 2 s ahead); manager passes `MotionReferenceManagerCfg.contact_body_names` to the data class |
-| Contact schedule command, obs and reward terms | `IL/tasks/shadowing/acp/contact_schedule.py` | reads `reference_frame`; targets in the robot body-yaw frame, zero where invalid; goal xy clipped to 1 m + relative heading; refuses symmetric augmentation |
+| Contact schedule command, obs and reward terms | `IL/tasks/shadowing/acp/contact_schedule.py` | reads `reference_frame`; targets in the robot body-yaw frame, zero where invalid; goal as in ACP Supp.: reference base pose U(0.5, 1.5) s ahead (sampled per episode, capped at the clip end), direction `d_xy / max(|d_xy|, 0.3 m)` + relative heading; refuses symmetric augmentation |
 | Task `Instinct-ACP-Tracker-G1-v0` (+ Play, Newton, OvPhysx ids) | `IL/tasks/shadowing/acp/config/g1/` | popsicle G1, PhysX; 202 terrain rows × 2 cols, 14 × 12 m; 20 s episodes; BeyondMimic adaptive start bins instead of CSI |
 | Label check | `scripts/acp/check_contact_labels.py` | replays the reference and compares with contact forces |
 
@@ -869,7 +869,10 @@ joint rewards, terminations within run-to-run noise). Run `*_acpS1_depth_contact
 
 First run with the perceptive task's terminations (base/feet/hands height 0.25 m, full-gravity tilt), stopped at
 iteration ~5000: evaluation success 0.5 % / 1.0 % / 0.5 % at 1000 / 2000 / 4000, every clip failing 0.3–1.4 s
-after its first raised-terrain contact; restarted with the SuperMimic terminations (run `*_acpS1_depth_smTerm`).
+after its first raised-terrain contact; restarted with the SuperMimic terminations (run `*_acpS1_depth_smTerm`, 0.5 % at 1000, same failure point), then
+restarted again with ACP's CSI, goal and reset noise (run `*_acpS1_depth_csi`). Open: the paper does not say
+whether the CSI phase is per clip or per environment (we use per clip), nor how often the goal lookahead is resampled
+(we sample it per episode).
 
 Label check result: kinematic replay cannot confirm stance contacts, because the retargeted feet hover about
 1 cm above the terrain (ankle origin 4.7 cm, popsicle sole 3.5 cm below it), so the held pose makes no force.

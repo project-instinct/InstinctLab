@@ -61,7 +61,8 @@ for name in (
     "bin_fail_counter_smoothing",
 ):
     setattr(env_cfg.events, name, None)
-env_cfg.curriculum.beyond_adaptive_sampling = None
+for name in list(vars(env_cfg.curriculum)):  # start sampling curricula (CSI) would move the start from frame 0
+    setattr(env_cfg.curriculum, name, None)
 env_cfg.events.reset_robot.params["randomize_pose_range"] = {}
 env_cfg.events.reset_robot.params["randomize_velocity_range"] = {}
 env_cfg.events.reset_robot.params["randomize_joint_pos_range"] = (0.0, 0.0)

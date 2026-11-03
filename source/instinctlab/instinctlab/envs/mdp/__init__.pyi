@@ -44,6 +44,7 @@ from .commands.shadowing_command import (
 from .curriculums.motion_reference import (
     BeyondConcatMotionAdaptiveWeighting,
     BeyondMimicAdaptiveWeighting,
+    CurriculumStateInitialization,
     compute_smoothed_probs,
     compute_sums,
     update_current_fail_counters,

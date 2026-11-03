@@ -33,9 +33,10 @@ class TerrainContactMotion(TerrainMotion):
     """Terrain motions whose files carry per-frame contact labels (``contact_body_names``, ``contact_flag (T, B)``,
     ``contact_pos_w (T, B, 3)``, see ``scripts/annotate_motion_contacts.py``).
 
-    At load time each clip gets its contact schedule at the buffer's framerate: the contact flag, the next contact
-    onset (at or after the frame, within ``contact_onset_horizon_s``; zero and invalid if none) and the base pose
-    ``goal_lookahead_s`` ahead. The data buffer must be a :class:`ContactMotionReferenceData` with the same
+    At load time each clip gets its contact schedule at the buffer's framerate: the contact flag and the next contact
+    onset (at or after the frame, within ``contact_onset_horizon_s``; zero and invalid if none). The goal is the
+    reference base pose a lookahead ahead, capped at the clip end; the lookahead is sampled per episode from
+    ``goal_lookahead_range_s``. The data buffer must be a :class:`ContactMotionReferenceData` with the same
     ``contact_body_names``.
     """
 
@@ -68,9 +69,6 @@ class TerrainContactMotion(TerrainMotion):
         num_frames = int(sequence.buffer_length)
         frames = np.arange(num_frames)
         source = np.clip(np.round(frames * source_framerate / framerate).astype(int), 0, num_source - 1)
-        goal = torch.as_tensor(
-            np.minimum(frames + round(self.cfg.goal_lookahead_s * framerate), num_frames - 1), device=self.buffer_device
-        )
 
         def tensor(array, dtype=torch.float):
             return torch.as_tensor(array, dtype=dtype, device=self.buffer_device)
@@ -80,8 +78,6 @@ class TerrainContactMotion(TerrainMotion):
             contact_flag=tensor(flag[source], torch.bool),
             next_contact_pos_w=tensor(next_pos[source]),
             next_contact_valid=tensor(valid[source], torch.bool),
-            goal_pos_w=sequence.base_pos_w[goal],
-            goal_quat_w=sequence.base_quat_w[goal],
         )
 
     def _load_motion_sequences(self):
@@ -101,6 +97,17 @@ class TerrainContactMotion(TerrainMotion):
             for attr in self._all_motion_sequences.attrs_only_batch_dim:
                 getattr(self._all_motion_sequences, attr)[i] = getattr(motion, attr)
         print(f"[TerrainContactMotion] All {len(all_motion_sequences)} motion files loaded.")
+
+    def _sample_assigned_env_starting_stub(self, env_ids: torch.Tensor | None = None) -> None:
+        """Also sample each episode's goal lookahead."""
+        super()._sample_assigned_env_starting_stub(env_ids)
+        if not hasattr(self, "_assigned_env_goal_lookahead_s"):
+            self._assigned_env_goal_lookahead_s = torch.zeros(self.num_assigned_envs, device=self.buffer_device)
+        assigned_ids = self.env_ids_to_assigned_ids(env_ids).to(self.buffer_device)
+        low, high = self.cfg.goal_lookahead_range_s
+        self._assigned_env_goal_lookahead_s[assigned_ids] = low + (high - low) * torch.rand(
+            len(assigned_ids), device=self.buffer_device
+        )
 
     def fill_motion_data(
         self,
@@ -138,8 +145,19 @@ class TerrainContactMotion(TerrainMotion):
             data = data.reshape(len(env_ids), num_frames, *data.shape[1:]).to(self.output_device)
             if attr == "next_contact_pos_w":
                 data = data + origins[:, None, None]
-            elif attr == "goal_pos_w":
-                data = data + origins[:, None]
             if data.dtype == torch.bool:
                 data = data & validity.reshape(validity.shape + (1,) * (data.dim() - 2))
             getattr(data_buffer, attr)[env_ids] = data
+
+        goal_frames = (
+            frames
+            + torch.round(
+                self._assigned_env_goal_lookahead_s[assigned_ids].unsqueeze(-1)
+                * sequences.framerate[motion_ids].unsqueeze(-1)
+            ).long()
+        )
+        goal_frames = torch.minimum(goal_frames, last).flatten()
+        goal_pos = sequences.base_pos_w[flat_motion, goal_frames].reshape(len(env_ids), num_frames, 3)
+        goal_quat = sequences.base_quat_w[flat_motion, goal_frames].reshape(len(env_ids), num_frames, 4)
+        data_buffer.goal_pos_w[env_ids] = goal_pos.to(self.output_device) + origins[:, None]
+        data_buffer.goal_quat_w[env_ids] = goal_quat.to(self.output_device)

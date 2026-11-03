@@ -235,6 +235,87 @@ class BeyondConcatMotionAdaptiveWeighting(BeyondMimicAdaptiveWeighting):
         }
 
 
+class CurriculumStateInitialization(ManagerTermBase):
+    """Curriculum State Initialization (CSI) of ACP (He et al., arXiv:2610.31608, stage 1).
+
+    Each clip keeps an initialization phase (fraction of its duration), starting at ``initial_phase``. After an
+    episode on the clip the phase decreases by ``phase_step`` if the episode reached ``completion_phase`` and increases
+    by ``phase_step`` otherwise, clipped to ``phase_range``. Episodes that end in the same step update their clip by
+    the sum of their steps, clipped once.
+
+    The phase reaches the motion buffer through its start-time sampling: every bin weight of a clip is zero except the
+    bin at the phase. Use a bin of one frame (``motion_bin_length_s`` = the control step) for an exact phase, and the
+    ``"independent"`` start sampling so clips keep their motion weights.
+    """
+
+    def __init__(self, cfg: CurriculumTermCfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self.motion_reference: MotionReferenceManagerBase = env.scene[
+            cfg.params.get("reference_name", "motion_reference")
+        ]
+        if len(self.motion_reference.motion_buffers) != 1:
+            raise ValueError("CurriculumStateInitialization supports one motion buffer.")
+        self.motion_buffer: AmassMotion = next(iter(self.motion_reference.motion_buffers.values()))  # type: ignore
+        buffer_cfg = self.motion_buffer.cfg
+        if buffer_cfg.motion_bin_length_s is None or buffer_cfg.env_starting_stub_sampling_strategy != "independent":
+            raise ValueError(
+                "CurriculumStateInitialization needs motion_bin_length_s set and the 'independent' start sampling."
+            )
+        self.bin_length_s = buffer_cfg.motion_bin_length_s
+        self.num_bins = self.motion_buffer._motion_bin_weights._batch_sizes
+        self.bin_starts = self.motion_buffer._motion_bin_weights._batch_starts
+        device = self.motion_buffer.buffer_device
+        self.phase = torch.full(
+            (self.motion_buffer.num_trajectories,), cfg.params.get("initial_phase", 0.9), device=device
+        )
+        self._write_bin_weights()
+
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        env_ids: torch.Tensor | slice,
+        reference_name: str = "motion_reference",
+        initial_phase: float = 0.9,
+        completion_phase: float = 0.99,
+        phase_step: float = 0.05,
+        phase_range: tuple[float, float] = (0.0, 0.99),
+    ) -> dict[str, float]:
+        if isinstance(env_ids, slice):
+            env_ids = torch.arange(env.num_envs, device=env.device)[env_ids]
+        buffer = self.motion_buffer
+        # environments reset before any step (e.g. at startup) did not play an episode
+        env_ids = env_ids[env.episode_length_buf[env_ids] > 0]
+        if len(env_ids) > 0:
+            # NOTE: one motion buffer, so assigned ids are env ids
+            ids = env_ids.to(buffer.buffer_device)
+            motion_ids = buffer._assigned_env_motion_selection[ids]
+            end_time_s = (
+                buffer._motion_buffer_start_time_s[ids] + env.episode_length_buf[env_ids].to(ids.device) * env.step_dt
+            )
+            clip_length_s = (
+                buffer._all_motion_sequences.buffer_length[motion_ids]
+                / buffer._all_motion_sequences.framerate[motion_ids]
+            )
+            completed = end_time_s / clip_length_s >= completion_phase
+            step = torch.where(completed, -phase_step, phase_step)
+            delta = torch.zeros_like(self.phase).index_add_(0, motion_ids, step)
+            touched = torch.zeros_like(self.phase, dtype=torch.bool)
+            touched[motion_ids] = True
+            self.phase = torch.where(touched, torch.clamp(self.phase + delta, *phase_range), self.phase)
+            self._write_bin_weights()
+        return {
+            "phase_mean": self.phase.mean().item(),
+            "phase_min": self.phase.min().item(),
+            "phase_at_start_fraction": (self.phase <= phase_range[0] + 1e-6).float().mean().item(),
+        }
+
+    def _write_bin_weights(self):
+        weights = self.motion_buffer._motion_bin_weights._concatenated_tensor
+        bins = torch.minimum((self.phase * self.num_bins).long(), self.num_bins - 1)
+        weights.zero_()
+        weights[self.bin_starts + bins] = 1.0
+
+
 @wp.kernel
 def update_current_fail_counters(
     failed_motion_ids: wp.array(dtype=wp.int32),  # type: ignore
