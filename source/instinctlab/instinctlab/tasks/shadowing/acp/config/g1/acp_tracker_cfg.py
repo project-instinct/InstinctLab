@@ -3,7 +3,7 @@
 The actor sees proprioception (5-step history, 5 x 93), the depth image of the head camera, the next contact target
 of 9 bodies (27) and a goal (3). The paper's 9 x 7 height scan and the 17 x 11 planner scan are critic inputs only.
 Reference kinematics enter only the rewards and the critic. Choices not
-given by the paper (kernel widths, goal definition, terminations, start sampling) are recorded in
+given by the paper (kernel widths, goal definition, start sampling) are recorded in
 ``agents/AttnContacts_SuperMimic_REPRODUCE_PLAN.md``.
 """
 
@@ -31,6 +31,7 @@ from instinctlab.tasks.shadowing.perceptive.config.g1.perceptive_shadowing_cfg i
     G1PerceptiveShadowingEnvCfg,
     motion_reference_cfg,
 )
+from instinctlab.tasks.shadowing.supermimic.config.g1.supermimic_rewards_cfg import SuperMimicPaperTerminationsCfg
 from instinctlab.tasks.utils.backends import physics_preset
 from instinctlab.utils.urdf import urdf_importer_link_prim_path
 
@@ -239,6 +240,9 @@ class G1ACPTrackerEnvCfg(G1PerceptiveShadowingEnvCfg):
     commands: ACPCommandCfg = ACPCommandCfg()
     observations: ACPObservationsCfg = ACPObservationsCfg()
     rewards: ACPRewardGroupsCfg = ACPRewardGroupsCfg()
+    # ACP states no termination conditions ("configured failure conditions"), so SuperMimic's stated ones are used:
+    # root height error > 0.25 m or z-only tilt error > 0.8, no end-effector termination.
+    terminations: SuperMimicPaperTerminationsCfg = SuperMimicPaperTerminationsCfg()
 
     def __post_init__(self):
         if self.sim.physics is None:

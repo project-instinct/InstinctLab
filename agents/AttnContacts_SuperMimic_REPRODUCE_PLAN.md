@@ -857,13 +857,19 @@ Built so far:
 Choices (not in the paper): actor terrain input is the **depth image** of the head camera with the perceptive
 task's CNN (user decision), the 9 × 7 and 17 × 11 height scans are critic-only; kernels base pos σ 0.3, base vel
 0.5, joint pos 0.3 (mean), joint vel 3.0 (mean), contact pos 0.15 m; added base-rotation tracking (w 1.0);
-2nd-order action rate and contact_acc omitted; terminations of the perceptive task; contacts are re-annotated
+2nd-order action rate and contact_acc omitted; terminations: ACP states none ("configured failure conditions"),
+so SuperMimic's stated ones are used since 2026-11-03 (root height error > 0.25 m or z-only tilt error > 0.8, no
+end-effector termination; `SuperMimicPaperTerminationsCfg`); contacts are re-annotated
 with the popsicle URDF geometry (the task asset). PhysX buffers reduced to `gpu_max_rigid_contact_count = 2**23`,
 `gpu_collision_stack_size = 2**26` so 4096 envs fit (12.9 GB, 4.4 s/iteration).
 
 Refactor check (2026-11-03): the first version loaded the contact keys inside the command; after moving them into the
 motion buffer the first 380 iterations follow the earlier run (mean reward, episode length, contact-label and
 joint rewards, terminations within run-to-run noise). Run `*_acpS1_depth_contactBuffer` replaces `*_acpS1_depth`.
+
+First run with the perceptive task's terminations (base/feet/hands height 0.25 m, full-gravity tilt), stopped at
+iteration ~5000: evaluation success 0.5 % / 1.0 % / 0.5 % at 1000 / 2000 / 4000, every clip failing 0.3–1.4 s
+after its first raised-terrain contact; restarted with the SuperMimic terminations (run `*_acpS1_depth_smTerm`).
 
 Label check result: kinematic replay cannot confirm stance contacts, because the retargeted feet hover about
 1 cm above the terrain (ankle origin 4.7 cm, popsicle sole 3.5 cm below it), so the held pose makes no force.
