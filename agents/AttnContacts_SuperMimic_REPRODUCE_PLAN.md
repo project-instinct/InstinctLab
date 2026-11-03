@@ -852,7 +852,7 @@ Built so far:
 | Contact reference data (A-M11, terrain variant) | `IL/motion_reference/motion_reference_contact_data.py` (`ContactMotionSequence`, `ContactMotionReferenceData`), `IL/motion_reference/motion_files/terrain_contact_motion.py` (`TerrainContactMotion(TerrainMotion)`) | contact keys read at load and resampled to the buffer framerate; fields `contact_flag`, `next_contact_pos_w`, `next_contact_valid` (next onset at or after the frame within 1.5 s), `goal_pos_w`/`goal_quat_w` (base pose 2 s ahead); manager passes `MotionReferenceManagerCfg.contact_body_names` to the data class |
 | Contact schedule command, obs and reward terms | `IL/tasks/shadowing/acp/contact_schedule.py` | reads `reference_frame`; targets in the robot body-yaw frame, zero where invalid; goal xy clipped to 1 m + relative heading; refuses symmetric augmentation |
 | Task `Instinct-ACP-Tracker-G1-v0` (+ Play, Newton, OvPhysx ids) | `IL/tasks/shadowing/acp/config/g1/` | popsicle G1, PhysX; 202 terrain rows × 2 cols, 14 × 12 m; 20 s episodes; BeyondMimic adaptive start bins instead of CSI |
-| Label check | `scripts/acp_check_contact_labels.py` | replays the reference and compares with contact forces |
+| Label check | `scripts/acp/check_contact_labels.py` | replays the reference and compares with contact forces |
 
 Choices (not in the paper): actor terrain input is the **depth image** of the head camera with the perceptive
 task's CNN (user decision), the 9 × 7 and 17 × 11 height scans are critic-only; kernels base pos σ 0.3, base vel
