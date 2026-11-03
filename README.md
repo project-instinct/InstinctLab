@@ -112,6 +112,7 @@ Task defaults read datasets from `~/Datasets`; `~` is expanded when the files ar
 | Hiking in the Wild (parkour) | `~/Datasets/hiking-in-the-wild_Data&Model/data&model/parkour_motion_reference` | project release |
 | OMOMO (perceptive HOI) | `~/Datasets/OMOMO/retargeted`, objects in `~/Datasets/OMOMO/data/captured_objects` | OMOMO release |
 | LAFAN1 (BeyondMimic) | `~/Datasets/UbisoftLAFAN1_GMR_g1_29dof_torsoBase_retargetted_instinctnpz` | retargeted LAFAN1 |
+| ACP terrain contacts (PHP step/climb + Deep Whole-body Parkour) | `~/Datasets/ACP-TerrainContacts_G1` | built with `scripts/php_to_instinct.py` and `scripts/annotate_motion_contacts.py` from the [PHP release](https://github.com/amazon-far/php_parkour/releases/tag/training-motion-examples-v1); see its `README.md` |
 
 A cfg's `__post_init__` derives some fields from these paths and does not run again after a CLI override; the
 affected fields are documented in the motion-file and terrain cfg docstrings.
