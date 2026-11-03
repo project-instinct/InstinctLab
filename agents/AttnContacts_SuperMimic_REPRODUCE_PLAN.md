@@ -15,6 +15,14 @@ replay checkpoints kept (§5.1 U5).
 dirty files stashed; Instinct-RL overridden with local `main` (its 7 dirty files were already in `574c8d5`, and
 are stashed as well). **Both papers now reproduce under LAFAN1 only** (user decision): ACP drops the NoKov box
 set and the terrain zoo and runs on LAFAN1 clips; M5 export manifest skipped.
+**Revision 6, 2026-11-03 (ACP data switched to terrain data, user decision).** ACP no longer uses LAFAN1. Its
+motion set is PHP (Perceptive Humanoid Parkour) step + climb-76 bundles (196 clips, 36.7 min, box variant 0) plus
+the 10 Deep Whole-body Parkour clips, with geometric contact labels: `~/Datasets/ACP-TerrainContacts_G1/` (§7.3).
+Scope stays modules + one stage 1 → 2 demo (no stage 3, no A-M9). Contact labels are geometric from the
+reference kinematics (A-M8 revised), checked against sim contact forces on 2 clips. SuperMimic is unchanged
+(LAFAN1). Where this revision conflicts with LAFAN1-only text for ACP below, this revision wins.
+Code location is now marsbrain `~/workspace/instinctlab_ws/{instinctlab,instinct_rl}` (the `isaacSim6` tree no
+longer exists), edited from the Nutstore checkout and synced with rsync.
 
 Merged from two earlier plans (kept as history, not to be edited further):
 
@@ -808,6 +816,58 @@ Consequences for the build:
   has 5 keys: `framerate`, `joint_names`, `joint_pos`, `base_pos_w`, `base_quat_w`).
 - Annotate **all 40 clips** once (cheap, it is a sim playback), so any subset can be used later.
 - Licenses: LAFAN1 upstream is CC BY-NC-ND 4.0; derived files stay research-only and are not redistributed.
+
+### 7.4 ACP data, revision 6 (replaces §7.3 for ACP)
+
+Built 2026-11-03 on marsbrain; all paths under `~/Datasets/`:
+
+| Path | Content |
+|---|---|
+| `PHP-Parkour_Motions/` | PHP release `training-motion-examples-v1` (5 archives, SHA-256 verified, fetched through `api.github.com` because `github.com` and Hugging Face are unreachable from marsbrain) + extracted folders; `instinct_variant0/` = `scripts/php_to_instinct.py` output for step + climb-76 (196 clips, 14 × 12 m terrains, metadata.yaml) |
+| `ACP-TerrainContacts_G1/` | ACP motion set: `php/` (196) + `dwp/` (10 clips on 6 scans), npz copies with `contact_body_names`, `contact_flag (T, 9)`, `contact_pos_w (T, 9, 3)`; one `metadata.yaml` (202 terrains, 206 motions); README with commands |
+| `~/workspace/php_parkour` | PHP source (read-only reference for the formats) |
+
+Conversion facts: PHP root = pelvis, so the torso base is computed by FK and the three waist joints are negated for
+the torso-rooted URDF (as `GMR_to_instinct.py` does); FK body positions agree with PHP's to ≤ 1.7 cm (upper body;
+legs exact). Clips are re-centred in xy so they fit 14 × 12 m subterrains with 0.5 m margin. Terrain = ground plane
++ boxes `[pos, quat wxyz, size]`. Contact rule (A-M8, geometric): closest collision point of the body within
+4 cm (signed) of the terrain mesh and slower than 1.0 m/s, 0.06 s debounce. Mean contact fractions: climb clips
+knees 3–12 %, hands 11–24 %; step clips feet only; DWP knee-climb / jump-sit / roll-vault have knees, hands,
+elbows and pelvis; DWP dive rolls barely touch with hands in the retarget (≤ 1 %).
+
+Terrain grid consequence: one terrain per row requires `curriculum=True` and `num_rows = 202` (Isaac Lab picks
+`difficulty = (row + U) / num_rows`, so `floor(difficulty · 202) = row`); random mode would drop most terrains.
+
+### 7.5 Fast route (branch `feat/acp-fast-terrain`, user decision 2026-11-03)
+
+The ACP demo is first built on branch `feat/acp-fast-terrain` (InstinctLab only, Instinct-RL unchanged, plain
+`PPO`), skipping the F-phase foundation. If it gets stuck, it is left and the work returns to
+`integrate/ACP-SuperMimic` in the plan order of §6. SuperMimic keeps the existing LAFAN1 retarget for the
+torso-based G1 (`UbisoftLAFAN1_GMR_g1_29dof_torsoBase_retargetted_instinctnpz`); the waist-sign question is dropped.
+
+Built so far:
+
+| Piece | Where | Notes |
+|---|---|---|
+| Contact reference data (A-M11, terrain variant) | `IL/motion_reference/motion_reference_contact_data.py` (`ContactMotionSequence`, `ContactMotionReferenceData`), `IL/motion_reference/motion_files/terrain_contact_motion.py` (`TerrainContactMotion(TerrainMotion)`) | contact keys read at load and resampled to the buffer framerate; fields `contact_flag`, `next_contact_pos_w`, `next_contact_valid` (next onset at or after the frame within 1.5 s), `goal_pos_w`/`goal_quat_w` (base pose 2 s ahead); manager passes `MotionReferenceManagerCfg.contact_body_names` to the data class |
+| Contact schedule command, obs and reward terms | `IL/tasks/shadowing/acp/contact_schedule.py` | reads `reference_frame`; targets in the robot body-yaw frame, zero where invalid; goal xy clipped to 1 m + relative heading; refuses symmetric augmentation |
+| Task `Instinct-ACP-Tracker-G1-v0` (+ Play, Newton, OvPhysx ids) | `IL/tasks/shadowing/acp/config/g1/` | popsicle G1, PhysX; 202 terrain rows × 2 cols, 14 × 12 m; 20 s episodes; BeyondMimic adaptive start bins instead of CSI |
+| Label check | `scripts/acp_check_contact_labels.py` | replays the reference and compares with contact forces |
+
+Choices (not in the paper): actor terrain input is the **depth image** of the head camera with the perceptive
+task's CNN (user decision), the 9 × 7 and 17 × 11 height scans are critic-only; kernels base pos σ 0.3, base vel
+0.5, joint pos 0.3 (mean), joint vel 3.0 (mean), contact pos 0.15 m; added base-rotation tracking (w 1.0);
+2nd-order action rate and contact_acc omitted; terminations of the perceptive task; contacts are re-annotated
+with the popsicle URDF geometry (the task asset). PhysX buffers reduced to `gpu_max_rigid_contact_count = 2**23`,
+`gpu_collision_stack_size = 2**26` so 4096 envs fit (12.9 GB, 4.4 s/iteration).
+
+Refactor check (2026-11-03): the first version loaded the contact keys inside the command; after moving them into the
+motion buffer the first 380 iterations follow the earlier run (mean reward, episode length, contact-label and
+joint rewards, terminations within run-to-run noise). Run `*_acpS1_depth_contactBuffer` replaces `*_acpS1_depth`.
+
+Label check result: kinematic replay cannot confirm stance contacts, because the retargeted feet hover about
+1 cm above the terrain (ankle origin 4.7 cm, popsicle sole 3.5 cm below it), so the held pose makes no force.
+The force check moves to rollouts of the trained tracker.
 
 ## 8. Cross-repo contracts
 
