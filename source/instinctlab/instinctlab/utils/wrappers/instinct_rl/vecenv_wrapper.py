@@ -196,6 +196,14 @@ class InstinctRlVecEnvWrapper(VecEnv):
     Operations -- Instinct-RL
     """
 
+    def set_training_iteration(self, iteration: int) -> None:
+        """Called by the runner at the start of every training iteration."""
+        self.unwrapped.training_iteration = int(iteration)
+
+    def set_policy_feedback(self, feedback: dict[str, torch.Tensor]) -> None:
+        """Called by the runner before each step with the algorithm's feedback (e.g. a planner's targets)."""
+        self.unwrapped.policy_feedback = feedback
+
     def get_obs_segments(self, group_name: str = "policy"):
         obs_term_names = self.unwrapped.observation_manager.active_terms[group_name]
         obs_term_dims = self.unwrapped.observation_manager.group_obs_term_dim[group_name]

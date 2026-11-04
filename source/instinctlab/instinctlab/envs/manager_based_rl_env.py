@@ -10,7 +10,17 @@ from instinctlab.monitors import MonitorManager
 class InstinctRlEnv(ManagerBasedRLEnv):
     """This class adds additional logging mechanism on sensors to get more
     comprehensive running statistics.
+
+    It also holds what the learning side sends to the environment (through the Instinct-RL wrapper): the
+    training iteration (``training_iteration``, for iteration-dependent schedules) and the algorithm's
+    per-step feedback (``policy_feedback``, e.g. a planner's targets that a reward follows).
     """
+
+    def __init__(self, cfg, render_mode: str | None = None, **kwargs):
+        # set before the managers are built: observation terms are evaluated once during construction
+        self.training_iteration: int = 0
+        self.policy_feedback: dict[str, torch.Tensor] = {}
+        super().__init__(cfg, render_mode, **kwargs)
 
     def load_managers(self):
 
