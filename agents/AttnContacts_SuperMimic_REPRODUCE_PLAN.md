@@ -84,6 +84,7 @@ Paper notes: `~/workspace/paper-intro-videos/{AttnContacts,SuperMimic}/` (`FACTS
 | Where code is built | Directly in marsbrain `~/workspace/isaacSim6/{instinctlab,instinct_rl}` (user decision), on branch **`integrate/ACP-SuperMimic`** in both. Created 2026-10-26; local scratch worktrees deleted; dirty files stashed (§9.1). | both |
 | Reference code | `zita-ch/supermimic_vibed` (MIT) may be consulted for design choices, not copied. Local read-only copy: `/tmp/opencode/ref/supermimic_vibed`. `lucidrains/attention-contact-planning` (MIT, WIP, planner only) likewise for ACP. | per paper |
 | Compute | `marsbrain` (1× RTX 4090 D, 62 GB RAM, 117 GB disk) is free and does everything: build, tests, training. `baidu-cluster-kengo-zzw` and `ziwen-galaxea-desktop` are **not** used; `aorua` is not required (§9.1) unless a LAFAN1 clip is missing from marsbrain, which would first be reported as a blocker. | both |
+| Bug fixes | When there is concrete evidence of an implementation bug, fix it right away on its own `fix/*` branch first (user decision 2026-11-04), then merge it into the working branch and report the root cause | both |
 | The "second algorithm" left open in the ACP plan (§9 there) | It is SuperMimic. It replaces PPO's update, so it is its own algorithm class, not a mixin. The "learner list instead of mixins" refactor is **not** needed. | both |
 
 ## 2. Invariants and coding rules
@@ -873,6 +874,12 @@ after its first raised-terrain contact; restarted with the SuperMimic terminatio
 restarted again with ACP's CSI, goal and reset noise (run `*_acpS1_depth_csi`). Open: the paper does not say
 whether the CSI phase is per clip or per environment (we use per clip), nor how often the goal lookahead is resampled
 (we sample it per episode).
+
+Terrain placement bug (found 2026-11-04, fixed in `f351758` on `fix/filed-terrain-curriculum-order`, merged): in
+curriculum mode `FiledTerrainGenerator` recorded sub-terrain configs in Isaac Lab's column-by-column generation order
+while `TerrainMotion.match_scene` reads them row-major, so almost every clip was placed on another clip's terrain
+(climb clips started on a box top fell within 0.24 s). Runs `*_acpS1_depth_contactBuffer`, `*_smTerm` and `*_csi`
+trained on mismatched terrain and are void; stage 1 restarts as `*_acpS1_depth_csi_terrainFix`.
 
 Label check result: kinematic replay cannot confirm stance contacts, because the retargeted feet hover about
 1 cm above the terrain (ankle origin 4.7 cm, popsicle sole 3.5 cm below it), so the held pose makes no force.
