@@ -44,7 +44,7 @@ DEFAULT_URDF = os.path.join(
     "resources",
     "unitree_g1",
     "urdf",
-    "g1_29dof_torsobase_simplified.urdf",
+    "g1_29dof_torsobase_popsicle.urdf",
 )
 ROOT_BODY = "pelvis"  # PHP's floating base (joint_pos[:, :7])
 BASE_BODY = "torso_link"  # InstinctLab G1 floating base
