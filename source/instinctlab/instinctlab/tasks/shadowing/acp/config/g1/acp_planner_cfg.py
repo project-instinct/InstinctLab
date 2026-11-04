@@ -135,6 +135,4 @@ class G1ACPPlannerEnvCfg_PLAY(G1ACPPlannerEnvCfg):
         self.events.base_com = None
         self.events.reset_robot.params["randomize_pose_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0)}
         self.events.reset_robot.params["randomize_joint_pos_range"] = (0.0, 0.0)
-        # play.py runs the actor alone (no planner, no feedback for the planned-contact reward)
-        self.rewards.rewards.track_planned_contact = None
-        self.curriculum.contact_reward_handoff.params["planner_terms"] = []
+        # play with scripts/acp/play_planner.py: it runs the planner and sends its targets as policy feedback
