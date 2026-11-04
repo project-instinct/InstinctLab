@@ -4,6 +4,7 @@ from isaaclab.utils.configclass import configclass
 
 from instinctlab.tasks.shadowing.perceptive.config.g1.agents.instinct_rl_ppo_cfg import Conv2dHeadEncoderCfg
 from instinctlab.utils.wrappers.instinct_rl import (
+    InstinctRlContactPlannerPpoAlgorithmCfg,
     InstinctRlEncoderActorCriticCfg,
     InstinctRlNormalizerCfg,
     InstinctRlOnPolicyRunnerCfg,
@@ -68,3 +69,48 @@ class G1ACPTrackerPPORunnerCfg(InstinctRlOnPolicyRunnerCfg):
         super().__post_init__()
         self.resume = self.load_run is not None
         self.run_name = f"_GPU{os.environ.get('CUDA_VISIBLE_DEVICES')}" if "CUDA_VISIBLE_DEVICES" in os.environ else ""
+
+
+@configclass
+class PlannerAlgorithmCfg(InstinctRlContactPlannerPpoAlgorithmCfg):
+    """Stage-2 PPO settings of the paper (Table S6) and the planner's optimization (Supp. Table S5)."""
+
+    value_loss_coef = 1.0
+    use_clipped_value_loss = True
+    clip_param = 0.2
+    entropy_coef = 0.005
+    num_learning_epochs = 5
+    num_mini_batches = 8
+    learning_rate = 1e-4
+    schedule = "adaptive"
+    gamma = 0.99
+    lam = 0.95
+    desired_kl = 0.01
+    max_grad_norm = 1.0
+
+    planner_class_name = "AttentionContactPlanner"
+    planner_kwargs = {
+        "points_xy_component": "terrain_xy",
+        "points_z_component": "terrain_height",
+        "context_components": ["base_ang_vel", "projected_gravity", "joint_pos", "joint_vel", "last_action", "goal"],
+        "num_bodies": 9,
+    }
+    # the tracker's observation noise on contact targets (Supp. Table S2), also on the planner's
+    planner_target_noise = 0.1
+    planner_optimizer_kwargs = {"lr": 1e-4, "betas": (0.9, 0.999), "eps": 1e-8, "weight_decay": 0.0}
+    planner_num_updates = 10
+    planner_batch_size = 4096
+    planner_accumulation_steps = 8
+    planner_min_samples = 1000
+    planner_replay_capacity = 100_000
+
+
+@configclass
+class G1ACPPlannerPPORunnerCfg(G1ACPTrackerPPORunnerCfg):
+    """Stage 2, started from a stage-1 tracker checkpoint (``--load_run <stage-1 run> --checkpoint model_N.pt
+    --resume``): the checkpoint manipulator adds the fresh planner and restarts the iteration count at 0."""
+
+    algorithm: PlannerAlgorithmCfg = PlannerAlgorithmCfg()
+    ckpt_manipulator = "add_missing_algorithm_state"
+    max_iterations = 5000
+    experiment_name = "g1_acp_planner"

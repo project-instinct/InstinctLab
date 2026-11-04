@@ -220,6 +220,40 @@ class InstinctRlPpoAlgorithmCfg:
 
 
 @configclass
+class InstinctRlContactPlannerPpoAlgorithmCfg(InstinctRlPpoAlgorithmCfg):
+    """Configuration for ``ContactPlannerPPO``: PPO plus a contact planner trained from hindsight samples.
+
+    See ``instinct_rl.algorithms.planner.PlannerAlgoMixin`` for the meaning of every ``planner_*`` field.
+    """
+
+    class_name: str = "ContactPlannerPPO"
+
+    planner_class_name: str = "AttentionContactPlanner"
+    """``AttentionContactPlanner`` or the baseline ``MlpContactPlanner`` (or ``"module.path:Class"``)."""
+
+    planner_kwargs: dict = MISSING
+    """Planner constructor arguments, besides ``input_segments``."""
+
+    planner_obs_group: str = "planner"
+    planner_target_components: list[str] = ["contact_targets"]
+    planner_gate_group: str = "contact_source"
+    planner_target_noise: float = 0.0
+    planner_positions_feedback_key: str = "planned_contacts"
+    planner_occupancy_feedback_key: str = "planned_occupancy"
+    planner_samples_key: str = "planner_samples"
+    planner_optimizer_class_name: str = "Adam"
+    planner_optimizer_kwargs: dict = {"lr": 1e-4}
+    planner_max_grad_norm: float | None = None
+    planner_num_updates: int = 10
+    planner_batch_size: int = 4096
+    planner_accumulation_steps: int = 8
+    planner_min_samples: int = 1000
+    planner_replay_capacity: int = 100_000
+    planner_replay_device: str | None = None
+    planner_replay_checkpoint: str = "latest"
+
+
+@configclass
 class InstinctRlNormalizerCfg:
     class_name: str = "EmpiricalNormalization"
 

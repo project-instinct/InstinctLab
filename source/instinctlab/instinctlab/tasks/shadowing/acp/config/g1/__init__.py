@@ -11,3 +11,11 @@ register_backend_tasks(
     entry_point="instinctlab.envs.manager_based_rl_env:InstinctRlEnv",
     instinct_rl_cfg_entry_point=f"{agents.__name__}.instinct_rl_ppo_cfg:G1ACPTrackerPPORunnerCfg",
 )
+
+register_backend_tasks(
+    "Instinct-ACP-Planner-G1",
+    env_cfg_entry_point=f"{task_entry}.acp_planner_cfg:G1ACPPlannerEnvCfg",
+    play_env_cfg_entry_point=f"{task_entry}.acp_planner_cfg:G1ACPPlannerEnvCfg_PLAY",
+    entry_point="instinctlab.tasks.shadowing.acp.labeling_env:HindsightLabelingEnv",
+    instinct_rl_cfg_entry_point=f"{agents.__name__}.instinct_rl_ppo_cfg:G1ACPPlannerPPORunnerCfg",
+)

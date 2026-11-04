@@ -1,0 +1,140 @@
+"""ACP stage 2 for the G1: the contact planner, trained from hindsight contact labels of the tracker's own rollouts,
+takes over the tracker's contact targets.
+
+On top of the stage-1 tracker task (``acp_tracker_cfg``, same policy and critic observations, so a stage-1
+checkpoint loads):
+
+- observation group ``planner``: the 17 x 11 points of ``height_scanner`` as (x, y) and height in the body-yaw
+  frame, the 5-step proprioception and the goal of the tracker (with the tracker's noise; heights N(0, 0.03^2));
+- observation group ``contact_source`` (N, 1): 1 = the algorithm feeds the planner's targets instead of the
+  reference's, with probability eta_obs of the training iteration (paper Eq. S1);
+- reward ``track_planned_contact`` (weight 1.5 eta_rew) and the reference-contact rewards scaled by 1 - eta_rew;
+- hindsight labeling of the episodes that start in the first 10 % of a clip and reach 90 % (``contact_labeler``);
+- start phase U(0, 0.98) of the clip, no CSI.
+
+The eta schedules' start iterations and ramp length are not in the paper (choices below, see the reproduction plan).
+"""
+
+from isaaclab.managers import CurriculumTermCfg
+from isaaclab.managers import ObservationGroupCfg as ObsGroupCfg
+from isaaclab.managers import ObservationTermCfg as ObsTermCfg
+from isaaclab.managers import RewardTermCfg as RewTermCfg
+from isaaclab.managers import SceneEntityCfg
+from isaaclab.utils.configclass import configclass
+from isaaclab.utils.noise import GaussianNoiseCfg
+
+from instinctlab.assets.unitree_g1 import G1_29DOF_POLICY_JOINT_ORDER_V1
+from instinctlab.managers import MultiRewardCfg
+from instinctlab.tasks.shadowing.acp import planner_handoff
+from instinctlab.tasks.shadowing.acp.hindsight_labeler import HindsightContactLabelerCfg
+from instinctlab.utils.config import set_cfg_joint_order
+
+from .acp_tracker_cfg import CONTACT_BODIES, ACPObservationsCfg, ACPRewardsCfg, G1ACPTrackerEnvCfg
+
+# Hand-off schedules (paper Eq. S1, in PPO iterations of stage 2; u_rew > u_obs as the paper requires). The
+# planner trains from the first iteration with enough replay samples; its targets reach the tracker from
+# ETA_OBS_START on, and the reward moves to them from ETA_REW_START on.
+ETA_OBS_START = 500
+ETA_REW_START = 1000
+ETA_RAMP_ITERATIONS = 2000
+REFERENCE_CONTACT_REWARDS = ["contact_label", "contact_pos_base", "contact_pos_global"]
+
+
+@configclass
+class ACPPlannerObservationsCfg(ACPObservationsCfg):
+    @configclass
+    class PlannerObsCfg(ACPObservationsCfg.PolicyObsCfg):
+        """The tracker's proprioception and goal terms (same noise), without its depth image and contact targets,
+        plus the planner scan."""
+
+        depth_image = None
+        contact_targets = None
+        terrain_xy = ObsTermCfg(
+            func=planner_handoff.scan_points_xy_b, params={"sensor_cfg": SceneEntityCfg("height_scanner")}
+        )
+        terrain_height = ObsTermCfg(
+            func=planner_handoff.scan_points_height_b,
+            params={"sensor_cfg": SceneEntityCfg("height_scanner")},
+            noise=GaussianNoiseCfg(mean=0.0, std=0.03),
+            clip=(-2.0, 2.0),
+        )
+
+    @configclass
+    class ContactSourceObsCfg(ObsGroupCfg):
+        planner_gate = ObsTermCfg(
+            func=planner_handoff.planner_gate,
+            params={"start_iteration": ETA_OBS_START, "ramp_iterations": ETA_RAMP_ITERATIONS},
+        )
+
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.concatenate_terms = False
+
+    planner: PlannerObsCfg = PlannerObsCfg()
+    contact_source: ContactSourceObsCfg = ContactSourceObsCfg()
+
+
+@configclass
+class ACPPlannerRewardsCfg(ACPRewardsCfg):
+    # paper: weight 1.5 eta_rew, sigma_c = 1 m
+    track_planned_contact = RewTermCfg(
+        func=planner_handoff.track_planned_contact, weight=1.5, params={"command_name": "contact_schedule", "std": 1.0}
+    )
+
+
+@configclass
+class ACPPlannerRewardGroupsCfg(MultiRewardCfg):
+    rewards = ACPPlannerRewardsCfg()
+
+
+@configclass
+class ACPPlannerCurriculumCfg:
+    contact_reward_handoff = CurriculumTermCfg(
+        func=planner_handoff.RewardWeightHandoff,
+        params={
+            "start_iteration": ETA_REW_START,
+            "ramp_iterations": ETA_RAMP_ITERATIONS,
+            "reference_terms": REFERENCE_CONTACT_REWARDS,
+            "planner_terms": ["track_planned_contact"],
+            "group_name": "rewards",
+        },
+    )
+
+
+@configclass
+class G1ACPPlannerEnvCfg(G1ACPTrackerEnvCfg):
+    observations: ACPPlannerObservationsCfg = ACPPlannerObservationsCfg()
+    rewards: ACPPlannerRewardGroupsCfg = ACPPlannerRewardGroupsCfg()
+    curriculum: ACPPlannerCurriculumCfg = ACPPlannerCurriculumCfg()
+    contact_labeler: HindsightContactLabelerCfg = HindsightContactLabelerCfg(body_names=CONTACT_BODIES)
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.num_envs = 2400  # paper Table S6, per worker
+        # stage-2 initial phase U(0, 0.98) of the clip (Supp. Table S2), instead of stage 1's CSI bins
+        motion = self.scene.motion_reference.motion_buffers["TerrainMotion"]
+        motion.motion_bin_length_s = None
+        motion.motion_start_from_middle_range = [0.0, 0.98]
+        joint_order = list(G1_29DOF_POLICY_JOINT_ORDER_V1)
+        self.observations.planner.joint_pos.params["asset_cfg"] = set_cfg_joint_order(
+            SceneEntityCfg("robot"), joint_order
+        )
+        self.observations.planner.joint_vel.params["asset_cfg"] = set_cfg_joint_order(
+            SceneEntityCfg("robot"), joint_order
+        )
+        self.run_name = "g1ACPPlanner"
+
+
+@configclass
+class G1ACPPlannerEnvCfg_PLAY(G1ACPPlannerEnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.num_envs = 16
+        self.events.physics_material = None
+        self.events.add_joint_default_pos = None
+        self.events.base_com = None
+        self.events.reset_robot.params["randomize_pose_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0)}
+        self.events.reset_robot.params["randomize_joint_pos_range"] = (0.0, 0.0)
+        # play.py runs the actor alone (no planner, no feedback for the planned-contact reward)
+        self.rewards.rewards.track_planned_contact = None
+        self.curriculum.contact_reward_handoff.params["planner_terms"] = []

@@ -11,6 +11,7 @@ from .rl_cfg import (
     EstimatorCfgMixin,
     InstinctRlActorCriticCfg,
     InstinctRlActorCriticRecurrentCfg,
+    InstinctRlContactPlannerPpoAlgorithmCfg,
     InstinctRlEncoderActorCriticCfg,
     InstinctRlEncoderActorCriticRecurrentCfg,
     InstinctRlEncoderMoEActorCriticCfg,
