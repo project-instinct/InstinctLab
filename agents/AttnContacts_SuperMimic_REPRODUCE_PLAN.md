@@ -885,6 +885,51 @@ Label check result: kinematic replay cannot confirm stance contacts, because the
 1 cm above the terrain (ankle origin 4.7 cm, popsicle sole 3.5 cm below it), so the held pose makes no force.
 The force check moves to rollouts of the trained tracker.
 
+### 7.6 Stage 2 (branch `feat/acp-stage2` in both repos, 2026-11-04)
+
+Built instead of the §5 interfaces where the code allowed a smaller design:
+
+| Piece | Where | Notes |
+|---|---|---|
+| `FiLM`, `CrossAttention` (A-M2) | IR `modules/attention.py` | attention written out (per-head log-weights for the loss; plain matmuls export to ONNX) |
+| `ContactPlanner`, `AttentionContactPlanner`, `MlpContactPlanner` (A-M5) | IR `modules/contact_planner.py` | defaults reproduce Table S3 exactly (786,993 / 833,322 parameters with the paper's 378-d context); ours have a 468-d context |
+| `FifoReplayBuffer` (A-M4, reduced) | IR `storage/replay_storage.py` | FIFO, uniform; no partitions or quality (stage 3 only) |
+| `PlannerAlgoMixin`, `ContactPlannerPPO` | IR `algorithms/planner.py` | own Adam, 10 updates/iteration, replay sidecar `planner_replay_latest.pt`, `planner.onnx` next to the actor files |
+| Runner hooks | IR `runners/on_policy_runner.py` | `env.set_training_iteration`, `env.set_policy_feedback(alg.get_policy_feedback())`, `alg.export_as_onnx`; all duck-typed. `get_algorithm_inputs` is not needed (the runner's `algorithm.inputs` already exists) |
+| Stage transition | IR `utils/ckpt_manipulator.py::add_missing_algorithm_state` | keeps every checkpoint entry, adds the fresh planner, restarts the iteration at 0; a stage-2 checkpoint passes unchanged |
+| Channels | IL `InstinctRlEnv.training_iteration` / `.policy_feedback`, wrapper setters | |
+| Hindsight labeler (A-M7) | IL `tasks/shadowing/acp/hindsight_labeler.py`, `labeling_env.py` | |
+| Hand-off (A-M10 ramps), planner scan, `track_planned_contact` (A-M6) | IL `tasks/shadowing/acp/planner_handoff.py` | |
+| Task `Instinct-ACP-Planner-G1-v0` | IL `tasks/shadowing/acp/config/g1/acp_planner_cfg.py` | start: `--load_run <stage-1 run> --checkpoint model_N.pt --resume` |
+
+Choices where the paper is silent (all are config values):
+
+| Choice | Value | Reason |
+|---|---|---|
+| eta schedules | u_obs = 500, u_rew = 1000, N_ann = 2000 iterations of stage 2 | paper gives only u_rew > u_obs; the planner trains for 500 iterations before its targets reach the tracker |
+| Iteration count of stage 2 | restarts at 0 (checkpoint manipulator) | the ramps count from the stage start, resume keeps the count |
+| Normalization of planner targets | written after the runner's normalization, as `(x - mean) / (std + eps)` with the policy normalizer's slot statistics, no update | the actor sees both target sources on the stage-1 scale; stage-1 normalizer reused; slot statistics keep coming from the env's reference targets |
+| Noise on planner targets | U(-0.1, 0.1) m | the actor's contact-target noise (Table S2) applies to every actor input |
+| Planner context | running mean/std inside the planner, updated from replay batches, exported with it | paper silent; raw joint velocities reach ~10 rad/s |
+| Attention residual | query added to the attended feature before the occupancy head | parameter-free (count unchanged); without it the occupancy head sees proprioception and goal only through the attention weights (a toy test could not learn occupancy) |
+| FiLM form | `x (1 + gamma) + beta` | identity at initialization |
+| Affordance | head average of the attention weights; CE on its log | "a distribution of affordance weights over the height-scan points" |
+| Gradient accumulation | 4096 samples per step in 8 sub-batches of 512; Eq. 2's valid-count normalization per sub-batch | Table S5 wording |
+| Planner gradient clipping | none | none listed |
+| Replay | 100,000 samples, on the training device | capacity not in the paper (~0.4 GB) |
+| Contact state | magnitude of the vertical net contact force > 1 N at the recorded step | Table S5 |
+| Contact position | body link origin at the onset step | sim gives no contact point without filtered sensors; a few cm above the surface, inside sigma_a = 0.1 m; decoded targets are observed terrain points anyway |
+| Next contact | onset at or after the step | same as the stage-1 targets |
+| Recording | 512 slots x 500 steps; a slot only for episodes starting at phase <= 0.1 | memory bound (512 x 500 x 1029 floats = 1.05 GB); others cannot be admitted |
+| Truncated records | the last H + 10 - 1 = 84 recorded steps are dropped when the episode outlived its 500-step record | their onsets are not observable |
+| Admission end phase | phase of the terminal state | |
+| Planner scan noise | N(0, 0.03^2) on the heights only; missed rays read -2 m; heights clipped to ±2 m | xy of a vertical ray is known |
+| `track_planned_contact` | sigma_c = 1 m; body link origin vs target in the body-yaw frame after the step (targets in the frame of the step's start) | paper formula; one-step frame lag as for the reference terms |
+| Stage-2 envs / length | 2,400 envs (Table S6, per worker), 5,000 iterations | iterations not given |
+
+Play: `Instinct-ACP-Planner-G1-Play-v0` runs the actor alone with `play.py` (no planner in the loop); the planned-contact
+reward is removed there. Export through `play.py --exportonnx` writes `planner.onnx` as well.
+
 ## 8. Cross-repo contracts
 
 - Instinct-RL `VecEnv`: `set_training_iteration`, `set_policy_feedback`, `get_algorithm_inputs`,
@@ -892,6 +937,8 @@ The force check moves to rollouts of the trained tracker.
   `get_algorithm_inputs()` for tasks without extras; an env term reading a missing feedback key raises.
 - ACP `infos["planner_samples"]`: dict with shared leading dim K (K may be 0): `planner_obs (K, D)`,
   `target_pos (K, 9, 3)`, `target_valid (K, 9)`, `partition (K,)` int, `quality (K,)`, `buffer_id (K,)` int.
+  As built for stage 2 (§7.6): only `planner_obs`, `target_pos`, `target_valid`, sent every step; the other three
+  belong to stage 3's goal-reaching buffers and are added with it.
   The env reads `training_iteration` only for the later η ramps (the demo uses one fixed η) and
   `policy_feedback["planned_contacts"]` / `["planned_occupancy"]` for `track_planned_contact`.
 - SuperMimic: `get_algorithm_inputs()["imagination"]` implements U6.
