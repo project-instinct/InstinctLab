@@ -79,8 +79,8 @@ class InstinctRlEnv(ManagerBasedRLEnv):
     def step(self, action: torch.Tensor) -> VecEnvStepReturn:
         return_ = super().step(action)
         monitor_infos = self.monitor_manager.update(dt=self.step_dt)
-        self.extras["step"] = self.extras.get("step", {})
-        self.extras["step"].update(monitor_infos)
+        # a new dict every step: the runner keeps a reference to each step's dict until it logs the iteration
+        self.extras["step"] = dict(monitor_infos)
         return return_
 
     def _reset_idx(self, env_ids: torch.Tensor | slice):
