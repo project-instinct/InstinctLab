@@ -856,13 +856,18 @@ Built so far:
 | Label check | `scripts/acp/check_contact_labels.py` | replays the reference and compares with contact forces |
 
 Choices (not in the paper): actor terrain input is the **depth image** of the head camera with the perceptive
-task's CNN (user decision), the 9 × 7 and 17 × 11 height scans are critic-only; kernels base pos σ 0.3, base vel
-0.5, joint pos 0.3 (mean), joint vel 3.0 (mean), contact pos 0.15 m; added base-rotation tracking (w 1.0);
-2nd-order action rate and contact_acc omitted; terminations: ACP states none ("configured failure conditions"),
+task's CNN (user decision), the 9 × 7 and 17 × 11 height scans are critic-only; terminations: ACP states none ("configured failure conditions"),
 so SuperMimic's stated ones are used since 2026-11-03 (root height error > 0.25 m or z-only tilt error > 0.8, no
 end-effector termination; `SuperMimicPaperTerminationsCfg`); contacts are re-annotated
 with the popsicle URDF geometry (the task asset). PhysX buffers reduced to `gpu_max_rigid_contact_count = 2**23`,
 `gpu_collision_stack_size = 2**26` so 4096 envs fit (12.9 GB, 4.4 s/iteration).
+
+Correction (2026-11-05): the reward kernels are in the paper (text under Table 3): σ_p 0.5, σ_r 1, σ_v 1, σ_ω 3,
+σ_q 2, σ_q̇ 10, σ_c 1, each one exp over the summed squared error. The current tracker deviates from Table 3:
+kernels base pos σ 0.3, base vel 0.5 (no angular velocity), joint pos 0.3 (mean), joint vel 3.0 (mean), contact pos
+0.15 m (masked to reference-contact bodies, base frame instead of body-yaw); separate base-rotation term (w 1.0)
+instead of one base pos + rotation term with the χ_mov gate; contact label as a match fraction instead of
+(1/9) Σ c_meas (2 c_ref − 1) on |F_z|; 2nd-order action rate and contact_acc omitted. To be fixed to Table 3.
 
 Refactor check (2026-11-03): the first version loaded the contact keys inside the command; after moving them into the
 motion buffer the first 380 iterations follow the earlier run (mean reward, episode length, contact-label and
