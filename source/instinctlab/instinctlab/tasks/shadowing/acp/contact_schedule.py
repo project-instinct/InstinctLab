@@ -20,8 +20,11 @@ from collections.abc import Sequence
 from dataclasses import MISSING
 from typing import TYPE_CHECKING
 
+import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
 from isaaclab.managers import CommandTerm, CommandTermCfg, SceneEntityCfg
+from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
+from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.configclass import configclass
 
 if TYPE_CHECKING:
@@ -111,6 +114,67 @@ class ContactScheduleCommand(CommandTerm):
         )
         self._target_b[:] = (target_b * self.target_valid.unsqueeze(-1)).reshape(self.num_envs, -1)
 
+    def _set_debug_vis_impl(self, debug_vis: bool):
+        if debug_vis:
+            if not hasattr(self, "_markers"):
+                self._markers = VisualizationMarkers(self.cfg.visualizer_cfg)
+            self._markers.set_visibility(True)
+        elif hasattr(self, "_markers"):
+            self._markers.set_visibility(False)
+
+    def _debug_vis_callback(self, event):
+        """Markers: an arrow from each robot contact body to its next contact target, the reference's contacting bodies
+        (on the reference robot, shifted by the manager's ``visualizing_robot_offset``) and, with
+        ``contact_sensor_name``, where the robot's contact bodies touch the terrain (the sensor's contact points, so it
+        must track contact points with the terrain as filter).
+
+        The arrows decode the targets from the computed observation term ``debug_vis_observation`` (group, term), i.e.
+        what the policy observes after noise, back to the world frame with the robot's root position and yaw."""
+        if not self.robot.is_initialized or not self._env.obs_buf:
+            return
+        group, term = self.cfg.debug_vis_observation
+        num_bodies = len(self.body_names)
+        target_b = self._env.obs_buf[group][term].reshape(self.num_envs, num_bodies, 3)
+        yaw_quat = math_utils.yaw_quat(self.robot.data.root_quat_w.torch).unsqueeze(1).expand(-1, num_bodies, -1)
+        target_w = self.robot.data.root_pos_w.torch.unsqueeze(1) + math_utils.quat_apply(yaw_quat, target_b)
+        link_pos = self.robot.data.body_pos_w.torch[:, self.robot_body_ids][self.target_valid]
+        arrow = target_w[self.target_valid] - link_pos
+        length = arrow.norm(dim=-1)
+        pitch = -torch.atan2(arrow[:, 2], arrow[:, :2].norm(dim=-1))
+        arrow_quat = math_utils.quat_from_euler_xyz(
+            torch.zeros_like(pitch), pitch, torch.atan2(arrow[:, 1], arrow[:, 0])
+        )
+        # arrow_x.usd spans x in [-0.25, 0.75] at unit scale: shift so the tail sits on the link and the tip on the target
+        arrow_pos = link_pos + 0.25 * arrow
+
+        offset = torch.as_tensor(self.motion_reference.cfg.visualizing_robot_offset, device=self.device)
+        reference_pos = self._frame.link_pos_w[:, 0, self.reference_link_ids] + offset
+        groups = [arrow_pos, reference_pos[self.reference_contact]]
+        if self.cfg.contact_sensor_name is not None:
+            sensor: ContactSensor = self._env.scene.sensors[self.cfg.contact_sensor_name]
+            if sensor.data.contact_pos_w is None:
+                raise ValueError(
+                    f"sensor {self.cfg.contact_sensor_name!r} must track contact points for the debug view"
+                )
+            body_ids, _ = sensor.find_bodies(self.body_names, preserve_order=True)
+            points = sensor.data.contact_pos_w.torch[:, body_ids].reshape(-1, 3)  # NaN where no contact
+            groups.append(points[torch.isfinite(points).all(dim=-1)])
+        translations = torch.cat(groups)
+        if translations.shape[0] == 0:
+            return
+        indices = torch.cat([torch.full((len(g),), i, device=self.device) for i, g in enumerate(groups)])
+        orientations = torch.zeros(len(translations), 4, device=self.device)
+        orientations[:, 0] = 1.0
+        orientations[: len(arrow_quat)] = arrow_quat
+        scales = torch.ones(len(translations), 3, device=self.device)
+        scales[: len(length)] = torch.stack(
+            [length, torch.full_like(length, self.cfg.arrow_width), torch.full_like(length, self.cfg.arrow_width)],
+            dim=-1,
+        )
+        self._markers.visualize(
+            translations=translations, orientations=orientations, scales=scales, marker_indices=indices
+        )
+
 
 @configclass
 class ContactScheduleCommandCfg(CommandTermCfg):
@@ -121,6 +185,29 @@ class ContactScheduleCommandCfg(CommandTermCfg):
     goal_radius: float = 0.3
     """ ACP's r for reference-following goals. """
     resampling_time_range: tuple[float, float] = (1e9, 1e9)
+    contact_sensor_name: str | None = None
+    """ Debug view only: also mark the contact points of the robot's contact bodies reported by this sensor. """
+    debug_vis_observation: tuple[str, str] = ("policy", "contact_targets")
+    """ Debug view only: observation (group, term) holding this command's targets, drawn as arrows. """
+    arrow_width: float = 0.05
+    """ Debug view only: target arrow width, in m. """
+    visualizer_cfg: VisualizationMarkersCfg = VisualizationMarkersCfg(
+        prim_path="/Visuals/Command/contact_schedule",
+        markers={
+            "next_contact_target": sim_utils.UsdFileCfg(
+                usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/UIElements/arrow_x.usd",
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.9, 0.1)),
+            ),
+            "reference_contact": sim_utils.SphereCfg(
+                radius=0.06, visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.9, 0.1, 0.1))
+            ),
+            "robot_contact": sim_utils.SphereCfg(
+                radius=0.06, visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.3, 0.9))
+            ),
+        },
+    )
+    """ Green: arrows from the robot's contact bodies to their next contact targets; red: reference bodies in contact (on the reference robot); blue: the robot's actual
+    contact points with the terrain. """
 
 
 """
