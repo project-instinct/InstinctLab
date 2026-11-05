@@ -867,7 +867,12 @@ Correction (2026-11-05): the reward kernels are in the paper (text under Table 3
 kernels base pos σ 0.3, base vel 0.5 (no angular velocity), joint pos 0.3 (mean), joint vel 3.0 (mean), contact pos
 0.15 m (masked to reference-contact bodies, base frame instead of body-yaw); separate base-rotation term (w 1.0)
 instead of one base pos + rotation term with the χ_mov gate; contact label as a match fraction instead of
-(1/9) Σ c_meas (2 c_ref − 1) on |F_z|; 2nd-order action rate and contact_acc omitted. To be fixed to Table 3.
+(1/9) Σ c_meas (2 c_ref − 1) on |F_z|; 2nd-order action rate and contact_acc omitted.
+Fixed (2026-11-05): `ACPRewardsCfg` follows Table 3 (terms `base_pose_gauss`, `base_velocity_gauss`, `contact_label`,
+`contact_link_pos_gauss` in `contact_schedule.py`; `action_acc_l2`, `body_lin_acc_norm_sum` for the 9 contact bodies in
+`envs/mdp/rewards/regularizations.py`). Remaining differences: the joint terms do not wrap the error to [−π, π) and
+`dof_pos_limits` is not clipped at 30 (both only matter for errors > π rad or limit excesses > 30 rad); regularizers act on all 29 joints. The contact-target
+observation noise (U±0.1 m) now applies to valid targets only (`contact_target_noise`), so invalid targets stay zero.
 
 Refactor check (2026-11-03): the first version loaded the contact keys inside the command; after moving them into the
 motion buffer the first 380 iterations follow the earlier run (mean reward, episode length, contact-label and

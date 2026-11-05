@@ -2,8 +2,8 @@
 
 The actor sees proprioception (5-step history, 5 x 93), the depth image of the head camera, the next contact target
 of 9 bodies (27) and a goal (3). The paper's 9 x 7 height scan and the 17 x 11 planner scan are critic inputs only.
-Reference kinematics enter only the rewards and the critic. Choices not
-given by the paper (kernel widths, goal definition, start sampling) are recorded in
+Reference kinematics enter only the rewards and the critic. Rewards follow the paper's Table 3. Choices not
+given by the paper (terminations, robot and actor inputs) are recorded in
 ``agents/AttnContacts_SuperMimic_REPRODUCE_PLAN.md``.
 """
 
@@ -118,7 +118,8 @@ class ACPObservationsCfg:
         contact_targets = ObsTermCfg(
             func=mdp.generated_commands,
             params={"command_name": "contact_schedule"},
-            noise=UniformNoiseCfg(n_min=-0.1, n_max=0.1),
+            # invalid targets are zero vectors and stay noise-free
+            noise=UniformNoiseCfg(func=contact_schedule.contact_target_noise, n_min=-0.1, n_max=0.1),
         )
         goal = ObsTermCfg(
             func=contact_schedule.contact_schedule_goal,
@@ -177,17 +178,24 @@ class ACPObservationsCfg:
 
 @configclass
 class ACPRewardsCfg:
-    # reference tracking (paper Table 3 weights)
-    base_position = RewTermCfg(func=instinct_mdp.base_position_imitation_gauss, weight=3.0, params={"std": 0.3})
-    base_velocity = RewTermCfg(func=instinct_mdp.base_velocity_imitation_gauss, weight=1.0, params={"std": 0.5})
-    base_rotation = RewTermCfg(
-        func=instinct_mdp.base_rot_imitation_gauss, weight=1.0, params={"std": 0.4, "difference_type": "axis_angle"}
+    """Stage-1 rewards of ACP Table 3 (weights and kernel scales); the regularizers act on all 29 joints of our G1."""
+
+    # reference tracking
+    base_pose = RewTermCfg(
+        func=contact_schedule.base_pose_gauss,
+        weight=3.0,
+        params={"command_name": "contact_schedule", "std_pos": 0.5, "std_rot": 1.0, "moving_speed_threshold": 0.1},
+    )
+    base_velocity = RewTermCfg(
+        func=contact_schedule.base_velocity_gauss,
+        weight=1.0,
+        params={"command_name": "contact_schedule", "std_lin": 1.0, "std_ang": 3.0},
     )
     joint_position = RewTermCfg(
-        func=instinct_mdp.joint_pos_imitation_gauss, weight=2.5, params={"std": 0.3, "combine_method": "mean_prod"}
+        func=instinct_mdp.joint_pos_imitation_gauss, weight=2.5, params={"std": 2.0, "combine_method": "prod"}
     )
     joint_velocity = RewTermCfg(
-        func=instinct_mdp.joint_vel_imitation_gauss, weight=0.5, params={"std": 3.0, "combine_method": "mean_prod"}
+        func=instinct_mdp.joint_vel_imitation_gauss, weight=0.5, params={"std": 10.0, "combine_method": "prod"}
     )
     # reference contacts
     contact_label = RewTermCfg(
@@ -202,19 +210,29 @@ class ACPRewardsCfg:
     contact_pos_base = RewTermCfg(
         func=contact_schedule.contact_link_pos_gauss,
         weight=2.0,
-        params={"command_name": "contact_schedule", "std": 0.15, "in_base_frame": True},
+        params={"command_name": "contact_schedule", "std": 1.0, "in_yaw_frame": True},
     )
     contact_pos_global = RewTermCfg(
         func=contact_schedule.contact_link_pos_gauss,
         weight=1.0,
-        params={"command_name": "contact_schedule", "std": 0.15, "in_base_frame": False},
+        params={"command_name": "contact_schedule", "std": 1.0, "moving_speed_threshold": 0.1},
     )
     # regularization
     action_rate_l2 = RewTermCfg(func=mdp.action_rate_l2, weight=-0.1)
+    action_acc_l2 = RewTermCfg(func=instinct_mdp.action_acc_l2, weight=-0.05)
     joint_torques_l2 = RewTermCfg(func=mdp.joint_torques_l2, weight=-1e-5)
     applied_torque_limits = RewTermCfg(func=mdp.applied_torque_limits, weight=-1e-3)
     joint_pos_limits = RewTermCfg(func=mdp.joint_pos_limits, weight=-10.0)
     joint_vel_limits = RewTermCfg(func=mdp.joint_vel_limits, weight=-1.0, params={"soft_ratio": 0.9})
+    # style
+    contact_acc = RewTermCfg(
+        func=instinct_mdp.body_lin_acc_norm_sum,
+        weight=-0.01,
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=CONTACT_BODIES, preserve_order=True),
+            "max_value": 1.0e4,
+        },
+    )
 
 
 @configclass

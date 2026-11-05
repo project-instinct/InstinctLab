@@ -153,6 +153,7 @@ from .rewards.motion_reference import (
     link_rot_tracking_gauss,
 )
 from .rewards.regularizations import (
+    action_acc_l2,
     action_rate_direction_consistent,
     action_rate_direction_switch,
     action_rate_gauss,
@@ -161,6 +162,7 @@ from .rewards.regularizations import (
     applied_torque_limits_gauss,
     applied_torque_limits_square,
     body_lin_acc_gauss,
+    body_lin_acc_norm_sum,
     body_lin_acc_square,
     constant_reward,
     contact_air_time,

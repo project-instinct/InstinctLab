@@ -66,6 +66,17 @@ def body_lin_acc_square(
     return body_lin_acc_err
 
 
+def body_lin_acc_norm_sum(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    max_value: float = 1.0e4,
+):
+    """``min(max_value, sum_b |a_b|)`` of the linear accelerations of the selected bodies."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    bodies_acc = torch.norm(asset.data.body_lin_acc_w.torch[:, asset_cfg.body_ids, :], dim=-1)
+    return torch.sum(bodies_acc, dim=-1).clamp(max=max_value)
+
+
 def body_lin_acc_gauss(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
@@ -135,6 +146,24 @@ def action_rate_order(
         action_diff_err = action_diff_err[:, action_ids]
 
     return torch.sum(action_diff_err, dim=-1)
+
+
+class action_acc_l2(ManagerTermBase):
+    """Second-order action rate ``|a_t - 2 a_{t-1} + a_{t-2}|^2``; the action manager keeps ``a_t`` and ``a_{t-1}``,
+    this term keeps ``a_{t-2}`` (zero after a reset, as the action manager's)."""
+
+    def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self._prev_prev_action = torch.zeros_like(env.action_manager.action)
+
+    def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
+        self._prev_prev_action[env_ids] = 0.0
+
+    def __call__(self, env: ManagerBasedRLEnv):
+        action, prev_action = env.action_manager.action, env.action_manager.prev_action
+        acc = action - 2.0 * prev_action + self._prev_prev_action
+        self._prev_prev_action[:] = prev_action
+        return torch.sum(torch.square(acc), dim=-1)
 
 
 class action_rate_direction_switch(ManagerTermBase):

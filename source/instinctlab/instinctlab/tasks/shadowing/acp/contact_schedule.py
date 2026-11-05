@@ -26,6 +26,7 @@ from isaaclab.managers import CommandTerm, CommandTermCfg, SceneEntityCfg
 from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.configclass import configclass
+from isaaclab.utils.noise import UniformNoiseCfg
 
 if TYPE_CHECKING:
     from isaaclab.assets import Articulation
@@ -215,6 +216,15 @@ Observations.
 """
 
 
+def contact_target_noise(data: torch.Tensor, cfg: UniformNoiseCfg) -> torch.Tensor:
+    """Uniform noise on the valid ``(x, y, z)`` targets of a ``(N, B * 3)`` contact-target observation only: invalid
+    targets are zero vectors (ACP) and stay zero. Use as ``UniformNoiseCfg(func=contact_target_noise, ...)``."""
+    targets = data.reshape(data.shape[0], -1, 3)
+    valid = (targets != 0.0).any(dim=-1, keepdim=True)
+    noise = torch.rand_like(targets) * (cfg.n_max - cfg.n_min) + cfg.n_min
+    return (targets + noise * valid).reshape(data.shape)
+
+
 def contact_schedule_goal(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:
     """``(N, 3)`` goal direction and relative heading of :class:`ContactScheduleCommand`."""
     return env.command_manager.get_term(command_name).goal_b
@@ -239,45 +249,86 @@ def scan_height_rel_base(
 
 
 """
-Rewards.
+Rewards (ACP Table 3).
 """
+
+
+def _moving(reference: ContactMotionReferenceData, speed_threshold: float) -> torch.Tensor:
+    """``(N,)`` chi_mov: 1.0 where the reference base speed exceeds ``speed_threshold``."""
+    return (reference.base_lin_vel_w[:, 0].norm(dim=-1) > speed_threshold).float()
+
+
+def _in_yaw_frame(points_w: torch.Tensor, base_pos_w: torch.Tensor, base_quat_w: torch.Tensor) -> torch.Tensor:
+    """``(N, B, 3)`` world points in the body-yaw frame of the base pose ``(N, 3)``, ``(N, 4)``."""
+    yaw_quat = math_utils.yaw_quat(base_quat_w).unsqueeze(1).expand(-1, points_w.shape[1], -1)
+    return math_utils.quat_apply_inverse(yaw_quat, points_w - base_pos_w.unsqueeze(1))
+
+
+def base_pose_gauss(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    std_pos: float = 0.5,
+    std_rot: float = 1.0,
+    moving_speed_threshold: float = 0.1,
+) -> torch.Tensor:
+    """track_base_pos: ``exp(-chi_mov |r - r*|^2 / std_pos^2 - theta^2 / std_rot^2)``, world frame."""
+    term: ContactScheduleCommand = env.command_manager.get_term(command_name)
+    reference = term.motion_reference.reference_frame
+    pos_error = torch.sum(torch.square(term.robot.data.root_pos_w.torch - reference.base_pos_w[:, 0]), dim=-1)
+    rot_error = math_utils.quat_error_magnitude(term.robot.data.root_quat_w.torch, reference.base_quat_w[:, 0])
+    moving = _moving(reference, moving_speed_threshold)
+    return torch.exp(-moving * pos_error / std_pos**2 - torch.square(rot_error) / std_rot**2)
+
+
+def base_velocity_gauss(
+    env: ManagerBasedRLEnv, command_name: str, std_lin: float = 1.0, std_ang: float = 3.0
+) -> torch.Tensor:
+    """track_base_vel: ``exp(-|v - v*|^2 / std_lin^2 - |w - w*|^2 / std_ang^2)``, world frame."""
+    term: ContactScheduleCommand = env.command_manager.get_term(command_name)
+    reference = term.motion_reference.reference_frame
+    lin_error = torch.sum(torch.square(term.robot.data.root_lin_vel_w.torch - reference.base_lin_vel_w[:, 0]), dim=-1)
+    ang_error = torch.sum(torch.square(term.robot.data.root_ang_vel_w.torch - reference.base_ang_vel_w[:, 0]), dim=-1)
+    return torch.exp(-lin_error / std_lin**2 - ang_error / std_ang**2)
 
 
 def contact_label(
     env: ManagerBasedRLEnv, command_name: str, sensor_cfg: SceneEntityCfg, threshold: float = 1.0
 ) -> torch.Tensor:
-    """Fraction of contact bodies whose contact state (force above ``threshold`` N) matches the reference.
+    """track_contact_label: ``mean_b c_meas_b (2 c_ref_b - 1)``, with ``c_meas`` a vertical contact force magnitude
+    above ``threshold`` N within the sensor history: +1 per body touching where the reference does, -1 per body
+    touching where it does not, 0 for bodies not touching.
 
     ``sensor_cfg.body_names`` must list the same bodies, in the same order, as the command.
     """
     term: ContactScheduleCommand = env.command_manager.get_term(command_name)
     sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
-    forces = sensor.data.net_forces_w_history.torch[:, :, sensor_cfg.body_ids, :]
-    robot_contact = forces.norm(dim=-1).max(dim=1)[0] > threshold
-    return (robot_contact == term.reference_contact).float().mean(dim=-1)
+    force_z = sensor.data.net_forces_w_history.torch[:, :, sensor_cfg.body_ids, 2]
+    measured = (force_z.abs().max(dim=1)[0] > threshold).float()
+    return (measured * (2.0 * term.reference_contact.float() - 1.0)).mean(dim=-1)
 
 
 def contact_link_pos_gauss(
-    env: ManagerBasedRLEnv, command_name: str, std: float, in_base_frame: bool = False
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    std: float = 1.0,
+    in_yaw_frame: bool = False,
+    moving_speed_threshold: float | None = None,
 ) -> torch.Tensor:
-    """Mean over bodies in reference contact of ``exp(-|p_robot - p_reference|^2 / std^2)``; 0 if none.
+    """track_contact_pos_base / _global: ``exp(-chi sum_b |p_b - p*_b|^2 / std^2)`` over all contact bodies.
 
-    Positions are body origins, in the world frame or, with ``in_base_frame``, relative to each base.
+    Positions are body origins, in the world frame or, with ``in_yaw_frame``, in the body-yaw frame of each base (the
+    robot's for the robot, the reference's for the reference). ``chi`` is chi_mov with ``moving_speed_threshold``,
+    else 1.
     """
     term: ContactScheduleCommand = env.command_manager.get_term(command_name)
     robot = term.robot
     reference = term.motion_reference.reference_frame
-    if in_base_frame:
-        root_pos_w, root_quat_w = robot.data.root_pos_w.torch, robot.data.root_quat_w.torch
-        inv_pos, inv_quat = math_utils.subtract_frame_transforms(root_pos_w, root_quat_w)
-        body_pos = math_utils.transform_points(
-            robot.data.body_link_pos_w.torch[:, term.robot_body_ids], inv_pos, inv_quat
-        )
-        reference_pos = reference.link_pos_b[:, 0, term.reference_link_ids]
-    else:
-        body_pos = robot.data.body_link_pos_w.torch[:, term.robot_body_ids]
-        reference_pos = reference.link_pos_w[:, 0, term.reference_link_ids]
-    error = torch.sum(torch.square(body_pos - reference_pos), dim=-1)
-    mask = term.reference_contact.float()
-    reward = torch.exp(-error / (std * std)) * mask
-    return reward.sum(dim=-1) / mask.sum(dim=-1).clamp_min(1.0)
+    body_pos = robot.data.body_link_pos_w.torch[:, term.robot_body_ids]
+    reference_pos = reference.link_pos_w[:, 0, term.reference_link_ids]
+    if in_yaw_frame:
+        body_pos = _in_yaw_frame(body_pos, robot.data.root_pos_w.torch, robot.data.root_quat_w.torch)
+        reference_pos = _in_yaw_frame(reference_pos, reference.base_pos_w[:, 0], reference.base_quat_w[:, 0])
+    error = torch.sum(torch.square(body_pos - reference_pos), dim=(-1, -2))
+    if moving_speed_threshold is not None:
+        error = _moving(reference, moving_speed_threshold) * error
+    return torch.exp(-error / (std * std))
