@@ -4,6 +4,7 @@ from isaaclab.utils.configclass import configclass
 
 from instinctlab.tasks.shadowing.perceptive.config.g1.agents.instinct_rl_ppo_cfg import Conv2dHeadEncoderCfg
 from instinctlab.utils.wrappers.instinct_rl import (
+    InstinctRlAME2ImageEncoderCfg,
     InstinctRlEncoderActorCriticCfg,
     InstinctRlNormalizerCfg,
     InstinctRlOnPolicyRunnerCfg,
@@ -23,6 +24,32 @@ class PolicyCfg(InstinctRlEncoderActorCriticCfg):
 
     encoder_configs = Conv2dHeadEncoderCfg()
     critic_encoder_configs = None
+
+
+@configclass
+class AME2EncoderCfg:
+    """AME-2 attention encoder on the depth image; its query embeds all other actor inputs, so the actor MLP sees
+    only the encoder output (attention output 96, proprioception embedding 128, global features 64)."""
+
+    depth_image = InstinctRlAME2ImageEncoderCfg(
+        component_names=[
+            "base_ang_vel",
+            "projected_gravity",
+            "joint_pos",
+            "joint_vel",
+            "last_action",
+            "depth_image",
+            "contact_targets",
+            "goal",
+        ],
+        image_component="depth_image",
+        output_size=288,
+    )
+
+
+@configclass
+class AME2PolicyCfg(PolicyCfg):
+    encoder_configs = AME2EncoderCfg()
 
 
 @configclass
@@ -68,3 +95,8 @@ class G1ACPTrackerPPORunnerCfg(InstinctRlOnPolicyRunnerCfg):
         super().__post_init__()
         self.resume = self.load_run is not None
         self.run_name = f"_GPU{os.environ.get('CUDA_VISIBLE_DEVICES')}" if "CUDA_VISIBLE_DEVICES" in os.environ else ""
+
+
+@configclass
+class G1ACPTrackerAME2PPORunnerCfg(G1ACPTrackerPPORunnerCfg):
+    policy: AME2PolicyCfg = AME2PolicyCfg()

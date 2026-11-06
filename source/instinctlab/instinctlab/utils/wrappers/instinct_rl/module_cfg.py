@@ -65,6 +65,28 @@ class InstinctRlConv2dHeadCfg(InstinctRlParallelBlockCfg):
 
 
 @configclass
+class InstinctRlAME2ImageEncoderCfg(InstinctRlParallelBlockCfg):
+    """Configuration for the AME-2 attention-based encoder on an image (``instinct_rl.modules.ame2``).
+
+    ``component_names`` lists the image and the components embedded into the attention query (proprioception,
+    commands). The output size is ``local_dim + prop_dim + global_dim``."""
+
+    class_name: str = "AME2ImageEncoder"
+
+    image_component: str = MISSING
+    """The image component among ``component_names``."""
+
+    num_heads: int = 32
+    local_dim: int = 96
+    global_dim: int = 64
+    prop_dim: int = 128
+    hidden_size: int = 512
+    """The hidden width of the proprioception and query MLPs (two layers each)."""
+
+    nonlinearity: str = "ELU"
+
+
+@configclass
 class InstinctRlTransformerHeadCfg(InstinctRlParallelBlockCfg):
     """Configuration for the Transformer encoder network."""
 

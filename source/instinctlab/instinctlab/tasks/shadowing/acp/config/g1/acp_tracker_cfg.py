@@ -314,6 +314,30 @@ class G1ACPTrackerEnvCfg(G1PerceptiveShadowingEnvCfg):
 
 
 @configclass
+class G1ACPTrackerBeyondSamplingEnvCfg(G1ACPTrackerEnvCfg):
+    """Experiment variant: BeyondMimic's adaptive start sampling over 1 s motion bins (the perceptive shadowing
+    task's) instead of CSI."""
+
+    curriculum: perceptive_cfg.CurriculumCfg = perceptive_cfg.CurriculumCfg()
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.bin_fail_counter_smoothing = perceptive_cfg.EventsCfg().bin_fail_counter_smoothing
+        motion = self.scene.motion_reference.motion_buffers["TerrainMotion"]
+        motion.motion_bin_length_s = 1.0
+        motion.env_starting_stub_sampling_strategy = "concat_motion_bins"
+
+
+@configclass
+class G1ACPTrackerPaperActionScaleEnvCfg(G1ACPTrackerEnvCfg):
+    """Experiment variant: the paper's uniform action scale 0.25 instead of BeyondMimic's per-joint scale."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.actions.joint_pos.scale = 0.25
+
+
+@configclass
 class G1ACPTrackerEnvCfg_PLAY(G1ACPTrackerEnvCfg):
     def __post_init__(self):
         super().__post_init__()
@@ -326,3 +350,10 @@ class G1ACPTrackerEnvCfg_PLAY(G1ACPTrackerEnvCfg):
         self.events.base_com = None
         self.events.reset_robot.params["randomize_pose_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0)}
         self.events.reset_robot.params["randomize_joint_pos_range"] = (0.0, 0.0)
+
+
+@configclass
+class G1ACPTrackerPaperActionScaleEnvCfg_PLAY(G1ACPTrackerEnvCfg_PLAY):
+    def __post_init__(self):
+        super().__post_init__()
+        self.actions.joint_pos.scale = 0.25
