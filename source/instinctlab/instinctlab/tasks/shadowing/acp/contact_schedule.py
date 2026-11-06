@@ -225,6 +225,16 @@ def contact_target_noise(data: torch.Tensor, cfg: UniformNoiseCfg) -> torch.Tens
     return (targets + noise * valid).reshape(data.shape)
 
 
+def goal_noise(data: torch.Tensor, cfg: UniformNoiseCfg) -> torch.Tensor:
+    """ACP goal noise on a ``(N, 3)`` goal observation: the direction ``(x, y)`` is rotated and the relative heading
+    shifted, each by an independent uniform angle in ``[n_min, n_max]`` rad. Use as
+    ``UniformNoiseCfg(func=goal_noise, ...)``."""
+    angles = torch.rand_like(data[:, 1:]) * (cfg.n_max - cfg.n_min) + cfg.n_min  # (N, 2): direction, heading
+    cos, sin = torch.cos(angles[:, 0]), torch.sin(angles[:, 0])
+    x, y = data[:, 0], data[:, 1]
+    return torch.stack([cos * x - sin * y, sin * x + cos * y, data[:, 2] + angles[:, 1]], dim=-1)
+
+
 def contact_schedule_goal(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:
     """``(N, 3)`` goal direction and relative heading of :class:`ContactScheduleCommand`."""
     return env.command_manager.get_term(command_name).goal_b
@@ -233,6 +243,36 @@ def contact_schedule_goal(env: ManagerBasedRLEnv, command_name: str) -> torch.Te
 def reference_contacts(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:
     """``(N, B)`` 1.0 where the reference body is in contact now."""
     return env.command_manager.get_term(command_name).reference_contact.float()
+
+
+def reference_base_velocity(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:
+    """``(N, 6)`` reference base linear and angular velocity of the current frame, in the robot base frame."""
+    term: ContactScheduleCommand = env.command_manager.get_term(command_name)
+    reference = term.motion_reference.reference_frame
+    root_quat = term.robot.data.root_quat_w.torch
+    lin_vel = math_utils.quat_apply_inverse(root_quat, reference.base_lin_vel_w[:, 0])
+    ang_vel = math_utils.quat_apply_inverse(root_quat, reference.base_ang_vel_w[:, 0])
+    return torch.cat([lin_vel, ang_vel], dim=-1)
+
+
+def reference_joint_pos_rel(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:
+    """``(N, J)`` reference joint positions of the current frame relative to the robot's defaults (simulation order)."""
+    term: ContactScheduleCommand = env.command_manager.get_term(command_name)
+    return term.motion_reference.reference_frame.joint_pos[:, 0] - term.robot.data.default_joint_pos.torch
+
+
+def reference_joint_vel(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:
+    """``(N, J)`` reference joint velocities of the current frame (simulation order)."""
+    term: ContactScheduleCommand = env.command_manager.get_term(command_name)
+    return term.motion_reference.reference_frame.joint_vel[:, 0]
+
+
+def reference_contact_body_pos(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:
+    """``(N, B * 3)`` reference contact-body origins of the current frame, in the robot body-yaw frame."""
+    term: ContactScheduleCommand = env.command_manager.get_term(command_name)
+    reference_pos = term.motion_reference.reference_frame.link_pos_w[:, 0, term.reference_link_ids]
+    robot = term.robot
+    return _in_yaw_frame(reference_pos, robot.data.root_pos_w.torch, robot.data.root_quat_w.torch).flatten(1)
 
 
 def scan_height_rel_base(
