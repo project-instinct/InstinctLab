@@ -1,8 +1,8 @@
 """ACP stage-1 tracker for the G1 on terrain-interactive reference motions (PHP + Deep Whole-body Parkour).
 
 The actor sees proprioception (5-step history, 5 x 93), the depth image of the head camera, the next contact target
-of 9 bodies (27) and a goal (3). The paper's 9 x 7 height scan and the 17 x 11 planner scan are critic inputs only.
-Reference kinematics enter only the rewards and the critic. Rewards follow the paper's Table 3. Choices not
+of 9 bodies (27) and a goal (3). The critic is the paper's V_m (17 x 11 scan, current reference frame). Reference
+kinematics enter only the rewards and the critic. Rewards follow the paper's Table 3. Choices not
 given by the paper (terminations, robot and actor inputs) are recorded in
 ``agents/AttnContacts_SuperMimic_REPRODUCE_PLAN.md``.
 """
@@ -124,7 +124,8 @@ class ACPObservationsCfg:
         goal = ObsTermCfg(
             func=contact_schedule.contact_schedule_goal,
             params={"command_name": "contact_schedule"},
-            noise=UniformNoiseCfg(n_min=-0.2, n_max=0.2),
+            # direction and relative heading each rotated by U(-0.2, 0.2) rad (Supp. Table S2)
+            noise=UniformNoiseCfg(func=contact_schedule.goal_noise, n_min=-0.2, n_max=0.2),
         )
 
         def __post_init__(self):
@@ -133,40 +134,39 @@ class ACPObservationsCfg:
 
     @configclass
     class CriticObsCfg(ObsGroupCfg):
-        base_ang_vel = ObsTermCfg(func=mdp.base_ang_vel, history_length=PROPRIO_HISTORY_LENGTH)
-        projected_gravity = ObsTermCfg(func=mdp.projected_gravity, history_length=PROPRIO_HISTORY_LENGTH)
-        joint_pos = ObsTermCfg(func=mdp.joint_pos_rel, history_length=PROPRIO_HISTORY_LENGTH)
-        joint_vel = ObsTermCfg(func=mdp.joint_vel_rel, history_length=PROPRIO_HISTORY_LENGTH)
-        last_action = ObsTermCfg(func=mdp.last_action, history_length=PROPRIO_HISTORY_LENGTH)
+        """The paper's stage-1 critic V_m: current proprioception, the 17 x 11 scan, base linear velocity, and the
+        current reference frame (base velocities, joint positions and velocities, contact-body positions and contact
+        flags)."""
+
+        base_ang_vel = ObsTermCfg(func=mdp.base_ang_vel)
+        projected_gravity = ObsTermCfg(func=mdp.projected_gravity)
+        joint_pos = ObsTermCfg(func=mdp.joint_pos_rel)
+        joint_vel = ObsTermCfg(func=mdp.joint_vel_rel)
+        last_action = ObsTermCfg(func=mdp.last_action)
         base_lin_vel = ObsTermCfg(func=mdp.base_lin_vel)
-        height_scan = ObsTermCfg(
-            func=contact_schedule.scan_height_rel_base,
-            params={"sensor_cfg": SceneEntityCfg("tracker_height_scanner")},
-            clip=(-2.0, 2.0),
-        )
         planner_height_scan = ObsTermCfg(
             func=contact_schedule.scan_height_rel_base,
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
             clip=(-2.0, 2.0),
         )
-        contact_targets = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "contact_schedule"})
-        goal = ObsTermCfg(func=contact_schedule.contact_schedule_goal, params={"command_name": "contact_schedule"})
+        reference_base_velocity = ObsTermCfg(
+            func=contact_schedule.reference_base_velocity, params={"command_name": "contact_schedule"}
+        )
+        reference_joint_pos = ObsTermCfg(
+            func=contact_schedule.reference_joint_pos_rel, params={"command_name": "contact_schedule"}
+        )
+        reference_joint_vel = ObsTermCfg(
+            func=contact_schedule.reference_joint_vel, params={"command_name": "contact_schedule"}
+        )
+        reference_contact_pos = ObsTermCfg(
+            func=contact_schedule.reference_contact_body_pos, params={"command_name": "contact_schedule"}
+        )
         reference_contacts = ObsTermCfg(
             func=contact_schedule.reference_contacts, params={"command_name": "contact_schedule"}
         )
-        # privileged reference kinematics
-        joint_pos_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_pos_ref_command"})
-        joint_vel_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "joint_vel_ref_command"})
-        position_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "position_ref_command"})
-        rotation_ref = ObsTermCfg(func=mdp.generated_commands, params={"command_name": "rotation_ref_command"})
-        link_pos = ObsTermCfg(
-            func=instinct_mdp.link_pos_b,
-            params={"asset_cfg": SceneEntityCfg(name="robot", body_names=CONTACT_BODIES, preserve_order=True)},
-        )
-        link_rot = ObsTermCfg(
-            func=instinct_mdp.link_tannorm_b,
-            params={"asset_cfg": SceneEntityCfg(name="robot", body_names=CONTACT_BODIES, preserve_order=True)},
-        )
+        # Not critic inputs: the perceptive parent's __post_init__ sets their bodies, then ours removes them.
+        link_pos = ObsTermCfg(func=instinct_mdp.link_pos_b, params={"asset_cfg": SceneEntityCfg("robot")})
+        link_rot = ObsTermCfg(func=instinct_mdp.link_tannorm_b, params={"asset_cfg": SceneEntityCfg("robot")})
 
         def __post_init__(self):
             self.enable_corruption = False
@@ -290,6 +290,8 @@ class G1ACPTrackerEnvCfg(G1PerceptiveShadowingEnvCfg):
                 newton=newton_physics_cfg(nconmax=128),
             )
         super().__post_init__()
+        self.observations.critic.link_pos = None
+        self.observations.critic.link_rot = None
         self.episode_length_s = 20.0
         self.scene.tracker_height_scanner.prim_path = urdf_importer_link_prim_path(
             G1_CFG.spawn.asset_path, "torso_link"
