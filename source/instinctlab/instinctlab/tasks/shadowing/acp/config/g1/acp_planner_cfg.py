@@ -118,6 +118,8 @@ class G1ACPPlannerEnvCfg(G1ACPTrackerEnvCfg):
         motion.env_starting_stub_sampling_strategy = "independent"
         motion.motion_start_from_middle_range = [0.0, 0.98]
         self.events.bin_fail_counter_smoothing = None
+        # the hindsight labeler counts contacts with the terrain only (its collider), not self-contacts
+        self.scene.contact_forces.filter_prim_paths_expr = ["/World/ground/terrain/mesh"]
         joint_order = list(G1_29DOF_POLICY_JOINT_ORDER_V1)
         self.observations.planner.joint_pos.params["asset_cfg"] = set_cfg_joint_order(
             SceneEntityCfg("robot"), joint_order

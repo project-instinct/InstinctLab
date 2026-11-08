@@ -33,6 +33,11 @@ class HindsightLabelingEnv(InstinctRlEnv):
         self._labeler_sensor = self.scene.sensors[cfg.sensor_name]
         self._labeler_robot_body_ids = self._labeler_robot.find_bodies(cfg.body_names, preserve_order=True)[0]
         self._labeler_sensor_body_ids = self._labeler_sensor.find_bodies(cfg.body_names, preserve_order=True)[0]
+        if not self._labeler_sensor.cfg.filter_prim_paths_expr:
+            raise ValueError(
+                f"the hindsight labeler needs {cfg.sensor_name!r} filtered to the terrain (filter_prim_paths_expr), so"
+                " that its contacts exclude self-contacts"
+            )
         motion_reference = self.scene[cfg.motion_reference_name]
         if len(motion_reference.motion_buffers) != 1:
             raise ValueError("the hindsight labeler's reference phase needs exactly one motion buffer")
@@ -58,7 +63,8 @@ class HindsightLabelingEnv(InstinctRlEnv):
         planner_obs = (
             torch.cat([v.flatten(start_dim=1) for v in group.values()], dim=1) if isinstance(group, dict) else group
         )
-        force_z = self._labeler_sensor.data.net_forces_w.torch[:, self._labeler_sensor_body_ids, 2]
+        # vertical force from the terrain only: the net force also holds self-contacts (e.g. pelvis against thighs)
+        force_z = self._labeler_sensor.data.force_matrix_w.torch[:, self._labeler_sensor_body_ids, :, 2].sum(dim=-1)
         robot = self._labeler_robot
         self.contact_labeler.record(
             planner_obs,

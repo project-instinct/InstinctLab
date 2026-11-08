@@ -104,7 +104,7 @@ class HindsightContactLabelerCfg:
     motion_reference_name: str = "motion_reference"
 
     force_threshold: float = 1.0
-    """A body is in contact when its vertical contact force exceeds this (N)."""
+    """A body is in contact when its vertical contact force from the terrain exceeds this (N)."""
 
     min_contact_steps: int = 10
     """Contact segments shorter than this many control steps are discarded."""
