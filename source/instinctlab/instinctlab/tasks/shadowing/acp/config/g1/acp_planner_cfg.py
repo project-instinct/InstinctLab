@@ -139,3 +139,13 @@ class G1ACPPlannerEnvCfg_PLAY(G1ACPPlannerEnvCfg):
         self.events.reset_robot.params["randomize_pose_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0)}
         self.events.reset_robot.params["randomize_joint_pos_range"] = (0.0, 0.0)
         # play with scripts/acp/play_planner.py: it runs the planner and sends its targets as policy feedback
+
+
+@configclass
+class G1ACPPlannerSequentialHandoffEnvCfg(G1ACPPlannerEnvCfg):
+    """Experiment variant: the reward moves to the planned contacts only after the planner's targets fully reach the
+    tracker (eta_rew starts when the eta_obs ramp ends), so the two hand-offs do not overlap."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.curriculum.contact_reward_handoff.params["start_iteration"] = ETA_OBS_START + ETA_RAMP_ITERATIONS

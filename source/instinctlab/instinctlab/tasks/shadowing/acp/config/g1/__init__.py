@@ -19,3 +19,11 @@ register_backend_tasks(
     entry_point="instinctlab.tasks.shadowing.acp.labeling_env:HindsightLabelingEnv",
     instinct_rl_cfg_entry_point=f"{agents.__name__}.instinct_rl_ppo_cfg:G1ACPPlannerPPORunnerCfg",
 )
+
+register_backend_tasks(
+    "Instinct-ACP-Planner-SequentialHandoff-G1",
+    env_cfg_entry_point=f"{task_entry}.acp_planner_cfg:G1ACPPlannerSequentialHandoffEnvCfg",
+    play_env_cfg_entry_point=f"{task_entry}.acp_planner_cfg:G1ACPPlannerEnvCfg_PLAY",
+    entry_point="instinctlab.tasks.shadowing.acp.labeling_env:HindsightLabelingEnv",
+    instinct_rl_cfg_entry_point=f"{agents.__name__}.instinct_rl_ppo_cfg:G1ACPPlannerPPORunnerCfg",
+)
