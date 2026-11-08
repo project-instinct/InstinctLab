@@ -111,10 +111,13 @@ class G1ACPPlannerEnvCfg(G1ACPTrackerEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.scene.num_envs = 2400  # paper Table S6, per worker
-        # stage-2 initial phase U(0, 0.98) of the clip (Supp. Table S2), instead of stage 1's CSI bins
+        # stage-2 initial phase U(0, 0.98) of the clip (Supp. Table S2), instead of stage 1's BeyondMimic bin
+        # sampling (whose curriculum term this task's curriculum replaces, so its smoothing event goes too)
         motion = self.scene.motion_reference.motion_buffers["TerrainMotion"]
         motion.motion_bin_length_s = None
+        motion.env_starting_stub_sampling_strategy = "independent"
         motion.motion_start_from_middle_range = [0.0, 0.98]
+        self.events.bin_fail_counter_smoothing = None
         joint_order = list(G1_29DOF_POLICY_JOINT_ORDER_V1)
         self.observations.planner.joint_pos.params["asset_cfg"] = set_cfg_joint_order(
             SceneEntityCfg("robot"), joint_order
