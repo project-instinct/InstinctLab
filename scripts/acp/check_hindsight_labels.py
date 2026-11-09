@@ -5,8 +5,11 @@ tracker of ``CKPT`` fed the reference targets. Every step records the reference 
 (``contact_schedule`` command) and what the hindsight labeler records (vertical contact force, contact-body
 positions, base pose). The recorded trajectories are then labeled with the labeler's own function
 (``label_next_contacts``, the task's ``contact_labeler`` settings), and per body the labels are compared with the
-reference targets of the same step: how often each is valid, their agreement, and the distance (xy and z) where both
-are valid. Episodes are compared whether or not they would be admitted.
+reference targets of the same step: how often each is valid and the distance (xy and z) where both are valid.
+Episodes are compared whether or not they would be admitted. The labels are computed several ways: from the robot's
+terrain contacts with the labeler's settings and with its differences from the dataset's contact definition (minimum
+contact length, scan footprint) removed one by one, and from the reference's own contact flags and body positions,
+which separates the definition from the robot's timing.
 
 Usage (inside the container)::
 
@@ -117,12 +120,29 @@ with launch_simulation(env_cfg, args_cli):
     obs, extras = env.get_observations()
     running = torch.ones(NUM_CLIPS, dtype=torch.bool, device=device)
     length = torch.zeros(NUM_CLIPS, dtype=torch.long, device=device)
-    rec = {k: [] for k in ("ref_target", "ref_valid", "contact", "terrain_contact", "body_pos", "root_pos", "root_yaw")}
+    rec = {
+        k: []
+        for k in (
+            "ref_target",
+            "ref_valid",
+            "ref_contact",
+            "ref_body_pos",
+            "contact",
+            "terrain_contact",
+            "body_pos",
+            "root_pos",
+            "root_yaw",
+        )
+    }
     with torch.no_grad():
         for _ in range(max_steps):
             # the state the tracker acts from, as the labeler records it after each step
             rec["ref_target"].append(term.command.reshape(NUM_CLIPS, num_bodies, 3).clone())
             rec["ref_valid"].append(term.target_valid.clone())
+            rec["ref_contact"].append(term.reference_contact.clone())
+            rec["ref_body_pos"].append(
+                term.motion_reference.reference_frame.link_pos_w[:, 0, term.reference_link_ids].clone()
+            )
             rec["contact"].append(sensor.data.net_forces_w.torch[:, sensor_ids, 2].abs() > labeler_cfg.force_threshold)
             terrain_force_z = sensor.data.force_matrix_w.torch[:, sensor_ids, :, 2].sum(dim=-1)
             rec["terrain_contact"].append(terrain_force_z.abs() > labeler_cfg.force_threshold)
@@ -139,66 +159,57 @@ with launch_simulation(env_cfg, args_cli):
             if not bool(running.any()):
                 break
     data = {k: torch.stack(v, dim=1) for k, v in rec.items()}  # (N, L, ...)
-    label_pos, label_valid = label_next_contacts(
-        data["contact"],
-        data["body_pos"],
-        data["root_pos"],
-        data["root_yaw"],
-        length,
-        horizon_steps,
-        labeler_cfg.min_contact_steps,
-        labeler_cfg.footprint,
-    )
     steps = torch.arange(data["contact"].shape[1], device=device)
     in_range = (steps.unsqueeze(0) < length.unsqueeze(1)).unsqueeze(-1)  # (N, L, 1)
     ref_valid = data["ref_valid"] & in_range
-    label_valid = label_valid & in_range
-    both = ref_valid & label_valid
-    diff = label_pos - data["ref_target"]
-    print(
-        f"[check] {NUM_CLIPS} clips, {int(length.sum())} steps, horizon {horizon_steps} steps, "
-        f"min contact {labeler_cfg.min_contact_steps} steps, footprint {labeler_cfg.footprint}"
-    )
-    for b, name in enumerate(term.body_names):
-        n_ref, n_lab, n_both = int(ref_valid[..., b].sum()), int(label_valid[..., b].sum()), int(both[..., b].sum())
-        mask = both[..., b]
-        d = diff[..., b, :][mask]
-        xy = d[:, :2].norm(dim=-1) if n_both else torch.zeros(1, device=device)
-        z = d[:, 2] if n_both else torch.zeros(1, device=device)
-        print(
-            f"[check] {name:22s} ref valid {n_ref:6d}  label valid {n_lab:6d}  both {n_both:6d}  "
-            f"xy diff median {float(xy.median()):.3f} p90 {float(xy.quantile(0.9)):.3f} m  "
-            f"z diff median {float(z.median()):+.3f} m"
+    print(f"[check] {NUM_CLIPS} clips, {int(length.sum())} steps, horizon {horizon_steps} steps")
+    no_footprint = ((-1.0e3, 1.0e3), (-1.0e3, 1.0e3))
+    # (name, contact flags, body positions, min contact steps, footprint): the labeler's settings, then each of its
+    # differences from the dataset's contact definition removed, on the robot's contacts and on the reference's
+    variants = [
+        (
+            "robot, labeler (min 10, footprint)",
+            "terrain_contact",
+            "body_pos",
+            labeler_cfg.min_contact_steps,
+            labeler_cfg.footprint,
+        ),
+        ("robot, min 3, footprint", "terrain_contact", "body_pos", 3, labeler_cfg.footprint),
+        ("robot, min 10, no footprint", "terrain_contact", "body_pos", labeler_cfg.min_contact_steps, no_footprint),
+        ("robot, min 3, no footprint", "terrain_contact", "body_pos", 3, no_footprint),
+        (
+            "reference, labeler (min 10, footprint)",
+            "ref_contact",
+            "ref_body_pos",
+            labeler_cfg.min_contact_steps,
+            labeler_cfg.footprint,
+        ),
+        ("reference, min 3, no footprint", "ref_contact", "ref_body_pos", 3, no_footprint),
+    ]
+    for title, contact_key, pos_key, min_steps, footprint in variants:
+        label_pos, label_valid = label_next_contacts(
+            data[contact_key],
+            data[pos_key],
+            data["root_pos"],
+            data["root_yaw"],
+            length,
+            horizon_steps,
+            min_steps,
+            footprint,
         )
-    # for the feet: is the xy difference along the walking direction (onset timing) or sideways?
-    for b, name in enumerate(term.body_names[:2]):
-        mask = both[..., b]
-        d = diff[..., b, :][mask]
-        ref_x = data["ref_target"][..., b, 0][mask]
-        print(
-            f"[check] {name}: mean diff x {float(d[:, 0].mean()):+.3f} y {float(d[:, 1].mean()):+.3f} m; "
-            f"corr(diff x, ref x) {float(torch.corrcoef(torch.stack([d[:, 0], ref_x]))[0, 1]):+.2f}"
-        )
-    terrain_pos, terrain_valid = label_next_contacts(
-        data["terrain_contact"],
-        data["body_pos"],
-        data["root_pos"],
-        data["root_yaw"],
-        length,
-        horizon_steps,
-        labeler_cfg.min_contact_steps,
-        labeler_cfg.footprint,
-    )
-    terrain_valid = terrain_valid & in_range
-    print("[check] contact steps (net force | terrain force) and labels from the terrain force only:")
-    for b, name in enumerate(term.body_names):
-        net = int((data["contact"][..., b] & in_range[..., 0]).sum())
-        ter = int((data["terrain_contact"][..., b] & in_range[..., 0]).sum())
-        mask = ref_valid[..., b] & terrain_valid[..., b]
-        xy = (terrain_pos[..., b, :2] - data["ref_target"][..., b, :2])[mask].norm(dim=-1)
-        med = float(xy.median()) if mask.any() else 0.0
-        print(
-            f"[check] {name:22s} contact steps net {net:6d} terrain {ter:6d}  terrain-label valid "
-            f"{int(terrain_valid[..., b].sum()):6d}  xy diff median {med:.3f} m"
-        )
+        label_valid = label_valid & in_range
+        both = ref_valid & label_valid
+        diff = label_pos - data["ref_target"]
+        print(f"[check] == labels from {title}")
+        for b, name in enumerate(term.body_names):
+            mask = both[..., b]
+            xy = diff[..., b, :2][mask].norm(dim=-1)
+            z = diff[..., b, 2][mask]
+            if not bool(mask.any()):
+                xy = z = torch.zeros(1, device=device)
+            print(
+                f"[check]   {name:22s} ref {int(ref_valid[..., b].sum()):6d} label {int(label_valid[..., b].sum()):6d}"
+                f" both {int(mask.sum()):6d} | xy median {float(xy.median()):.3f} p90 {float(xy.quantile(0.9)):.3f}"
+                f" >0.25 m {float((xy > 0.25).float().mean()):5.1%} | z median {float(z.median()):+.3f}"
+            )
     sim.close()
