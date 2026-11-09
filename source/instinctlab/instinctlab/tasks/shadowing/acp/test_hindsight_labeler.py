@@ -76,7 +76,8 @@ def _record_steps(labeler, num_steps, num_envs=4, force=None):
             force_z[:, 0], force_z[:, 1] = -5.0, 0.5
         body_pos = torch.zeros(num_envs, 2, 3)
         body_pos[:, :, 0] = 0.3
-        labeler.record(obs, force_z, body_pos, torch.zeros(num_envs, 3), torch.zeros(num_envs))
+        contact = force_z.abs() > labeler.cfg.force_threshold
+        labeler.record(obs, contact, body_pos, torch.zeros(num_envs, 3), torch.zeros(num_envs))
 
 
 def test_admission_force_threshold_and_samples():

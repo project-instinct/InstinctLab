@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import torch
 from dataclasses import MISSING
+from typing import Literal
 
 from isaaclab.utils.configclass import configclass
 
@@ -103,8 +104,13 @@ class HindsightContactLabelerCfg:
     sensor_name: str = "contact_forces"
     motion_reference_name: str = "motion_reference"
 
+    contact_source: Literal["robot", "reference"] = "robot"
+    """Where the labeled contacts come from: ``"robot"`` (paper) the robot's terrain contacts and body positions;
+    ``"reference"`` (experiment) the reference motion's contact flags and body positions, so the labels follow the
+    reference contact schedule the tracker learned in stage 1."""
+
     force_threshold: float = 1.0
-    """A body is in contact when its vertical contact force from the terrain exceeds this (N)."""
+    """``"robot"`` contacts: a body is in contact when its vertical contact force from the terrain exceeds this (N)."""
 
     min_contact_steps: int = 10
     """Contact segments shorter than this many control steps are discarded."""
@@ -175,17 +181,16 @@ class HindsightContactLabeler:
     def record(
         self,
         planner_obs: torch.Tensor,
-        contact_force_z: torch.Tensor,
+        contact: torch.Tensor,
         body_pos_w: torch.Tensor,
         root_pos_w: torch.Tensor,
         root_yaw: torch.Tensor,
     ) -> None:
-        """Append the current step of every recorded env (all inputs are per env: (N, ...)); a body is in contact
-        when the magnitude of its vertical contact force ``contact_force_z`` (N, B) exceeds the threshold."""
+        """Append the current step of every recorded env (all inputs are per env: (N, ...); ``contact`` (N, B) bool)."""
         slots = ((self.slot_env >= 0) & (self.slot_length < self.cfg.max_recorded_steps)).nonzero().squeeze(-1)
         envs, steps = self.slot_env[slots], self.slot_length[slots]
         self.obs[slots, steps] = planner_obs[envs]
-        self.contact[slots, steps] = contact_force_z[envs].abs() > self.cfg.force_threshold
+        self.contact[slots, steps] = contact[envs]
         self.body_pos_w[slots, steps] = body_pos_w[envs]
         self.root_pos_w[slots, steps] = root_pos_w[envs]
         self.root_yaw[slots, steps] = root_yaw[envs]

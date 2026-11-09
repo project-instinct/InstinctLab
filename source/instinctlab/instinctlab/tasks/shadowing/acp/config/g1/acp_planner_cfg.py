@@ -151,3 +151,37 @@ class G1ACPPlannerSequentialHandoffEnvCfg(G1ACPPlannerEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.curriculum.contact_reward_handoff.params["start_iteration"] = ETA_OBS_START + ETA_RAMP_ITERATIONS
+
+
+LATE_ETA_OBS_START = 2000
+"""Late hand-off experiments: the planner trains on 2000 iterations of labels before its targets reach the tracker."""
+
+
+@configclass
+class G1ACPPlannerReferenceLabelsEnvCfg(G1ACPPlannerEnvCfg):
+    """Experiment variant: the planner learns the reference motion's contacts (the schedule the stage-1 tracker
+    follows) instead of the robot's own."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.contact_labeler.contact_source = "reference"
+
+
+@configclass
+class G1ACPPlannerLateHandoffEnvCfg(G1ACPPlannerEnvCfg):
+    """Experiment variant: both hand-offs start LATE_ETA_OBS_START - ETA_OBS_START iterations later."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        delay = LATE_ETA_OBS_START - ETA_OBS_START
+        self.observations.contact_source.planner_gate.params["start_iteration"] = ETA_OBS_START + delay
+        self.curriculum.contact_reward_handoff.params["start_iteration"] = ETA_REW_START + delay
+
+
+@configclass
+class G1ACPPlannerReferenceLabelsLateHandoffEnvCfg(G1ACPPlannerLateHandoffEnvCfg):
+    """Experiment variant: reference-contact labels and the late hand-off."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.contact_labeler.contact_source = "reference"

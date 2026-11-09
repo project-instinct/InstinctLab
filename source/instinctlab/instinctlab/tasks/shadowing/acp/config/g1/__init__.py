@@ -27,3 +27,16 @@ register_backend_tasks(
     entry_point="instinctlab.tasks.shadowing.acp.labeling_env:HindsightLabelingEnv",
     instinct_rl_cfg_entry_point=f"{agents.__name__}.instinct_rl_ppo_cfg:G1ACPPlannerPPORunnerCfg",
 )
+
+for variant, cfg_name in (
+    ("RefLabels", "G1ACPPlannerReferenceLabelsEnvCfg"),
+    ("LateHandoff", "G1ACPPlannerLateHandoffEnvCfg"),
+    ("RefLabels-LateHandoff", "G1ACPPlannerReferenceLabelsLateHandoffEnvCfg"),
+):
+    register_backend_tasks(
+        f"Instinct-ACP-Planner-{variant}-G1",
+        env_cfg_entry_point=f"{task_entry}.acp_planner_cfg:{cfg_name}",
+        play_env_cfg_entry_point=f"{task_entry}.acp_planner_cfg:G1ACPPlannerEnvCfg_PLAY",
+        entry_point="instinctlab.tasks.shadowing.acp.labeling_env:HindsightLabelingEnv",
+        instinct_rl_cfg_entry_point=f"{agents.__name__}.instinct_rl_ppo_cfg:G1ACPPlannerPPORunnerCfg",
+    )
