@@ -33,6 +33,7 @@ class HindsightLabelingEnv(InstinctRlEnv):
         self._labeler_sensor = self.scene.sensors[cfg.sensor_name]
         self._labeler_robot_body_ids = self._labeler_robot.find_bodies(cfg.body_names, preserve_order=True)[0]
         self._labeler_sensor_body_ids = self._labeler_sensor.find_bodies(cfg.body_names, preserve_order=True)[0]
+        motion_reference = self.scene[cfg.motion_reference_name]
         if cfg.contact_source == "reference":
             if list(motion_reference.cfg.contact_body_names) != list(cfg.body_names):
                 raise ValueError(
@@ -48,7 +49,6 @@ class HindsightLabelingEnv(InstinctRlEnv):
                 f"the hindsight labeler needs {cfg.sensor_name!r} filtered to the terrain (filter_prim_paths_expr), so"
                 " that its contacts exclude self-contacts"
             )
-        motion_reference = self.scene[cfg.motion_reference_name]
         if len(motion_reference.motion_buffers) != 1:
             raise ValueError("the hindsight labeler's reference phase needs exactly one motion buffer")
         self._labeler_motion_buffer = next(iter(motion_reference.motion_buffers.values()))
