@@ -114,3 +114,25 @@ class G1ACPPlannerPPORunnerCfg(G1ACPTrackerPPORunnerCfg):
     ckpt_manipulator = "add_missing_algorithm_state"
     max_iterations = 5000
     experiment_name = "g1_acp_planner"
+
+
+@configclass
+class DepthPlannerAlgorithmCfg(PlannerAlgorithmCfg):
+    """The planner also reads the depth image, through a small AME-2 encoder whose query is its context."""
+
+    planner_kwargs = {
+        **PlannerAlgorithmCfg().planner_kwargs,
+        "image_component": "depth_image",
+        "image_encoder_kwargs": {
+            "num_heads": 16,
+            "local_dim": 48,
+            "global_dim": 32,
+            "prop_dim": 64,
+            "hidden_size": 256,
+        },
+    }
+
+
+@configclass
+class G1ACPDepthPlannerPPORunnerCfg(G1ACPPlannerPPORunnerCfg):
+    algorithm: DepthPlannerAlgorithmCfg = DepthPlannerAlgorithmCfg()

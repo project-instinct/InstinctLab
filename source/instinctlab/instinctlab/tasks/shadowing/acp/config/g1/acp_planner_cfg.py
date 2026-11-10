@@ -185,3 +185,13 @@ class G1ACPPlannerReferenceLabelsLateHandoffEnvCfg(G1ACPPlannerLateHandoffEnvCfg
     def __post_init__(self):
         super().__post_init__()
         self.contact_labeler.contact_source = "reference"
+
+
+@configclass
+class G1ACPPlannerDepthEnvCfg(G1ACPPlannerEnvCfg):
+    """Experiment variant: the planner observation group also holds the tracker's depth image (for a planner with an
+    image encoder, ``G1ACPDepthPlannerPPORunnerCfg``)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.observations.planner.depth_image = ACPObservationsCfg.PolicyObsCfg().depth_image

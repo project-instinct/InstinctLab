@@ -113,6 +113,7 @@ with launch_simulation(env_cfg, args_cli):
     if list(labeler_cfg.body_names) != list(term.body_names):
         raise RuntimeError(f"labeler bodies {labeler_cfg.body_names} differ from the command's {term.body_names}")
     num_bodies = len(term.body_names)
+    camera = unwrapped.scene.sensors["camera"]
     horizon_steps = int(round(labeler_cfg.horizon_s / unwrapped.step_dt))
     max_steps = 1500
 
@@ -132,6 +133,9 @@ with launch_simulation(env_cfg, args_cli):
             "body_pos",
             "root_pos",
             "root_yaw",
+            "target_w",
+            "cam_pos",
+            "cam_quat",
         )
     }
     with torch.no_grad():
@@ -149,6 +153,9 @@ with launch_simulation(env_cfg, args_cli):
             rec["body_pos"].append(robot.data.body_link_pos_w.torch[:, robot_ids].clone())
             rec["root_pos"].append(robot.data.root_pos_w.torch.clone())
             rec["root_yaw"].append(heading(math_utils.yaw_quat(robot.data.root_quat_w.torch)))
+            rec["target_w"].append(term.target_pos_w.clone())
+            rec["cam_pos"].append(camera.data.pos_w.torch.clone())
+            rec["cam_quat"].append(camera.data.quat_w_ros.torch.clone())
             extra_obs = {k: v.to(device) for k, v in extras["observations"].items()}
             normalized = policy_normalizer(obs) if policy_normalizer is not None else obs
             composed = alg.compose_policy_obs(normalized, extra_obs, target_noise=False)
@@ -211,5 +218,52 @@ with launch_simulation(env_cfg, args_cli):
                 f"[check]   {name:22s} ref {int(ref_valid[..., b].sum()):6d} label {int(label_valid[..., b].sum()):6d}"
                 f" both {int(mask.sum()):6d} | xy median {float(xy.median()):.3f} p90 {float(xy.quantile(0.9)):.3f}"
                 f" >0.25 m {float((xy > 0.25).float().mean()):5.1%} | z median {float(z.median()):+.3f}"
+            )
+    # Can the planner see the next contact? For every step with a reference target: is the target inside the scan
+    # footprint (the planner can only select scan points), and inside the depth image (in front of the camera,
+    # inside the cropped field of view, within the normalized depth range)? By time until the reference onset.
+    contact = data["ref_contact"] & in_range
+    previous = torch.cat([torch.zeros_like(contact[:, :1]), contact[:, :-1]], dim=1)
+    onset = torch.where(contact & ~previous, steps.view(1, -1, 1), torch.full_like(contact, 10**6, dtype=torch.long))
+    next_onset = torch.flip(torch.cummin(torch.flip(onset, dims=[1]), dim=1).values, dims=[1])
+    time_to_onset = (next_onset - steps.view(1, -1, 1)).float() * unwrapped.step_dt  # (N, L, B)
+    (x_min, x_max), (y_min, y_max) = labeler_cfg.footprint
+    target_b = data["ref_target"]
+    in_footprint = (target_b[..., 0] >= x_min) & (target_b[..., 0] <= x_max)
+    in_footprint &= (target_b[..., 1] >= y_min) & (target_b[..., 1] <= y_max)
+    offset = data["target_w"] - data["cam_pos"].unsqueeze(2)
+    cam_quat = data["cam_quat"].unsqueeze(2).expand(-1, -1, num_bodies, -1)
+    p_cam = math_utils.quat_apply_inverse(cam_quat.reshape(-1, 4), offset.reshape(-1, 3)).reshape(offset.shape)
+    intrinsics = camera.data.intrinsic_matrices.torch[0]
+    height, width = camera.data.image_shape
+    top, bottom, left, right = env_cfg.scene.camera.noise_pipeline["crop_and_resize"].crop_region
+    depth_max = env_cfg.scene.camera.noise_pipeline["normalize"].depth_range[1]
+    z = p_cam[..., 2]
+    u = intrinsics[0, 0] * p_cam[..., 0] / z.clamp_min(1e-6) + intrinsics[0, 2]
+    v = intrinsics[1, 1] * p_cam[..., 1] / z.clamp_min(1e-6) + intrinsics[1, 2]
+    in_view = (z > 0) & (z <= depth_max) & (u >= left) & (u <= width - right) & (v >= top) & (v <= height - bottom)
+    print(
+        f"[check] == can the planner see the next reference contact? (scan footprint {labeler_cfg.footprint};"
+        f" depth image {height}x{width} cropped {top},{bottom},{left},{right} px, depth <= {depth_max} m)"
+    )
+    bins = [(0.0, 0.25), (0.25, 0.5), (0.5, 1.0), (1.0, 1.51)]
+    for b, name in enumerate(term.body_names):
+        valid = ref_valid[..., b]
+        if int(valid.sum()) < 100:
+            continue
+        cells = []
+        for lo, hi in bins:
+            m = valid & (time_to_onset[..., b] >= lo) & (time_to_onset[..., b] < hi)
+            n = int(m.sum())
+            fp = float(in_footprint[..., b][m].float().mean()) if n else 0.0
+            vw = float(in_view[..., b][m].float().mean()) if n else 0.0
+            cells.append(f"{lo:.2f}-{hi:.2f}s n {n:6d} scan {fp:5.1%} depth {vw:5.1%}")
+        far = valid & ~in_footprint[..., b]
+        print(f"[check]   {name:22s} " + " | ".join(cells))
+        if bool(far.any()):
+            xb = target_b[..., b, 0][far]
+            print(
+                f"[check]   {'':22s} outside the scan: target x median {float(xb.median()):+.2f} m,"
+                f" |y| > {y_max} m in {float((target_b[..., b, 1][far].abs() > y_max).float().mean()):.0%}"
             )
     sim.close()
