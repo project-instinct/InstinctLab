@@ -84,7 +84,8 @@ class ACPSceneCfg(perceptive_cfg.PerceptiveShadowingSceneCfg):
 
 @configclass
 class ACPCommandCfg(perceptive_cfg.CommandCfg):
-    contact_schedule = contact_schedule.ContactScheduleCommandCfg()
+    # targets only inside the 17 x 11 planner scan (1.6 x 1.0 m), the only points the stage-2 planner can select
+    contact_schedule = contact_schedule.ContactScheduleCommandCfg(target_footprint=((-0.8, 0.8), (-0.5, 0.5)))
 
 
 @configclass

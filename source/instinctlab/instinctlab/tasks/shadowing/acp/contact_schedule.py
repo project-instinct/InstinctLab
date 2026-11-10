@@ -109,7 +109,12 @@ class ContactScheduleCommand(CommandTerm):
         target_b = math_utils.quat_apply_inverse(
             yaw_quat.unsqueeze(1).expand(-1, num_bodies, -1), self.target_pos_w - root_pos.unsqueeze(1)
         )
-        self._target_b[:] = (target_b * self.target_valid.unsqueeze(-1)).reshape(self.num_envs, -1)
+        keep = self.target_valid
+        if self.cfg.target_footprint is not None:
+            (x_min, x_max), (y_min, y_max) = self.cfg.target_footprint
+            inside = (target_b[..., 0] >= x_min) & (target_b[..., 0] <= x_max)
+            keep = keep & inside & (target_b[..., 1] >= y_min) & (target_b[..., 1] <= y_max)
+        self._target_b[:] = (target_b * keep.unsqueeze(-1)).reshape(self.num_envs, -1)
 
 
 @configclass
@@ -121,6 +126,9 @@ class ContactScheduleCommandCfg(CommandTermCfg):
     goal_radius: float = 0.3
     """ ACP's r for reference-following goals. """
     resampling_time_range: tuple[float, float] = (1e9, 1e9)
+    target_footprint: tuple[tuple[float, float], tuple[float, float]] | None = None
+    """``((x_min, x_max), (y_min, y_max))`` in the body-yaw frame: targets outside are zero (no target), as the
+    stage-2 planner, which selects scan points, can only give targets inside its scan. None keeps every target."""
 
 
 """
