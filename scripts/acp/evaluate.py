@@ -40,6 +40,8 @@ RUN = os.environ.get("RUN")
 EVERY = int(os.environ.get("EVERY", "1"))
 START_PHASES = [float(p) for p in os.environ.get("START_PHASES", "0,0.5").split(",")]
 CONTACT_SOURCE = os.environ.get("CONTACT_SOURCE")  # stage-2 checkpoints only: "planner" (default) or "reference"
+# diagnostic: the tracker's reference targets are zeroed outside the hindsight labels' scan footprint
+REFERENCE_FOOTPRINT = os.environ.get("REFERENCE_FOOTPRINT", "0") == "1"
 if CONTACT_SOURCE not in (None, "planner", "reference"):
     raise SystemExit(f"CONTACT_SOURCE must be planner or reference, got {CONTACT_SOURCE!r}")
 CONTACT_FORCE_THRESHOLD = 1.0
@@ -123,6 +125,21 @@ with launch_simulation(env_cfg, args_cli):
 
     AmassMotion._sample_env_motion_start_time = _start_at_phase
 
+    if REFERENCE_FOOTPRINT:
+        from instinctlab.tasks.shadowing.acp.contact_schedule import ContactScheduleCommand
+
+        (x_min, x_max), (y_min, y_max) = env_cfg.contact_labeler.footprint
+        update_command = ContactScheduleCommand._update_command
+
+        def _update_command_in_footprint(self):
+            update_command(self)
+            targets = self._target_b.view(self.num_envs, -1, 3)
+            inside = (targets[..., 0] >= x_min) & (targets[..., 0] <= x_max)
+            inside &= (targets[..., 1] >= y_min) & (targets[..., 1] <= y_max)
+            targets *= inside.unsqueeze(-1)
+
+        ContactScheduleCommand._update_command = _update_command_in_footprint
+
     sim = gym.make(TASK, cfg=env_cfg)
     unwrapped = sim.unwrapped
     env = InstinctRlVecEnvWrapper(sim)
@@ -136,7 +153,7 @@ with launch_simulation(env_cfg, args_cli):
     if CONTACT_SOURCE is not None and not with_planner:
         raise SystemExit(f"CONTACT_SOURCE is for stage-2 checkpoints; {type(alg).__name__} has no planner")
     source = (CONTACT_SOURCE or "planner") if with_planner else None
-    suffix = "" if source is None else f"_{source}"
+    suffix = ("" if source is None else f"_{source}") + ("_footprint" if REFERENCE_FOOTPRINT else "")
     if with_planner:
         # the planner gate observation at the end of its schedule: 1 (planner) or 0 (reference)
         env.set_training_iteration(10**9 if source == "planner" else 0)
