@@ -23,13 +23,21 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.configclass import configclass
 from isaaclab.utils.noise import GaussianNoiseCfg
 
+import instinctlab.envs.mdp as instinct_mdp
+import instinctlab.tasks.shadowing.perceptive.perceptive_env_cfg as perceptive_cfg
 from instinctlab.assets.unitree_g1 import G1_29DOF_POLICY_JOINT_ORDER_V1
 from instinctlab.managers import MultiRewardCfg
 from instinctlab.tasks.shadowing.acp import planner_handoff
 from instinctlab.tasks.shadowing.acp.hindsight_labeler import HindsightContactLabelerCfg
 from instinctlab.utils.config import set_cfg_joint_order
 
-from .acp_tracker_cfg import CONTACT_BODIES, ACPObservationsCfg, ACPRewardsCfg, G1ACPTrackerEnvCfg
+from .acp_tracker_cfg import (
+    CONTACT_BODIES,
+    ACPObservationsCfg,
+    ACPRewardsCfg,
+    ACPTerrainContactMotionCfg,
+    G1ACPTrackerEnvCfg,
+)
 
 # Hand-off schedules (paper Eq. S1, in PPO iterations of stage 2; u_rew > u_obs as the paper requires). The
 # planner trains from the first iteration with enough replay samples; its targets reach the tracker from
@@ -181,6 +189,37 @@ class G1ACPPlannerLateHandoffEnvCfg(G1ACPPlannerEnvCfg):
 @configclass
 class G1ACPPlannerReferenceLabelsLateHandoffEnvCfg(G1ACPPlannerLateHandoffEnvCfg):
     """Experiment variant: reference-contact labels and the late hand-off."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.contact_labeler.contact_source = "reference"
+
+
+@configclass
+class ACPPlannerAdaptiveStartCurriculumCfg(ACPPlannerCurriculumCfg):
+    beyond_adaptive_sampling = CurriculumTermCfg(func=instinct_mdp.BeyondConcatMotionAdaptiveWeighting)
+
+
+@configclass
+class G1ACPPlannerAdaptiveStartEnvCfg(G1ACPPlannerEnvCfg):
+    """Experiment variant: stage 1's BeyondMimic adaptive start sampling (1 s bins, failing bins sampled more) instead
+    of the paper's U(0, 0.98) start phase."""
+
+    curriculum: ACPPlannerAdaptiveStartCurriculumCfg = ACPPlannerAdaptiveStartCurriculumCfg()
+
+    def __post_init__(self):
+        super().__post_init__()
+        motion = self.scene.motion_reference.motion_buffers["TerrainMotion"]
+        tracker_motion = ACPTerrainContactMotionCfg()
+        motion.motion_bin_length_s = tracker_motion.motion_bin_length_s
+        motion.env_starting_stub_sampling_strategy = tracker_motion.env_starting_stub_sampling_strategy
+        motion.motion_start_from_middle_range = tracker_motion.motion_start_from_middle_range
+        self.events.bin_fail_counter_smoothing = perceptive_cfg.EventsCfg().bin_fail_counter_smoothing
+
+
+@configclass
+class G1ACPPlannerReferenceLabelsAdaptiveStartEnvCfg(G1ACPPlannerAdaptiveStartEnvCfg):
+    """Experiment variant: reference-contact labels and the adaptive start sampling."""
 
     def __post_init__(self):
         super().__post_init__()

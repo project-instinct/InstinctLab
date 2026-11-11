@@ -32,6 +32,8 @@ for variant, cfg_name in (
     ("RefLabels", "G1ACPPlannerReferenceLabelsEnvCfg"),
     ("LateHandoff", "G1ACPPlannerLateHandoffEnvCfg"),
     ("RefLabels-LateHandoff", "G1ACPPlannerReferenceLabelsLateHandoffEnvCfg"),
+    ("AdaptiveStart", "G1ACPPlannerAdaptiveStartEnvCfg"),
+    ("RefLabels-AdaptiveStart", "G1ACPPlannerReferenceLabelsAdaptiveStartEnvCfg"),
 ):
     register_backend_tasks(
         f"Instinct-ACP-Planner-{variant}-G1",
