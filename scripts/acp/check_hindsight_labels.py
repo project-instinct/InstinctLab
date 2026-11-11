@@ -136,6 +136,8 @@ with launch_simulation(env_cfg, args_cli):
             "target_w",
             "cam_pos",
             "cam_quat",
+            "planned",
+            "planned_occ",
         )
     }
     with torch.no_grad():
@@ -159,7 +161,10 @@ with launch_simulation(env_cfg, args_cli):
             extra_obs = {k: v.to(device) for k, v in extras["observations"].items()}
             normalized = policy_normalizer(obs) if policy_normalizer is not None else obs
             composed = alg.compose_policy_obs(normalized, extra_obs, target_noise=False)
-            env.set_policy_feedback(alg.get_policy_feedback())
+            feedback = alg.get_policy_feedback()
+            env.set_policy_feedback(feedback)
+            rec["planned"].append(feedback[alg.planner_positions_feedback_key].reshape(NUM_CLIPS, num_bodies, 3))
+            rec["planned_occ"].append(feedback[alg.planner_occupancy_feedback_key] > 0.5)
             obs, _, dones, extras = env.step(alg.actor_critic.act_inference(composed))
             length += running.long()
             running &= ~dones.reshape(-1).bool().to(device)
@@ -208,6 +213,26 @@ with launch_simulation(env_cfg, args_cli):
         both = ref_valid & label_valid
         diff = label_pos - data["ref_target"]
         print(f"[check] == labels from {title}")
+        if (
+            contact_key == "terrain_contact"
+            and min_steps == labeler_cfg.min_contact_steps
+            and footprint is not no_footprint
+        ):
+            # the planner of CKPT on the same steps, against the labels it is trained on and against the reference
+            planned_occ = data["planned_occ"] & in_range
+            for b, name in enumerate(term.body_names[:2]):
+                for other, valid, pos in (
+                    ("labels", label_valid, label_pos),
+                    ("reference", ref_valid, data["ref_target"]),
+                ):
+                    m = planned_occ[..., b] & valid[..., b]
+                    xy = (data["planned"][..., b, :2] - pos[..., b, :2])[m].norm(dim=-1)
+                    print(
+                        f"[check]   planner vs {other:9s} {name:22s} precision"
+                        f" {float(m.sum() / planned_occ[..., b].sum().clamp_min(1)):.2f} recall"
+                        f" {float(m.sum() / valid[..., b].sum().clamp_min(1)):.2f} | xy median"
+                        f" {float(xy.median()):.3f} mean {float(xy.mean()):.3f} p90 {float(xy.quantile(0.9)):.3f}"
+                    )
         for b, name in enumerate(term.body_names):
             mask = both[..., b]
             xy = diff[..., b, :2][mask].norm(dim=-1)
