@@ -52,6 +52,8 @@ if CONTACT_SOURCE not in (None, "planner", "reference"):
 #   reference_positions the planner's occupancy, but the reference position where both have a target
 #   reference_occupancy the reference's occupancy, the planner's position where both have a target
 PLANNER_MIX = os.environ.get("PLANNER_MIX")
+# diagnostic: the planner keeps a target when its occupancy probability exceeds this (default: the planner's setting)
+OCCUPANCY_THRESHOLD = os.environ.get("OCCUPANCY_THRESHOLD")
 PLANNER_MIXES = ("feet_reference", "feet_planner", "reference_positions", "reference_occupancy")
 if PLANNER_MIX not in (None, *PLANNER_MIXES):
     raise SystemExit(f"PLANNER_MIX must be one of {PLANNER_MIXES}, got {PLANNER_MIX!r}")
@@ -171,6 +173,11 @@ with launch_simulation(env_cfg, args_cli):
         if not with_planner:
             raise SystemExit("PLANNER_MIX is for stage-2 checkpoints")
         suffix += f"_mix-{PLANNER_MIX}"
+    if OCCUPANCY_THRESHOLD is not None:
+        if not with_planner:
+            raise SystemExit("OCCUPANCY_THRESHOLD is for stage-2 checkpoints")
+        alg.planner.occupancy_threshold = float(OCCUPANCY_THRESHOLD)
+        suffix += f"_occ{OCCUPANCY_THRESHOLD}"
     if with_planner:
         # the planner gate observation at the end of its schedule: 1 (planner) or 0 (reference)
         env.set_training_iteration(10**9 if source == "planner" else 0)
