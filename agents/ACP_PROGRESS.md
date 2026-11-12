@@ -121,6 +121,36 @@ Evaluate with `scripts/acp/evaluate.py` (planner and reference targets, phases 0
 the paper variant's 14.6 / 29.6 % at model_5000. Then the hand-off question is whether a tracker that keeps its
 reference skill under a partial hand-off also crosses obstacles with planner targets alone.
 
+### Results of the partial hand-off / big replay runs (from phase 0, seed 42 / seed 2)
+
+Planner targets at 3k: partial hand-off 2.9 / 6.8 %, big replay 18.0 / 18.9 %, both 4.4 / 4.9 % (paper 17.0 %).
+Reference targets at 3k: 71.8 / 72.3 %, 38.8 / 38.8 %, 69.9 / 83.0 % (paper 42.7 %). The partial hand-off keeps the
+tracker's reference skill but the tracker never learns to work on planner targets alone; the big replay changes
+nothing. (The first evaluations of the partial hand-off runs mixed in reference targets on half the steps,
+`528fc70`; those results are in `eval_gate0.5/` of the run dirs, 65-72 % at 2k.)
+
+### Step 0: how much missing foot targets hurt the stage-1 tracker (`FOOT_TARGET_DROPOUT`, `9dbd1e4`)
+
+`fp_seed42/model_6000`, reference targets, success from phase 0, foot targets withheld at random:
+
+| withheld | per contact | per step |
+|---|---|---|
+| none | 84.0 % | |
+| 10 % | 66.5 % | |
+| 25 % | 41.3 % | 62.6 % |
+| 50 % | 15.5 % | |
+
+The planner's foot recall is ~75 %, so even perfectly placed planner targets would leave the tracker near 40 %. The
+tracker is fragile to missing foot targets; the swap test (45.6 % with the reference filling the planner's gaps)
+agrees.
+
+### Run A: labels from all episodes (`Instinct-ACP-Planner-LabelAll-G1-v0`, `9dbd1e4`)
+
+Episodes of any start phase are recorded (2400 slots), and the ones that end before the admission end phase are
+labeled up to their last step with a complete lookahead. Seed 42 on gthintel201 GPU0 from 2026-11-13 05:32 CST, seed
+2 on gthintel218. At iteration 50: 2,040 samples per step (paper ~370), 87 of them from failed episodes; the 100k
+replay now holds about 2 iterations of labels.
+
 ## Infrastructure
 
 - gthintel cluster via cardbot; runs in `humix-docker` containers launched by `~/workspace/isaacSim/il_run.sh`,
