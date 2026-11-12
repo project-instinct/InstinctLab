@@ -88,6 +88,10 @@ motion_cfg.env_starting_stub_sampling_strategy = "independent"
 env_cfg.observations.policy.enable_corruption = False
 if getattr(env_cfg.observations, "planner", None) is not None:
     env_cfg.observations.planner.enable_corruption = False
+contact_source_obs = getattr(env_cfg.observations, "contact_source", None)
+if contact_source_obs is not None:
+    # the gate reads 1 (planner) or 0 (reference) on every step, also for tasks whose hand-off stops below 1
+    contact_source_obs.planner_gate.params["eta_max"] = 1.0
 env_cfg.episode_length_s = 1.0e5  # the clip end, not a time limit, ends the episode
 env_cfg.events.physics_material.params["static_friction_range"] = (1.0, 1.0)
 env_cfg.events.physics_material.params["dynamic_friction_range"] = (1.0, 1.0)
