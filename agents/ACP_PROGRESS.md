@@ -114,6 +114,9 @@ runs:
 | `acpS2fp_bigReplay_seed42` | `-BigReplay-` | replay 1,000,000 samples (~4 GB on the GPU), 100-400 iterations of labels |
 | `acpS2fp_partialHandoffBigReplay_seed42` | `-PartialHandoff-BigReplay-` | both |
 
+Seed-2 replicates of all three (`acpS2fp_*_seed2`, containers `acp_s2fp_*_s2`) run on gthintel218 (r1611,
+manip_3:4-7, GPUs 0-2 there), launched 2026-11-12 21:32 CST by `~/workspace/isaacSim/acp_partial_launch_seed2.sh`.
+
 Evaluate with `scripts/acp/evaluate.py` (planner and reference targets, phases 0 and 0.5, `EVERY=1000`) against
 the paper variant's 14.6 / 29.6 % at model_5000. Then the hand-off question is whether a tracker that keeps its
 reference skill under a partial hand-off also crosses obstacles with planner targets alone.
