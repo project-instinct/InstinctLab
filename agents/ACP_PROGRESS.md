@@ -93,6 +93,31 @@ Two label properties that differ from the tracker's targets:
   rate falls from ~370 to ~100 samples per step and the height termination rises from 0.11 to 0.33, so the planner
   learns from successful crossings only and has no labels for the states just before a failure.
 
+### Training curves of the stage-2 runs (TensorBoard, all six variants alike)
+
+- The replay (100,000 FIFO) is full from iteration 100 on; labels arrive at 7-10k samples per iteration before the
+  hand-off (370-430 per step), so the planner only ever sees the last 10-15 iterations of the tracker's behaviour.
+- During the gate ramp (500-2500) the label rate falls to 1.3-3.5k per iteration (20-130 per step) and the
+  admitted episodes from ~0.9 to 0.1-0.3 per step; `base_pos_too_far` rises from 0.11 to 0.30-0.37 and
+  `dataset_exhausted` (training-time success, random start phase) falls from 0.87-0.89 to 0.59-0.67.
+- The planner loss stops improving at ~3.2 once the hand-off starts (the late hand-off reaches 2.95 at 2000 before
+  its ramp, then 3.26-3.38). The KL-adaptive learning rate stays at 1e-4 or below.
+
+### Next experiment (launched 2026-11-12 21:10 CST, `95050ca`, GPUs 0-2 of r1522, from `fp_seed42/model_6000`)
+
+Both effects above cut the planner off from the labels of the good pre-hand-off tracker. Two config knobs, three
+runs:
+
+| run | task | change |
+|---|---|---|
+| `acpS2fp_partialHandoff_seed42` | `-PartialHandoff-` | both ramps stop at eta_max = 0.5: every step keeps the reference targets with probability 0.5, half of the reference-contact reward stays |
+| `acpS2fp_bigReplay_seed42` | `-BigReplay-` | replay 1,000,000 samples (~4 GB on the GPU), 100-400 iterations of labels |
+| `acpS2fp_partialHandoffBigReplay_seed42` | `-PartialHandoff-BigReplay-` | both |
+
+Evaluate with `scripts/acp/evaluate.py` (planner and reference targets, phases 0 and 0.5, `EVERY=1000`) against
+the paper variant's 14.6 / 29.6 % at model_5000. Then the hand-off question is whether a tracker that keeps its
+reference skill under a partial hand-off also crosses obstacles with planner targets alone.
+
 ## Infrastructure
 
 - gthintel cluster via cardbot; runs in `humix-docker` containers launched by `~/workspace/isaacSim/il_run.sh`,
