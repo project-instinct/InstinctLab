@@ -12,8 +12,8 @@ reference body is in contact.
 A stage-2 checkpoint (``ContactPlannerPPO``, e.g. ``TASK=Instinct-ACP-Planner-G1-v0``) plays with its planner in the
 loop: ``CONTACT_SOURCE=planner`` (default) gives the tracker the planner's targets, ``CONTACT_SOURCE=reference`` the
 reference's, as in stage 1. With the planner, its targets are also compared with the reference targets per body:
-occupancy precision and recall (planned occupied vs a reference target within the onset horizon) and the position
-error where both have a target. Stage-2 results go to ``eval_<source>.csv`` and ``<checkpoint>_eval_<source>.json``.
+occupancy precision and recall (planned occupied vs a reference target within the onset horizon and inside the
+command's target footprint, i.e. a target the tracker would get) and the position error where both have a target. Stage-2 results go to ``eval_<source>.csv`` and ``<checkpoint>_eval_<source>.json``.
 ``PLANNER_MIX`` (see below) replaces one part of the planner's targets with the reference's, to find which part the
 tracker fails on; its results get the suffix ``_mix-<PLANNER_MIX>``.
 
@@ -204,12 +204,17 @@ with launch_simulation(env_cfg, args_cli):
             composed[:, alg._target_index] = mixed_targets(feedback)
         return alg.actor_critic.act_inference(composed)
 
+    def reference_targets_on() -> torch.Tensor:
+        """``(N, B)`` reference targets the tracker gets: valid and inside the command's target footprint (the
+        command is zero elsewhere)."""
+        return term.target_valid & (term.command.reshape(NUM_CLIPS, -1, 3).abs().sum(dim=-1) > 0.0)
+
     def mixed_targets(feedback) -> torch.Tensor:
         """Normalized target slot of the PLANNER_MIX diagnostic."""
         planned = feedback[alg.planner_positions_feedback_key].reshape(NUM_CLIPS, -1, 3)
         planned_on = feedback[alg.planner_occupancy_feedback_key] > 0.5
         reference = term.command.reshape(NUM_CLIPS, -1, 3)
-        reference_on = term.target_valid
+        reference_on = reference_targets_on()
         if PLANNER_MIX in ("feet_reference", "feet_planner"):
             feet = torch.zeros(planned.shape[1], dtype=torch.bool, device=device)
             feet[feet_ids] = True
@@ -276,7 +281,7 @@ with launch_simulation(env_cfg, args_cli):
                 occupied = (feedback[alg.planner_occupancy_feedback_key] > 0.5) & live
                 planned = feedback[alg.planner_positions_feedback_key].reshape(NUM_CLIPS, num_bodies, 3)
                 reference_target = term.command.reshape(NUM_CLIPS, num_bodies, 3)
-                valid = term.target_valid & live
+                valid = reference_targets_on() & live
                 both = occupied & valid
                 plan_occupied += occupied.sum(0)
                 ref_valid += valid.sum(0)
