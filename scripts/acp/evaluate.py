@@ -28,10 +28,12 @@ Results go to ``<run dir>/eval.csv`` (one row per checkpoint and start phase) an
 
 import glob
 import json
+import numpy as np
 import os
 import re
 import time
 import torch
+from collections import defaultdict
 
 import instinctlab.tasks  # noqa: F401
 from instinctlab.utils import instinct_rl_cli as cli
@@ -54,11 +56,17 @@ if CONTACT_SOURCE not in (None, "planner", "reference"):
 PLANNER_MIX = os.environ.get("PLANNER_MIX")
 # diagnostic: the planner keeps a target when its occupancy probability exceeds this (default: the planner's setting)
 OCCUPANCY_THRESHOLD = os.environ.get("OCCUPANCY_THRESHOLD")
+# diagnostic (planner contacts only): per-step foot targets of the reference and the planner go to
+# <checkpoint>_footholds<suffix>_phase<p>.npz, and the planner's foot occupancy on (up to FOOTHOLD_REPLAY_SAMPLES)
+# samples of the run's planner_replay_latest.pt to <checkpoint>_footholds_replay.npz; scripts/acp/analyze_footholds.py
+# reads them.
+FOOTHOLD_LOG = os.environ.get("FOOTHOLD_LOG", "0") == "1"
+FOOTHOLD_REPLAY_SAMPLES = int(os.environ.get("FOOTHOLD_REPLAY_SAMPLES", "200000"))
 PLANNER_MIXES = ("feet_reference", "feet_planner", "reference_positions", "reference_occupancy")
 if PLANNER_MIX not in (None, *PLANNER_MIXES):
     raise SystemExit(f"PLANNER_MIX must be one of {PLANNER_MIXES}, got {PLANNER_MIX!r}")
-if PLANNER_MIX is not None and CONTACT_SOURCE == "reference":
-    raise SystemExit("PLANNER_MIX needs CONTACT_SOURCE=planner")
+if (PLANNER_MIX is not None or FOOTHOLD_LOG) and CONTACT_SOURCE == "reference":
+    raise SystemExit("PLANNER_MIX and FOOTHOLD_LOG need CONTACT_SOURCE=planner")
 CONTACT_FORCE_THRESHOLD = 1.0
 if (CKPT is None) == (RUN is None):
     raise SystemExit("set exactly one of CKPT (one checkpoint) or RUN (every checkpoint of a run)")
@@ -233,6 +241,33 @@ with launch_simulation(env_cfg, args_cli):
             )
         return mixed
 
+    last_footholds = [None]
+
+    @torch.no_grad()
+    def replay_footholds(run_dir: str) -> dict | None:
+        """The planner's foot occupancy and positions on samples of the run's planner replay (its training labels)."""
+        path = os.path.join(run_dir, alg.REPLAY_FILE)
+        if not os.path.exists(path):
+            print(f"[eval] no {path}; skipping the replay footholds", flush=True)
+            return None
+        replay = torch.load(path, weights_only=True, map_location="cpu")["replay_state_dict"]
+        filled = int(replay["filled"])
+        index = torch.randperm(filled)[:FOOTHOLD_REPLAY_SAMPLES]
+        planner_obs = replay["buffer/planner_obs"][index]
+        target_pos = replay["buffer/target_pos"][index][:, feet_ids]
+        target_valid = replay["buffer/target_valid"][index][:, feet_ids]
+        positions, occupied = [], []
+        for start in range(0, len(index), 8192):
+            p, o = alg.planner.predict(planner_obs[start : start + 8192].to(device))
+            positions.append(p[:, feet_ids].cpu())
+            occupied.append(o[:, feet_ids].cpu())
+        return {
+            "label_on": target_valid.bool().numpy(),
+            "label_b": target_pos.numpy(),
+            "planned_on": torch.cat(occupied).numpy(),
+            "planned_b": torch.cat(positions).numpy(),
+        }
+
     @torch.no_grad()
     def evaluate(policy, phase: float) -> dict:
         start_phase[0] = phase
@@ -260,6 +295,7 @@ with launch_simulation(env_cfg, args_cli):
         ref_valid = torch.zeros(num_bodies, device=device)
         plan_error = torch.zeros(num_bodies, device=device)
         limit = int(clip_steps.max()) + 10
+        foothold_log = defaultdict(list)
         for _ in range(limit):
             # contact statistics of the state the policy acts from
             label = term.reference_contact
@@ -287,6 +323,21 @@ with launch_simulation(env_cfg, args_cli):
                 ref_valid += valid.sum(0)
                 plan_and_ref += both.sum(0)
                 plan_error += ((planned - reference_target).norm(dim=-1) * both).sum(0)
+                if FOOTHOLD_LOG:
+                    step_log = {
+                        "live": running,
+                        "reference_on": reference_targets_on()[:, feet_ids],
+                        "reference_valid": term.target_valid[:, feet_ids],
+                        "reference_target_b": reference_target[:, feet_ids],
+                        "reference_target_w": term.target_pos_w[:, feet_ids],
+                        "reference_contact": label[:, feet_ids],
+                        "planned_on": occupied[:, feet_ids],
+                        "planned_b": planned[:, feet_ids],
+                        "robot_contact": sim_contact[:, feet_ids],
+                        "root_pos_w": term.robot.data.root_pos_w.torch,
+                    }
+                    for key, value in step_log.items():
+                        foothold_log[key].append(value.clone().cpu())
             else:
                 actions = policy(obs)
             obs, _, dones, extras = env.step(actions)
@@ -299,6 +350,17 @@ with launch_simulation(env_cfg, args_cli):
                 break
         if bool(running.any()):
             raise RuntimeError(f"{int(running.sum())} clips did not end within {limit} steps")
+        if foothold_log:
+            footholds = {key: torch.stack(values).numpy() for key, values in foothold_log.items()}  # (T, N, ...)
+            footholds.update(
+                failed=failed.cpu().numpy(),
+                steps=steps.cpu().numpy(),
+                clip_steps=clip_steps.cpu().numpy(),
+                categories=np.array(categories),
+                clips=np.array(clip_names),
+                step_dt=np.array(step_dt),
+            )
+            last_footholds[0] = footholds
 
         success = ~failed
         per_category = {}
@@ -348,11 +410,18 @@ with launch_simulation(env_cfg, args_cli):
         for name, normalizer in runner.normalizers.items():
             normalizer.load_state_dict(ckpt[f"{name}_normalizer_state_dict"])
         policy = runner.get_inference_policy(device)
+        if FOOTHOLD_LOG and with_planner:
+            replay = replay_footholds(os.path.dirname(path))
+            if replay is not None:
+                np.savez_compressed(path.replace(".pt", "_footholds_replay.npz"), **replay)
         results = {"checkpoint": path, "iteration": ckpt.get("iter"), "contact_source": source, "by_start_phase": {}}
         for phase in START_PHASES:
             t0 = time.time()
             res = evaluate(policy, phase)
             results["by_start_phase"][str(phase)] = res
+            if last_footholds[0] is not None:
+                np.savez_compressed(path.replace(".pt", f"_footholds{suffix}_phase{phase}.npz"), **last_footholds[0])
+                last_footholds[0] = None
             summary = " ".join(f"{c}={v['success']:.0%}" for c, v in res["per_category"].items())
             print(
                 f"[eval] {os.path.basename(path)} (iteration {results['iteration']}, contacts {source or 'reference'})"
