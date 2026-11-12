@@ -111,6 +111,33 @@ def test_truncated_record_drops_the_unlabelable_tail():
     assert samples["planner_obs"].shape[0] == 30 - 10 - 3 + 1
 
 
+def test_unadmitted_episodes_are_labeled_without_their_tail():
+    labeler = _labeler(num_slots=2, max_steps=40)
+    labeler.cfg.label_unadmitted = True
+    labeler.start_episodes(torch.tensor([0, 1]), torch.tensor([0.0, 0.0]))
+    _record_steps(labeler, 30)
+    # env 0 fails at 0.5 of its clip after 30 steps, env 1 succeeds
+    labeler.finish_episodes(torch.tensor([0, 1]), torch.tensor([30, 30]), torch.tensor([0.5, 0.95]))
+    assert labeler.stats["admitted_episodes"] == 1 and labeler.stats["rejected_episodes"] == 1
+    samples = labeler.pop_samples()
+    # env 1 gives all 30 steps; env 0 drops its last horizon (10) + minimum segment (3) - 1 steps
+    num_failed = 30 - 10 - 3 + 1
+    assert labeler.stats["unadmitted_samples"] == num_failed
+    assert samples["planner_obs"].shape[0] == 30 + num_failed
+    failed = samples["planner_obs"][:, 0] < 100.0  # env 0's observations are 0..29, env 1's 100..129
+    assert torch.equal(samples["planner_obs"][failed, 0], torch.arange(float(num_failed)))
+    # the labels are the same as for a full episode on the kept steps: body 0's onset at 12 seen from step 2 on
+    assert samples["target_valid"][failed, 0].tolist() == [False] * 2 + [True] * 11 + [False] * (num_failed - 13)
+
+
+def test_unadmitted_episodes_are_not_labeled_by_default():
+    labeler = _labeler(num_slots=1)
+    labeler.start_episodes(torch.tensor([0]), torch.tensor([0.0]))
+    _record_steps(labeler, 30)
+    labeler.finish_episodes(torch.tensor([0]), torch.tensor([30]), torch.tensor([0.5]))
+    assert labeler.pop_samples()["planner_obs"].shape[0] == 0
+
+
 def test_slot_is_reused_after_an_episode():
     labeler = _labeler(num_slots=1)
     labeler.start_episodes(torch.tensor([0]), torch.tensor([0.0]))

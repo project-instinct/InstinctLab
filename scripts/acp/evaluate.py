@@ -61,6 +61,12 @@ OCCUPANCY_THRESHOLD = os.environ.get("OCCUPANCY_THRESHOLD")
 # samples of the run's planner_replay_latest.pt to <checkpoint>_footholds_replay.npz; scripts/acp/analyze_footholds.py
 # reads them.
 FOOTHOLD_LOG = os.environ.get("FOOTHOLD_LOG", "0") == "1"
+# diagnostic (reference contacts): each reference foot target is withheld (zero, as "no target") with probability
+# FOOT_TARGET_DROPOUT, drawn per contact (once per target, kept until the target changes) or per step
+FOOT_TARGET_DROPOUT = float(os.environ.get("FOOT_TARGET_DROPOUT", "0"))
+FOOT_TARGET_DROPOUT_MODE = os.environ.get("FOOT_TARGET_DROPOUT_MODE", "contact")
+if FOOT_TARGET_DROPOUT_MODE not in ("contact", "step"):
+    raise SystemExit(f"FOOT_TARGET_DROPOUT_MODE must be contact or step, got {FOOT_TARGET_DROPOUT_MODE!r}")
 FOOTHOLD_REPLAY_SAMPLES = int(os.environ.get("FOOTHOLD_REPLAY_SAMPLES", "200000"))
 PLANNER_MIXES = ("feet_reference", "feet_planner", "reference_positions", "reference_occupancy")
 if PLANNER_MIX not in (None, *PLANNER_MIXES):
@@ -167,6 +173,28 @@ with launch_simulation(env_cfg, args_cli):
 
         ContactScheduleCommand._update_command = _update_command_in_footprint
 
+    if FOOT_TARGET_DROPOUT > 0.0:
+        from instinctlab.tasks.shadowing.acp.contact_schedule import ContactScheduleCommand
+
+        update_command_kept = ContactScheduleCommand._update_command
+        dropout_state = {}
+
+        def _update_command_with_dropout(self):
+            update_command_kept(self)
+            feet = [self.body_names.index(n) for n in ("left_ankle_roll_link", "right_ankle_roll_link")]
+            target_w = self.target_pos_w[:, feet]
+            if FOOT_TARGET_DROPOUT_MODE == "step" or "drop" not in dropout_state:
+                drop = torch.rand(target_w.shape[:2], device=target_w.device) < FOOT_TARGET_DROPOUT
+            else:
+                new_target = (target_w - dropout_state["target_w"]).norm(dim=-1) > 0.01
+                redraw = torch.rand(target_w.shape[:2], device=target_w.device) < FOOT_TARGET_DROPOUT
+                drop = torch.where(new_target, redraw, dropout_state["drop"])
+            dropout_state.update(drop=drop, target_w=target_w.clone())
+            targets = self._target_b.view(self.num_envs, -1, 3)
+            targets[:, feet] *= (~drop).unsqueeze(-1).to(targets.dtype)
+
+        ContactScheduleCommand._update_command = _update_command_with_dropout
+
     sim = gym.make(TASK, cfg=env_cfg)
     unwrapped = sim.unwrapped
     env = InstinctRlVecEnvWrapper(sim)
@@ -181,6 +209,8 @@ with launch_simulation(env_cfg, args_cli):
         raise SystemExit(f"CONTACT_SOURCE is for stage-2 checkpoints; {type(alg).__name__} has no planner")
     source = (CONTACT_SOURCE or "planner") if with_planner else None
     suffix = ("" if source is None else f"_{source}") + ("_footprint" if REFERENCE_FOOTPRINT else "")
+    if FOOT_TARGET_DROPOUT > 0.0:
+        suffix += f"_footdrop{FOOT_TARGET_DROPOUT}{FOOT_TARGET_DROPOUT_MODE}"
     if PLANNER_MIX is not None:
         if not with_planner:
             raise SystemExit("PLANNER_MIX is for stage-2 checkpoints")

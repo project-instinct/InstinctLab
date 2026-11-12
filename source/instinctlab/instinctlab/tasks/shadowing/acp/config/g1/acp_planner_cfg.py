@@ -212,6 +212,20 @@ class G1ACPPlannerPartialHandoffEnvCfg(G1ACPPlannerEnvCfg):
 
 
 @configclass
+class G1ACPPlannerLabelAllEnvCfg(G1ACPPlannerEnvCfg):
+    """Experiment variant: hindsight labels from every episode, not only reference-following successes. Episodes of
+    any start phase are recorded (one slot per env), and the ones that end before the admission end phase (mostly
+    failures at the obstacles) are labeled up to their last step with a complete lookahead, so the planner also gets
+    labels for the approaches the tracker fails on."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.contact_labeler.start_phase_max = 1.0
+        self.contact_labeler.label_unadmitted = True
+        self.contact_labeler.num_slots = self.scene.num_envs
+
+
+@configclass
 class ACPPlannerAdaptiveStartCurriculumCfg(ACPPlannerCurriculumCfg):
     beyond_adaptive_sampling = CurriculumTermCfg(func=instinct_mdp.BeyondConcatMotionAdaptiveWeighting)
 

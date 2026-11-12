@@ -133,6 +133,11 @@ class HindsightContactLabelerCfg:
     end_phase_min: float = 0.9
     """Admission: the episode reached at least this fraction of the reference clip."""
 
+    label_unadmitted: bool = False
+    """Experiment: also label the recorded episodes that end before ``end_phase_min`` (failures, mostly), up to the
+    last step whose lookahead (horizon plus minimum contact length) lies inside the episode, so the steps just before
+    the episode's end, whose next contacts are cut off by it, are dropped. The paper labels admitted episodes only."""
+
     infos_key: str = "planner_samples"
     """Key of the samples in the step ``extras``."""
 
@@ -160,7 +165,12 @@ class HindsightContactLabeler:
         self.slot_env = torch.full((num_slots,), -1, dtype=torch.long, device=self.device)
         self.env_slot = torch.full((num_envs,), -1, dtype=torch.long, device=self.device)
         self._samples: list[dict[str, torch.Tensor]] = []
-        self.stats = {"admitted_episodes": 0, "rejected_episodes": 0, "unrecorded_episodes": 0}
+        self.stats = {
+            "admitted_episodes": 0,
+            "rejected_episodes": 0,
+            "unrecorded_episodes": 0,
+            "unadmitted_samples": 0,
+        }
         self._empty = {
             "planner_obs": torch.zeros(0, obs_size, device=self.device),
             "target_pos": torch.zeros(0, self.num_bodies, 3, device=self.device),
@@ -207,10 +217,18 @@ class HindsightContactLabeler:
         self.stats["rejected_episodes"] += int((~admitted).sum())
         if bool(admitted.any()):
             self._samples.append(self._label(slots[admitted], episode_length[admitted]))
+        if self.cfg.label_unadmitted and bool((~admitted).any()):
+            unadmitted = ~admitted
+            samples = self._label(slots[unadmitted], episode_length[unadmitted], cut_tail=True)
+            self.stats["unadmitted_samples"] += samples["planner_obs"].shape[0]
+            self._samples.append(samples)
         self.slot_env[slots] = -1
         self.env_slot[env_ids[recorded]] = -1
 
-    def _label(self, slots: torch.Tensor, episode_length: torch.Tensor) -> dict[str, torch.Tensor]:
+    def _label(
+        self, slots: torch.Tensor, episode_length: torch.Tensor, cut_tail: bool = False
+    ) -> dict[str, torch.Tensor]:
+        """Samples of the recorded ``slots``. ``cut_tail`` drops the tail of every record as for a truncated one."""
         length = self.slot_length[slots]
         target_pos, target_valid = label_next_contacts(
             self.contact[slots],
@@ -224,7 +242,7 @@ class HindsightContactLabeler:
         )
         # an episode longer than its record hides the onsets after the record's end: drop the steps whose
         # horizon (plus the segment-length check) reaches past it
-        truncated = episode_length > length
+        truncated = (episode_length > length) | cut_tail
         usable = torch.where(truncated, length - self.horizon_steps - self.cfg.min_contact_steps + 1, length)
         rows = torch.arange(self.cfg.max_recorded_steps, device=self.device).unsqueeze(0) < usable.unsqueeze(1)
         return {
