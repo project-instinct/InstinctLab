@@ -14,6 +14,8 @@ loop: ``CONTACT_SOURCE=planner`` (default) gives the tracker the planner's targe
 reference's, as in stage 1. With the planner, its targets are also compared with the reference targets per body:
 occupancy precision and recall (planned occupied vs a reference target within the onset horizon) and the position
 error where both have a target. Stage-2 results go to ``eval_<source>.csv`` and ``<checkpoint>_eval_<source>.json``.
+``PLANNER_MIX`` (see below) replaces one part of the planner's targets with the reference's, to find which part the
+tracker fails on; its results get the suffix ``_mix-<PLANNER_MIX>``.
 
 Usage (inside the container)::
 
@@ -44,6 +46,17 @@ CONTACT_SOURCE = os.environ.get("CONTACT_SOURCE")  # stage-2 checkpoints only: "
 REFERENCE_FOOTPRINT = os.environ.get("REFERENCE_FOOTPRINT", "0") == "1"
 if CONTACT_SOURCE not in (None, "planner", "reference"):
     raise SystemExit(f"CONTACT_SOURCE must be planner or reference, got {CONTACT_SOURCE!r}")
+# diagnostic (planner contacts only): the tracker gets the planner's targets with one part replaced by the reference's
+#   feet_reference      reference targets for the feet, the planner's for the other bodies
+#   feet_planner        the planner's targets for the feet, reference targets for the other bodies
+#   reference_positions the planner's occupancy, but the reference position where both have a target
+#   reference_occupancy the reference's occupancy, the planner's position where both have a target
+PLANNER_MIX = os.environ.get("PLANNER_MIX")
+PLANNER_MIXES = ("feet_reference", "feet_planner", "reference_positions", "reference_occupancy")
+if PLANNER_MIX not in (None, *PLANNER_MIXES):
+    raise SystemExit(f"PLANNER_MIX must be one of {PLANNER_MIXES}, got {PLANNER_MIX!r}")
+if PLANNER_MIX is not None and CONTACT_SOURCE == "reference":
+    raise SystemExit("PLANNER_MIX needs CONTACT_SOURCE=planner")
 CONTACT_FORCE_THRESHOLD = 1.0
 if (CKPT is None) == (RUN is None):
     raise SystemExit("set exactly one of CKPT (one checkpoint) or RUN (every checkpoint of a run)")
@@ -154,6 +167,10 @@ with launch_simulation(env_cfg, args_cli):
         raise SystemExit(f"CONTACT_SOURCE is for stage-2 checkpoints; {type(alg).__name__} has no planner")
     source = (CONTACT_SOURCE or "planner") if with_planner else None
     suffix = ("" if source is None else f"_{source}") + ("_footprint" if REFERENCE_FOOTPRINT else "")
+    if PLANNER_MIX is not None:
+        if not with_planner:
+            raise SystemExit("PLANNER_MIX is for stage-2 checkpoints")
+        suffix += f"_mix-{PLANNER_MIX}"
     if with_planner:
         # the planner gate observation at the end of its schedule: 1 (planner) or 0 (reference)
         env.set_training_iteration(10**9 if source == "planner" else 0)
@@ -164,6 +181,7 @@ with launch_simulation(env_cfg, args_cli):
     term = unwrapped.command_manager.get_term("contact_schedule")
     sensor = unwrapped.scene.sensors["contact_forces"]
     sensor_body_ids, _ = sensor.find_bodies(term.body_names, preserve_order=True)
+    feet_ids = [term.body_names.index(n) for n in ("left_ankle_roll_link", "right_ankle_roll_link")]
     term_names = list(unwrapped.termination_manager.active_terms)
     step_dt = float(unwrapped.step_dt)
 
@@ -173,8 +191,35 @@ with launch_simulation(env_cfg, args_cli):
         extra_obs = {k: v.to(device) for k, v in extras["observations"].items()}
         normalized = policy_normalizer(obs) if policy_normalizer is not None else obs
         composed = alg.compose_policy_obs(normalized, extra_obs, target_noise=False)
-        env.set_policy_feedback(alg.get_policy_feedback())
+        feedback = alg.get_policy_feedback()
+        env.set_policy_feedback(feedback)
+        if PLANNER_MIX is not None:
+            composed[:, alg._target_index] = mixed_targets(feedback)
         return alg.actor_critic.act_inference(composed)
+
+    def mixed_targets(feedback) -> torch.Tensor:
+        """Normalized target slot of the PLANNER_MIX diagnostic."""
+        planned = feedback[alg.planner_positions_feedback_key].reshape(NUM_CLIPS, -1, 3)
+        planned_on = feedback[alg.planner_occupancy_feedback_key] > 0.5
+        reference = term.command.reshape(NUM_CLIPS, -1, 3)
+        reference_on = term.target_valid
+        if PLANNER_MIX in ("feet_reference", "feet_planner"):
+            feet = torch.zeros(planned.shape[1], dtype=torch.bool, device=device)
+            feet[feet_ids] = True
+            use_reference = feet if PLANNER_MIX == "feet_reference" else ~feet
+            mixed = torch.where(use_reference[None, :, None], reference, planned)
+        elif PLANNER_MIX == "reference_positions":
+            mixed = torch.where((planned_on & reference_on).unsqueeze(-1), reference, planned)
+        else:  # reference_occupancy
+            mixed = torch.where((reference_on & ~planned_on).unsqueeze(-1), reference, planned)
+            mixed = mixed * reference_on.unsqueeze(-1)
+        mixed = mixed.reshape(NUM_CLIPS, -1)
+        if alg.policy_normalizer is not None:
+            index = alg._target_index
+            mixed = (mixed - alg.policy_normalizer.mean[index]) / (
+                alg.policy_normalizer.std[index] + alg.policy_normalizer.eps
+            )
+        return mixed
 
     @torch.no_grad()
     def evaluate(policy, phase: float) -> dict:
