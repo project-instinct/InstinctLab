@@ -148,7 +148,7 @@ agrees.
 
 Episodes of any start phase are recorded (2400 slots), and the ones that end before the admission end phase are
 labeled up to their last step with a complete lookahead. Seed 42 on gthintel201 GPU0 from 2026-11-13 05:32 CST, seed
-2 on gthintel218. At iteration 50: 2,040 samples per step (paper ~370), 87 of them from failed episodes; the 100k
+2 on gthintel218 GPU1 from 06:04 CST. At iteration 50: 2,040 samples per step (paper ~370), 87 of them from failed episodes; the 100k
 replay now holds about 2 iterations of labels.
 
 ## Infrastructure
