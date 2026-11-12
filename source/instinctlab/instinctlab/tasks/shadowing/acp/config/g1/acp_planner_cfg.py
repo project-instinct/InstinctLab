@@ -195,6 +195,22 @@ class G1ACPPlannerReferenceLabelsLateHandoffEnvCfg(G1ACPPlannerLateHandoffEnvCfg
         self.contact_labeler.contact_source = "reference"
 
 
+PARTIAL_HANDOFF_ETA_MAX = 0.5
+"""Partial hand-off experiment: both ramps stop at this eta. Every step keeps the reference targets with
+probability 1 - eta (planner_gate draws per env and step), so the tracker keeps crossing obstacles under reference
+targets, which keeps the hindsight labels coming after the hand-off, and keeps half of the reference-contact reward."""
+
+
+@configclass
+class G1ACPPlannerPartialHandoffEnvCfg(G1ACPPlannerEnvCfg):
+    """Experiment variant: the hand-off ramps to ``PARTIAL_HANDOFF_ETA_MAX`` instead of 1."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.observations.contact_source.planner_gate.params["eta_max"] = PARTIAL_HANDOFF_ETA_MAX
+        self.curriculum.contact_reward_handoff.params["eta_max"] = PARTIAL_HANDOFF_ETA_MAX
+
+
 @configclass
 class ACPPlannerAdaptiveStartCurriculumCfg(ACPPlannerCurriculumCfg):
     beyond_adaptive_sampling = CurriculumTermCfg(func=instinct_mdp.BeyondConcatMotionAdaptiveWeighting)

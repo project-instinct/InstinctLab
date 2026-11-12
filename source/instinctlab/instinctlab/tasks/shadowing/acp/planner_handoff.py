@@ -28,11 +28,14 @@ if TYPE_CHECKING:
     from isaaclab.sensors.ray_caster.patterns import GridPatternCfg
 
 
-def linear_ramp(iteration: int, start_iteration: int, ramp_iterations: int) -> float:
-    """0 until ``start_iteration``, then linear to 1 over ``ramp_iterations`` (paper Eq. S1)."""
+def linear_ramp(iteration: int, start_iteration: int, ramp_iterations: int, eta_max: float = 1.0) -> float:
+    """0 until ``start_iteration``, then linear to ``eta_max`` over ``ramp_iterations`` (paper Eq. S1 reaches 1;
+    a smaller ``eta_max`` keeps part of the hand-off with the reference)."""
     if ramp_iterations <= 0:
         raise ValueError(f"ramp_iterations must be positive, got {ramp_iterations}")
-    return min(max((iteration - start_iteration) / ramp_iterations, 0.0), 1.0)
+    if not 0.0 <= eta_max <= 1.0:
+        raise ValueError(f"eta_max must be in [0, 1], got {eta_max}")
+    return eta_max * min(max((iteration - start_iteration) / ramp_iterations, 0.0), 1.0)
 
 
 """
@@ -87,9 +90,11 @@ def scan_points_height_b(
     return _scan_points_b(env, sensor_cfg, asset_cfg, miss_height)[..., 2]
 
 
-def planner_gate(env: ManagerBasedRLEnv, start_iteration: int, ramp_iterations: int) -> torch.Tensor:
+def planner_gate(
+    env: ManagerBasedRLEnv, start_iteration: int, ramp_iterations: int, eta_max: float = 1.0
+) -> torch.Tensor:
     """``(N, 1)`` 1.0 with probability ``eta_obs`` of the current training iteration, drawn per env and step."""
-    eta = linear_ramp(env.training_iteration, start_iteration, ramp_iterations)
+    eta = linear_ramp(env.training_iteration, start_iteration, ramp_iterations, eta_max)
     return (torch.rand(env.num_envs, 1, device=env.device) < eta).float()
 
 
@@ -125,10 +130,11 @@ class RewardWeightHandoff(ManagerTermBase):
         reference_terms: list[str],
         planner_terms: list[str],
         group_name: str | None = None,
+        eta_max: float = 1.0,
     ) -> dict[str, float]:
         if self._term_cfgs is None:
             self._resolve_terms(env, list(reference_terms) + list(planner_terms), group_name)
-        eta = linear_ramp(env.training_iteration, start_iteration, ramp_iterations)
+        eta = linear_ramp(env.training_iteration, start_iteration, ramp_iterations, eta_max)
         for name in reference_terms:
             self._term_cfgs[name].weight = self._base_weights[name] * (1.0 - eta)
         for name in planner_terms:

@@ -122,5 +122,8 @@ def test_slot_is_reused_after_an_episode():
 
 def test_linear_ramp():
     assert [linear_ramp(u, 10, 20) for u in (0, 10, 20, 30, 40)] == [0.0, 0.0, 0.5, 1.0, 1.0]
+    assert [linear_ramp(u, 10, 20, eta_max=0.5) for u in (0, 20, 30, 40)] == [0.0, 0.25, 0.5, 0.5]
+    with pytest.raises(ValueError):
+        linear_ramp(0, 0, 10, eta_max=1.5)
     with pytest.raises(ValueError):
         linear_ramp(0, 0, 0)

@@ -117,6 +117,19 @@ class G1ACPPlannerPPORunnerCfg(G1ACPTrackerPPORunnerCfg):
 
 
 @configclass
+class BigReplayPlannerAlgorithmCfg(PlannerAlgorithmCfg):
+    """Experiment variant: a 10x replay (about 4 GB of 1029-float samples on the GPU). The 100,000-sample FIFO holds
+    only 10-40 iterations of labels, so the planner forgets the labels of the pre-hand-off tracker within the ramp."""
+
+    planner_replay_capacity = 1_000_000
+
+
+@configclass
+class G1ACPBigReplayPlannerPPORunnerCfg(G1ACPPlannerPPORunnerCfg):
+    algorithm: BigReplayPlannerAlgorithmCfg = BigReplayPlannerAlgorithmCfg()
+
+
+@configclass
 class DepthPlannerAlgorithmCfg(PlannerAlgorithmCfg):
     """The planner also reads the depth image, through a small AME-2 encoder whose query is its context."""
 
