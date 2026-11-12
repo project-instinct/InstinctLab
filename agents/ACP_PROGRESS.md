@@ -68,10 +68,30 @@ step clips (low-step: 100 % from 0.5, 20-45 % from 0).
   (15-22 %): the extra low-confidence targets are badly placed.
 - With reference labels the planner still recalls only ~60 % of reference foot targets (precision 0.92-0.95).
 
-### Next
+### Missed foot targets (`FOOTHOLD_LOG=1` + `scripts/acp/analyze_footholds.py`, model_5000, from phase 0)
 
-Find which foot targets the planner misses (time to onset, on the obstacle or the ground, distance to the scan edge,
-category) and how often such targets occur in its training labels.
+Recall of the reference foot targets the tracker would get (inside the footprint), paper / RefLabels + adaptive:
+
+- all 75 / 59 %; ground 80 / 57 %; obstacle (> 0.08 m above the clip's ground) 59 / 69 %;
+- obstacle by category: low-climb 34 / 91 %, high-step 48 / 20 %, low-step 76 / 58 %, high-climb 86 / 83 %;
+- contact onset within 0.3 s 70 / 42-48 %, 0.6-1.0 s ahead 87 / 74 %; targets behind the base (x < 0) 47-56 / 34-45 %;
+  distance to the scan edge makes no difference;
+- failed clips, last second before the failure 58 / 46 %, elsewhere 79-82 / 62-63 %. 139 / 141 of the failed clips
+  have an obstacle foot target in their last second; the planner misses it on every step of that second in 15.
+
+On its own training labels (replay, 100k samples) the paper planner reaches recall 96.5 %, precision 90 %, xy error
+0.075 m. The RefLabels planner reaches only 77 / 82 %: the reference's contact timing is hard to predict from the
+robot's state. Obstacle-height labels are rare in the paper run's replay (target z >= -0.6 m in the body-yaw frame:
+6.4 % of labels, against 11.9 % of reference targets on the evaluation rollouts).
+
+Two label properties that differ from the tracker's targets:
+
+- Labels use the body link origin (robot or reference), the tracker's targets the annotated terrain contact point:
+  reference-source labels sit 0.067 m higher (median) and 0.05 m away in xy. Robot labels are 0.13-0.14 m away in xy
+  (17-21 % beyond 0.25 m).
+- Only episodes that start within the first 10 % of the clip and reach 90 % are labeled. After the hand-off the label
+  rate falls from ~370 to ~100 samples per step and the height termination rises from 0.11 to 0.33, so the planner
+  learns from successful crossings only and has no labels for the states just before a failure.
 
 ## Infrastructure
 
