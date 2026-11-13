@@ -13,6 +13,14 @@ register_backend_tasks(
 )
 
 register_backend_tasks(
+    "Instinct-ACP-Tracker-FootDropout-G1",
+    env_cfg_entry_point=f"{task_entry}.acp_tracker_cfg:G1ACPTrackerFootDropoutEnvCfg",
+    play_env_cfg_entry_point=f"{task_entry}.acp_tracker_cfg:G1ACPTrackerEnvCfg_PLAY",
+    entry_point="instinctlab.envs.manager_based_rl_env:InstinctRlEnv",
+    instinct_rl_cfg_entry_point=f"{agents.__name__}.instinct_rl_ppo_cfg:G1ACPTrackerPPORunnerCfg",
+)
+
+register_backend_tasks(
     "Instinct-ACP-Planner-G1",
     env_cfg_entry_point=f"{task_entry}.acp_planner_cfg:G1ACPPlannerEnvCfg",
     play_env_cfg_entry_point=f"{task_entry}.acp_planner_cfg:G1ACPPlannerEnvCfg_PLAY",

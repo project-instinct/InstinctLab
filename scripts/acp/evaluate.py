@@ -92,6 +92,7 @@ motion_cfg.motion_start_from_middle_range = [0.0, 0.0]
 motion_cfg.motion_bin_length_s = None
 motion_cfg.env_starting_stub_sampling_strategy = "independent"
 env_cfg.observations.policy.enable_corruption = False
+env_cfg.commands.contact_schedule.target_dropout = 0.0  # training-time target dropout (FOOT_TARGET_DROPOUT is the diagnostic)
 if getattr(env_cfg.observations, "planner", None) is not None:
     env_cfg.observations.planner.enable_corruption = False
 contact_source_obs = getattr(env_cfg.observations, "contact_source", None)

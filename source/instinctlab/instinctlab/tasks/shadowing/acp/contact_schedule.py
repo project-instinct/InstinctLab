@@ -60,6 +60,11 @@ class ContactScheduleCommand(CommandTerm):
             raise ValueError(f"contact bodies {missing} must be in the motion reference link_of_interests")
         self.reference_link_ids = [list(mr_cfg.link_of_interests).index(n) for n in self.body_names]
         self._target_b = torch.zeros(self.num_envs, len(self.body_names) * 3, device=self.device)
+        self._dropout_body_ids = [self.body_names.index(n) for n in cfg.dropout_body_names]
+        num_dropout = len(self._dropout_body_ids)
+        self._dropped = torch.zeros(self.num_envs, num_dropout, dtype=torch.bool, device=self.device)
+        # NaN: no target seen yet, so the first update draws for every body
+        self._dropout_target_w = torch.full((self.num_envs, num_dropout, 3), float("nan"), device=self.device)
 
     @property
     def _frame(self) -> ContactMotionReferenceData:
@@ -114,6 +119,15 @@ class ContactScheduleCommand(CommandTerm):
             (x_min, x_max), (y_min, y_max) = self.cfg.target_footprint
             inside = (target_b[..., 0] >= x_min) & (target_b[..., 0] <= x_max)
             keep = keep & inside & (target_b[..., 1] >= y_min) & (target_b[..., 1] <= y_max)
+        if self.cfg.target_dropout > 0.0:
+            ids = self._dropout_body_ids
+            target_w = self.target_pos_w[:, ids]
+            self._dropped = redraw_dropout(
+                self._dropped, target_w, self._dropout_target_w, self.cfg.target_dropout, self.cfg.dropout_redraw_m
+            )
+            self._dropout_target_w = target_w.clone()
+            keep = keep.clone()
+            keep[:, ids] &= ~self._dropped
         self._target_b[:] = (target_b * keep.unsqueeze(-1)).reshape(self.num_envs, -1)
 
 
@@ -129,6 +143,22 @@ class ContactScheduleCommandCfg(CommandTermCfg):
     target_footprint: tuple[tuple[float, float], tuple[float, float]] | None = None
     """``((x_min, x_max), (y_min, y_max))`` in the body-yaw frame: targets outside are zero (no target), as the
     stage-2 planner, which selects scan points, can only give targets inside its scan. None keeps every target."""
+    target_dropout: float = 0.0
+    """Experiment: each target of ``dropout_body_names`` is withheld (zero) with this probability, drawn once per
+    target (kept until the target moves by ``dropout_redraw_m``), so the tracker learns to reach contacts the stage-2
+    planner misses. 0 disables it."""
+    dropout_body_names: list[str] = ["left_ankle_roll_link", "right_ankle_roll_link"]
+    dropout_redraw_m: float = 0.01
+
+
+def redraw_dropout(
+    dropped: torch.Tensor, target_w: torch.Tensor, previous_target_w: torch.Tensor, probability: float, redraw_m: float
+) -> torch.Tensor:
+    """``(N, B)`` dropout mask: redrawn with ``probability`` where the target moved by more than ``redraw_m`` since the
+    previous step (a new target; a NaN previous target counts as moved), kept elsewhere."""
+    moved = ~((target_w - previous_target_w).norm(dim=-1) <= redraw_m)
+    draw = torch.rand(dropped.shape, device=dropped.device) < probability
+    return torch.where(moved, draw, dropped)
 
 
 """

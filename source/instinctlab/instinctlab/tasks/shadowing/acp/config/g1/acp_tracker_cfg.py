@@ -36,6 +36,9 @@ from instinctlab.tasks.utils.backends import physics_preset
 from instinctlab.utils.urdf import urdf_importer_link_prim_path
 
 MOTION_FOLDER = os.path.expanduser("~/Datasets/ACP-TerrainContacts_G1")
+# PHP clips only (196 of 206; the 10 Deep-Wholebody-Parkour clips and their 6 terrains left out, user decision of
+# 2026-11-13). The full set is "metadata.yaml" in the same folder.
+METADATA_YAML = os.path.join(MOTION_FOLDER, "metadata_php.yaml")
 TERRAIN_SIZE = (14.0, 12.0)  # must match the size used by scripts/php_to_instinct.py
 CONTACT_BODIES = [
     "left_ankle_roll_link",
@@ -56,7 +59,7 @@ class ACPTerrainContactMotionCfg(TerrainContactMotionCfg):
     """Settings of the perceptive shadowing task's terrain motion, on the ACP dataset."""
 
     path = MOTION_FOLDER
-    metadata_yaml = os.path.join(MOTION_FOLDER, "metadata.yaml")
+    metadata_yaml = METADATA_YAML
     contact_body_names = CONTACT_BODIES
     max_origins_per_motion = 49
     ensure_link_below_zero_ground = False
@@ -271,7 +274,11 @@ class G1ACPTrackerEnvCfg(G1PerceptiveShadowingEnvCfg):
         generator = self.scene.terrain.terrain_generator
         generator.size = TERRAIN_SIZE
         generator.curriculum = True
-        generator.num_rows = _num_terrains(os.path.join(MOTION_FOLDER, "metadata.yaml"))
+        # the perceptive task points the motion and its terrains at <path>/metadata.yaml; use the ACP clip list
+        for motion in self.scene.motion_reference.motion_buffers.values():
+            motion.metadata_yaml = METADATA_YAML
+        generator.sub_terrains["motion_matched"].metadata_yaml = METADATA_YAML
+        generator.num_rows = _num_terrains(METADATA_YAML)
         generator.num_cols = 2
         # friction range of the paper (Table S2)
         self.events.physics_material.params["static_friction_range"] = (0.3, 1.2)
@@ -297,3 +304,17 @@ class G1ACPTrackerEnvCfg_PLAY(G1ACPTrackerEnvCfg):
         self.events.base_com = None
         self.events.reset_robot.params["randomize_pose_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0)}
         self.events.reset_robot.params["randomize_joint_pos_range"] = (0.0, 0.0)
+
+
+FOOT_TARGET_DROPOUT = 0.25
+"""Foot-target dropout experiment: the stage-2 planner recalls about 75 % of the reference foot targets, and the plain
+tracker falls from 84 % to 41 % success when 25 % of its foot targets are withheld per contact."""
+
+
+@configclass
+class G1ACPTrackerFootDropoutEnvCfg(G1ACPTrackerEnvCfg):
+    """Experiment variant: each foot target is withheld with probability ``FOOT_TARGET_DROPOUT`` (per contact)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.commands.contact_schedule.target_dropout = FOOT_TARGET_DROPOUT
