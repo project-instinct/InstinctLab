@@ -148,8 +148,20 @@ agrees.
 
 Episodes of any start phase are recorded (2400 slots), and the ones that end before the admission end phase are
 labeled up to their last step with a complete lookahead. Seed 42 on gthintel201 GPU0 from 2026-11-13 05:32 CST, seed
-2 on gthintel218 GPU1 from 06:04 CST. At iteration 50: 2,040 samples per step (paper ~370), 87 of them from failed episodes; the 100k
-replay now holds about 2 iterations of labels.
+2 on gthintel218 GPU1 from 06:04 CST. About 2,000 samples per step (paper ~370), 240-270 of them from failed episodes
+after the hand-off; the 100k replay holds about 2 iterations of labels.
+
+Success from phase 0, seed 42 / seed 2, planner targets at 1k-5k: 1.0/7.8/17.5/17.0/19.4 % and
+4.4/10.7/13.1/18.0/18.9 %; reference targets 78.6/59.7/35.4/34.0/20.9 % and 77.7/54.4/36.9/38.4/30.1 %. The same as
+the paper planner (14.6 / 29.6 % at 5k); failures stay at the obstacle (median progress 0.34-0.36). Labels of the
+failed approaches do not help.
+
+### Conclusion so far
+
+No planner-side change (reference labels, late or partial hand-off, adaptive start sampling, 10x replay, labels from
+all episodes) moves stage-2 success with planner targets beyond 15-20 %. The bottleneck is the tracker's dependence on
+complete foot targets (step 0). Proposed next: fine-tune the stage-1 tracker with foot targets withheld per contact
+(e.g. 25 %), check it with `FOOT_TARGET_DROPOUT`, then rerun stage 2 from it.
 
 ## Infrastructure
 
