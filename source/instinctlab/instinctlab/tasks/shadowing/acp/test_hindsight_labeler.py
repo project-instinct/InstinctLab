@@ -56,13 +56,14 @@ def test_target_is_in_the_body_yaw_frame_of_each_step_and_inside_the_footprint()
     assert not valid.any()
 
 
-def _labeler(num_envs=4, num_slots=2, max_steps=40, horizon_s=0.2, min_contact_steps=3):
+def _labeler(num_envs=4, num_slots=2, max_steps=40, horizon_s=0.2, min_contact_steps=3, **cfg_kwargs):
     cfg = HindsightContactLabelerCfg(
         body_names=["a", "b"],
         num_slots=num_slots,
         max_recorded_steps=max_steps,
         horizon_s=horizon_s,
         min_contact_steps=min_contact_steps,
+        **cfg_kwargs,
     )
     return HindsightContactLabeler(cfg, num_envs, obs_size=3, step_dt=0.02, device="cpu")
 
@@ -136,6 +137,22 @@ def test_unadmitted_episodes_are_not_labeled_by_default():
     _record_steps(labeler, 30)
     labeler.finish_episodes(torch.tensor([0]), torch.tensor([30]), torch.tensor([0.5]))
     assert labeler.pop_samples()["planner_obs"].shape[0] == 0
+
+
+def test_partitioned_samples_carry_their_episode_ids():
+    labeler = _labeler(num_slots=2, partition_samples=True)
+    labeler.start_episodes(torch.tensor([0, 1]), torch.tensor([0.0, 0.0]))
+    _record_steps(labeler, 20)
+    with pytest.raises(ValueError):
+        labeler.finish_episodes(torch.tensor([0]), torch.tensor([20]), torch.tensor([0.95]))
+    labeler.finish_episodes(
+        torch.tensor([0, 1]), torch.tensor([20, 20]), torch.tensor([0.95, 0.95]), torch.tensor([7, 3]), torch.tensor([1, 0])
+    )
+    samples = labeler.pop_samples()
+    first = samples["planner_obs"][:, 0] < 100.0  # env 0's observations are 0..19, env 1's 100..119
+    assert samples["partition"][first].tolist() == [7] * 20 and samples["partition"][~first].tolist() == [3] * 20
+    assert samples["group"][first].tolist() == [1] * 20 and samples["group"][~first].tolist() == [0] * 20
+    assert labeler.pop_samples()["partition"].shape == (0,)
 
 
 def test_slot_is_reused_after_an_episode():

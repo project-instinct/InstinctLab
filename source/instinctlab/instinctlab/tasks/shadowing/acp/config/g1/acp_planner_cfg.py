@@ -264,3 +264,38 @@ class G1ACPPlannerDepthEnvCfg(G1ACPPlannerEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.observations.planner.depth_image = ACPObservationsCfg.PolicyObsCfg().depth_image
+
+
+V2_ETA_OBS_START = 1000
+V2_ETA_REW_START = 3000
+V2_ETA_RAMP_ITERATIONS = 4000
+V2_ETA_REW_MAX = 0.5
+"""Second stage-2 setup (2026-11-14), after the comparison with InstinctMJ's ACP branch."""
+
+
+@configclass
+class G1ACPPlannerV2EnvCfg(G1ACPPlannerEnvCfg):
+    """Experiment variant combining four changes (with ``G1ACPPlannerV2PPORunnerCfg``):
+
+    - slower hand-off: planner targets from iteration 1000 over 4000 iterations, the reward from 3000 over 4000
+      (InstinctMJ's schedule; the paper does not give one);
+    - the reward hand-off stops at ``V2_ETA_REW_MAX``: our stage-1 contact rewards are sharp (std 0.15 m), the
+      paper's planned-contact term is nearly flat (sigma 1 m), so a full hand-off removes the contact guidance; half of
+      the reference contact rewards stay;
+    - hindsight labels mark the terrain contact point (contact sensor), as the dataset's contact targets do;
+    - labels carry their clip and terrain category for the partitioned, category-balanced replay of the runner cfg.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        gate = self.observations.contact_source.planner_gate.params
+        gate["start_iteration"] = V2_ETA_OBS_START
+        gate["ramp_iterations"] = V2_ETA_RAMP_ITERATIONS
+        handoff = self.curriculum.contact_reward_handoff.params
+        handoff["start_iteration"] = V2_ETA_REW_START
+        handoff["ramp_iterations"] = V2_ETA_RAMP_ITERATIONS
+        handoff["eta_max"] = V2_ETA_REW_MAX
+        self.contact_labeler.contact_point = True
+        self.contact_labeler.partition_samples = True
+        self.scene.contact_forces.track_contact_points = True
+        self.scene.contact_forces.max_contact_data_count_per_prim = 8

@@ -26,6 +26,9 @@ from isaaclab.utils.configclass import configclass
 
 #: Keys of one sample (cross-repo contract with Instinct-RL's ``PlannerAlgoMixin``).
 SAMPLE_KEYS = ("planner_obs", "target_pos", "target_valid")
+#: With ``partition_samples`` every sample also carries its replay partition and group (Instinct-RL's
+#: ``PARTITIONED_SAMPLE_KEYS``).
+PARTITION_KEYS = ("partition", "group")
 
 
 def label_next_contacts(
@@ -138,6 +141,14 @@ class HindsightContactLabelerCfg:
     last step whose lookahead (horizon plus minimum contact length) lies inside the episode, so the steps just before
     the episode's end, whose next contacts are cut off by it, are dropped. The paper labels admitted episodes only."""
 
+    partition_samples: bool = False
+    """Experiment: the samples carry ``partition`` and ``group`` ids (the env passes them per episode, e.g. the
+    reference clip and its terrain category) for a partitioned, group-balanced planner replay."""
+
+    contact_point: bool = False
+    """Experiment (``"robot"`` contacts): label the terrain contact point the contact sensor reports instead of the body
+    origin, so the labels mark the same point as the dataset's contact targets (the annotated terrain point)."""
+
     infos_key: str = "planner_samples"
     """Key of the samples in the step ``extras``."""
 
@@ -176,6 +187,9 @@ class HindsightContactLabeler:
             "target_pos": torch.zeros(0, self.num_bodies, 3, device=self.device),
             "target_valid": torch.zeros(0, self.num_bodies, dtype=torch.bool, device=self.device),
         }
+        self.sample_keys = SAMPLE_KEYS + (PARTITION_KEYS if cfg.partition_samples else ())
+        if cfg.partition_samples:
+            self._empty.update({k: torch.zeros(0, dtype=torch.long, device=self.device) for k in PARTITION_KEYS})
 
     def start_episodes(self, env_ids: torch.Tensor, start_phase: torch.Tensor) -> None:
         """Give a free slot to every env in ``env_ids`` whose new episode starts early enough to be admitted."""
@@ -206,29 +220,53 @@ class HindsightContactLabeler:
         self.root_yaw[slots, steps] = root_yaw[envs]
         self.slot_length[slots] += 1
 
-    def finish_episodes(self, env_ids: torch.Tensor, episode_length: torch.Tensor, end_phase: torch.Tensor) -> None:
+    def finish_episodes(
+        self,
+        env_ids: torch.Tensor,
+        episode_length: torch.Tensor,
+        end_phase: torch.Tensor,
+        partition: torch.Tensor | None = None,
+        group: torch.Tensor | None = None,
+    ) -> None:
         """Label the admitted episodes of ``env_ids`` (episodes of ``episode_length`` steps that ended at
-        ``end_phase``) and free their slots."""
+        ``end_phase``; with ``partition_samples`` their ``partition`` / ``group`` ids) and free their slots."""
+        if self.cfg.partition_samples and (partition is None or group is None):
+            raise ValueError("partition_samples needs the partition and group of every finished episode")
         slots = self.env_slot[env_ids]
         recorded = slots >= 0
         slots, episode_length, end_phase = slots[recorded], episode_length[recorded], end_phase[recorded]
+        ids = None
+        if self.cfg.partition_samples:
+            ids = torch.stack([partition.to(self.device)[recorded], group.to(self.device)[recorded]], dim=-1).long()
         admitted = end_phase >= self.cfg.end_phase_min
         self.stats["admitted_episodes"] += int(admitted.sum())
         self.stats["rejected_episodes"] += int((~admitted).sum())
         if bool(admitted.any()):
-            self._samples.append(self._label(slots[admitted], episode_length[admitted]))
+            self._samples.append(
+                self._label(slots[admitted], episode_length[admitted], ids=None if ids is None else ids[admitted])
+            )
         if self.cfg.label_unadmitted and bool((~admitted).any()):
             unadmitted = ~admitted
-            samples = self._label(slots[unadmitted], episode_length[unadmitted], cut_tail=True)
+            samples = self._label(
+                slots[unadmitted],
+                episode_length[unadmitted],
+                cut_tail=True,
+                ids=None if ids is None else ids[unadmitted],
+            )
             self.stats["unadmitted_samples"] += samples["planner_obs"].shape[0]
             self._samples.append(samples)
         self.slot_env[slots] = -1
         self.env_slot[env_ids[recorded]] = -1
 
     def _label(
-        self, slots: torch.Tensor, episode_length: torch.Tensor, cut_tail: bool = False
+        self,
+        slots: torch.Tensor,
+        episode_length: torch.Tensor,
+        cut_tail: bool = False,
+        ids: torch.Tensor | None = None,
     ) -> dict[str, torch.Tensor]:
-        """Samples of the recorded ``slots``. ``cut_tail`` drops the tail of every record as for a truncated one."""
+        """Samples of the recorded ``slots``. ``cut_tail`` drops the tail of every record as for a truncated one;
+        ``ids`` ``(S, 2)``: partition and group of each slot's episode, repeated over its samples."""
         length = self.slot_length[slots]
         target_pos, target_valid = label_next_contacts(
             self.contact[slots],
@@ -245,17 +283,21 @@ class HindsightContactLabeler:
         truncated = (episode_length > length) | cut_tail
         usable = torch.where(truncated, length - self.horizon_steps - self.cfg.min_contact_steps + 1, length)
         rows = torch.arange(self.cfg.max_recorded_steps, device=self.device).unsqueeze(0) < usable.unsqueeze(1)
-        return {
+        samples = {
             "planner_obs": self.obs[slots][rows],
             "target_pos": target_pos[rows],
             "target_valid": target_valid[rows],
         }
+        if ids is not None:
+            per_step = ids.unsqueeze(1).expand(-1, rows.shape[1], -1)[rows]
+            samples["partition"], samples["group"] = per_step[:, 0], per_step[:, 1]
+        return samples
 
     def pop_samples(self) -> dict[str, torch.Tensor]:
         """Samples of the episodes finished since the last call (K may be 0)."""
         samples = self._samples or [self._empty]
         self._samples = []
-        return {k: torch.cat([s[k] for s in samples]) for k in SAMPLE_KEYS}
+        return {k: torch.cat([s[k] for s in samples]) for k in self.sample_keys}
 
     @property
     def num_recording(self) -> int:

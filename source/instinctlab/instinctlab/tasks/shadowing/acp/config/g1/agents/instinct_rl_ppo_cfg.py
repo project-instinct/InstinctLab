@@ -149,3 +149,30 @@ class DepthPlannerAlgorithmCfg(PlannerAlgorithmCfg):
 @configclass
 class G1ACPDepthPlannerPPORunnerCfg(G1ACPPlannerPPORunnerCfg):
     algorithm: DepthPlannerAlgorithmCfg = DepthPlannerAlgorithmCfg()
+
+
+def _num_motions(metadata_yaml: str) -> int:
+    import yaml
+
+    with open(metadata_yaml) as f:
+        return len(yaml.safe_load(f)["motion_files"])
+
+
+@configclass
+class V2PlannerAlgorithmCfg(PlannerAlgorithmCfg):
+    """Second stage-2 setup: one replay partition of 2000 samples per reference clip, sampled balanced over the terrain
+    categories, then clips (InstinctMJ's reference replay), instead of one 100k FIFO."""
+
+    planner_replay_partition_capacity = 2000
+
+
+@configclass
+class G1ACPPlannerV2PPORunnerCfg(G1ACPPlannerPPORunnerCfg):
+    algorithm: V2PlannerAlgorithmCfg = V2PlannerAlgorithmCfg()
+    max_iterations = 10000
+
+    def __post_init__(self):
+        super().__post_init__()
+        from ..acp_tracker_cfg import METADATA_YAML  # the env cfg module, loaded with the task anyway
+
+        self.algorithm.planner_replay_num_partitions = _num_motions(METADATA_YAML)

@@ -8,6 +8,7 @@ Runs a :class:`~instinctlab.tasks.shadowing.acp.hindsight_labeler.HindsightConta
 from __future__ import annotations
 
 import numpy as np
+import os
 import torch
 
 import isaaclab.utils.math as math_utils
@@ -52,6 +53,17 @@ class HindsightLabelingEnv(InstinctRlEnv):
         if len(motion_reference.motion_buffers) != 1:
             raise ValueError("the hindsight labeler's reference phase needs exactly one motion buffer")
         self._labeler_motion_buffer = next(iter(motion_reference.motion_buffers.values()))
+        if cfg.contact_point and (cfg.contact_source != "robot" or not self._labeler_sensor.cfg.track_contact_points):
+            raise ValueError(f"contact_point labels need robot contacts and {cfg.sensor_name!r} tracking contact points")
+        if cfg.partition_samples:
+            # partition = reference clip, group = its terrain category (the clip's folder below the dataset group)
+            buffer = self._labeler_motion_buffer
+            root = os.path.expanduser(buffer.cfg.path)
+            names = [os.path.relpath(f, root).split(os.sep) for f in buffer._all_motion_files]
+            categories = [n[1] if len(n) > 2 else n[0] for n in names]
+            category_ids = {c: i for i, c in enumerate(sorted(set(categories)))}
+            self._labeler_clip_group = torch.tensor([category_ids[c] for c in categories], device=self.device)
+            print(f"[INFO] Hindsight labels partitioned by clip ({len(categories)}), groups {category_ids}")
         term_dims = self.observation_manager.group_obs_term_dim[cfg.obs_group]
         obs_size = int(sum(np.prod(dims) for dims in term_dims))
         self.contact_labeler = HindsightContactLabeler(cfg, self.num_envs, obs_size, self.step_dt, self.device)
@@ -84,6 +96,11 @@ class HindsightLabelingEnv(InstinctRlEnv):
             force_z = sensor_data.force_matrix_w.torch[:, self._labeler_sensor_body_ids, :, 2].sum(dim=-1)
             contact = force_z.abs() > cfg.force_threshold
             body_pos_w = robot.data.body_link_pos_w.torch[:, self._labeler_robot_body_ids]
+            if cfg.contact_point:
+                # the averaged contact point with the terrain (the sensor's only filter); NaN without contact
+                point = sensor_data.contact_pos_w.torch[:, self._labeler_sensor_body_ids, 0]
+                use_point = contact & torch.isfinite(point).all(dim=-1)
+                body_pos_w = torch.where(use_point.unsqueeze(-1), point, body_pos_w)
         self.contact_labeler.record(
             planner_obs,
             contact,
@@ -95,7 +112,15 @@ class HindsightLabelingEnv(InstinctRlEnv):
     def _reset_idx(self, env_ids: torch.Tensor | slice):
         ids = torch.arange(self.num_envs, device=self.device)[env_ids]
         # the finished episodes' data (episode length, motion start time) is intact until the reset below
-        self.contact_labeler.finish_episodes(ids, self.episode_length_buf[ids], self.reference_phase(ids))
+        partition = group = None
+        if self.cfg.contact_labeler.partition_samples:
+            buffer = self._labeler_motion_buffer
+            assigned = buffer.env_ids_to_assigned_ids(ids).to(buffer.buffer_device)
+            partition = buffer._assigned_env_motion_selection[assigned].to(self.device).long()
+            group = self._labeler_clip_group[partition]
+        self.contact_labeler.finish_episodes(
+            ids, self.episode_length_buf[ids], self.reference_phase(ids), partition=partition, group=group
+        )
         return_ = super()._reset_idx(env_ids)
         self.contact_labeler.start_episodes(ids, self.reference_phase(ids))
         return return_

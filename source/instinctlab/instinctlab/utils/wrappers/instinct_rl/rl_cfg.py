@@ -249,6 +249,8 @@ class InstinctRlContactPlannerPpoAlgorithmCfg(InstinctRlPpoAlgorithmCfg):
     planner_accumulation_steps: int = 8
     planner_min_samples: int = 1000
     planner_replay_capacity: int = 100_000
+    planner_replay_num_partitions: int | None = None
+    planner_replay_partition_capacity: int = 2000
     planner_replay_device: str | None = None
     planner_replay_checkpoint: str = "latest"
 
