@@ -163,6 +163,28 @@ all episodes) moves stage-2 success with planner targets beyond 15-20 %. The bot
 complete foot targets (step 0). Proposed next: fine-tune the stage-1 tracker with foot targets withheld per contact
 (e.g. 25 %), check it with `FOOT_TARGET_DROPOUT`, then rerun stage 2 from it.
 
+### Comparison with InstinctMJ's ACP branch (2026-11-13) and the next setup
+
+Differences that bear on the stage-2 ceiling (details in the conversation of 2026-11-13):
+
+1. Our stage-1 contact rewards are sharp (std 0.15 m); the paper's planned-contact term that replaces them in stage
+   2 is nearly flat (sigma 1 m: 0.99 at 0.1 m error). A full reward hand-off removes the contact guidance.
+2. Hindsight labels used the body origin; the dataset's contact targets are terrain contact points.
+3. One 100k FIFO replay, filled mostly by the clips that succeed; InstinctMJ keeps one ring per clip and samples
+   balanced over terrain categories, then clips.
+4. Our hand-off is about twice as fast (InstinctMJ: planner targets from 1000 over 4000, reward from 3000 over 4000,
+   10k iterations).
+5. Our tracker sees a depth image instead of the paper's 9 x 7 height scan (user decision).
+
+Also from 2026-11-13: all ACP tasks use the 196 PHP clips (`metadata_php.yaml`); the 10 DWP clips are left out
+(stage-1 fails 6-8 of them at every checkpoint; 8 of the 171 stage-2 failures).
+
+Running (gthintel218, r1647, from `fp_seed42/model_12000`, 4000 iterations to model_16000, `3061521`):
+`acpS1_php_footDrop25_seed42` / `_seed2` (`Instinct-ACP-Tracker-FootDropout-G1-v0`, foot targets withheld with
+p 0.25 per contact) and `acpS1_php_control_seed42` (`Instinct-ACP-Tracker-G1-v0`). Then stage 2 with
+`Instinct-ACP-Planner-V2-G1-v0` (`21d0cdd` + instinct_rl `6d25f66`: items 1-4 above; reward hand-off capped at 0.5)
+from each, 10k iterations.
+
 ## Infrastructure
 
 - gthintel cluster via cardbot; runs in `humix-docker` containers launched by `~/workspace/isaacSim/il_run.sh`,
