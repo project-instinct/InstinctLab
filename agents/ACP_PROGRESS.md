@@ -179,6 +179,18 @@ Differences that bear on the stage-2 ceiling (details in the conversation of 202
 Also from 2026-11-13: all ACP tasks use the 196 PHP clips (`metadata_php.yaml`); the 10 DWP clips are left out
 (stage-1 fails 6-8 of them at every checkpoint; 8 of the 171 stage-2 failures).
 
+Stage-1 fine-tunes, 196 PHP clips, success from phase 0 (all foot targets / 25 % withheld):
+
+| run | 14000 | 16000 |
+|---|---|---|
+| parent `fp_seed42` model_12000 | 99.5 / 46.4 % | - |
+| `acpS1_php_control_seed42` (no dropout) | 85.7 / 44.9 % | 93.4 / 39.3 % |
+| `acpS1_php_footDrop25_seed42` | 82.7 / 61.7 % | 89.3 / 86.2 % |
+| `acpS1_php_footDrop25_seed2` | 76.0 / 68.4 % | 86.2 / 76.0 % |
+
+The dropouts trade a few points of clean-target success for 30-40 points of robustness to missing foot
+targets. Continuing the fine-tune also recovers most of the clean-target loss the plain continuation showed at 14000.
+
 Running (gthintel218, r1647, from `fp_seed42/model_12000`, 4000 iterations to model_16000, `3061521`):
 `acpS1_php_footDrop25_seed42` / `_seed2` (`Instinct-ACP-Tracker-FootDropout-G1-v0`, foot targets withheld with
 p 0.25 per contact) and `acpS1_php_control_seed42` (`Instinct-ACP-Tracker-G1-v0`). Then stage 2 with
