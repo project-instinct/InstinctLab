@@ -299,3 +299,18 @@ class G1ACPPlannerV2EnvCfg(G1ACPPlannerEnvCfg):
         self.contact_labeler.partition_samples = True
         self.scene.contact_forces.track_contact_points = True
         self.scene.contact_forces.max_contact_data_count_per_prim = 8
+
+
+V3_ETA_OBS_MAX = 0.85
+
+
+@configclass
+class G1ACPPlannerV3EnvCfg(G1ACPPlannerV2EnvCfg):
+    """V2 with episode-level planner gating capped at ``V3_ETA_OBS_MAX`` so 85% of episodes run full closed-loop on
+    planner targets while 15% stay on reference targets to preserve climbing skill and keep clean hindsight labels."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        gate = self.observations.contact_source.planner_gate.params
+        gate["per_episode"] = True
+        gate["eta_max"] = V3_ETA_OBS_MAX

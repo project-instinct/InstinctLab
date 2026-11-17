@@ -8,7 +8,7 @@ from instinctlab.tasks.shadowing.acp.hindsight_labeler import (
     HindsightContactLabelerCfg,
     label_next_contacts,
 )
-from instinctlab.tasks.shadowing.acp.planner_handoff import linear_ramp
+from instinctlab.tasks.shadowing.acp.planner_handoff import linear_ramp, planner_gate
 
 FOOTPRINT = ((-0.8, 0.8), (-0.5, 0.5))
 
@@ -191,3 +191,25 @@ def test_linear_ramp():
         linear_ramp(0, 0, 10, eta_max=1.5)
     with pytest.raises(ValueError):
         linear_ramp(0, 0, 0)
+
+
+def test_planner_gate_per_episode():
+    class _FakeEnv:
+        num_envs = 8
+        device = "cpu"
+        training_iteration = 100
+        episode_length_buf = torch.zeros(8, dtype=torch.long)
+
+    env = _FakeEnv()
+    first = planner_gate(env, 0, 100, eta_max=0.5, per_episode=True)
+    # continuing steps (episode_length_buf > 0) hold the episode's initial draw
+    env.episode_length_buf = torch.ones(8, dtype=torch.long)
+    env.training_iteration = 0  # even if eta changes, non-reset envs keep their episode gate
+    second = planner_gate(env, 0, 100, eta_max=0.5, per_episode=True)
+    assert torch.equal(first, second)
+    # resetting an env (episode_length_buf == 0) allows resampling at the current eta
+    env.episode_length_buf[0] = 0
+    env.training_iteration = 100
+    third = planner_gate(env, 0, 100, eta_max=1.0, per_episode=True)
+    assert float(third[0, 0]) == 1.0
+    assert torch.equal(third[1:], first[1:])

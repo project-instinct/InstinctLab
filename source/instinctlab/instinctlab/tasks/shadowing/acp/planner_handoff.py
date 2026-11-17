@@ -91,11 +91,29 @@ def scan_points_height_b(
 
 
 def planner_gate(
-    env: ManagerBasedRLEnv, start_iteration: int, ramp_iterations: int, eta_max: float = 1.0
+    env: ManagerBasedRLEnv,
+    start_iteration: int,
+    ramp_iterations: int,
+    eta_max: float = 1.0,
+    per_episode: bool = False,
 ) -> torch.Tensor:
-    """``(N, 1)`` 1.0 with probability ``eta_obs`` of the current training iteration, drawn per env and step."""
+    """``(N, 1)`` 1.0 with probability ``eta_obs`` of the current training iteration.
+
+    When ``per_episode`` is False (default), drawn independently per env and step; when True, drawn at each
+    episode reset (``episode_length_buf == 0``) and held for the episode so planner-gated envs run full episodes
+    on planner targets while ``1 - eta_max`` of episodes stay on reference targets.
+    """
     eta = linear_ramp(env.training_iteration, start_iteration, ramp_iterations, eta_max)
-    return (torch.rand(env.num_envs, 1, device=env.device) < eta).float()
+    draw = (torch.rand(env.num_envs, 1, device=env.device) < eta).float()
+    if not per_episode:
+        return draw
+    cached = getattr(env, "_planner_gate_episode", None)
+    if cached is None or cached.shape != draw.shape or cached.device != draw.device:
+        env._planner_gate_episode = draw
+        return draw
+    reset_mask = (env.episode_length_buf == 0).unsqueeze(-1)
+    env._planner_gate_episode = torch.where(reset_mask, draw, cached)
+    return env._planner_gate_episode
 
 
 """
