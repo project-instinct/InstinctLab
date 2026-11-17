@@ -40,6 +40,22 @@ def test_next_onset_drops_short_segments_and_respects_the_horizon():
     assert valid[0, :, 0].tolist() == [False] + [True] * 6 + [False] * 9
 
 
+def test_min_gap_steps_merges_split_contact_segments():
+    # one stance segment from step 3..11 split by a 2-step chatter gap at steps 6..7; leading/trailing gaps stay False
+    flags = [0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0]
+    contact, body_pos, root_pos, yaw = _trajectory(flags, body_x=torch.zeros(14))
+    body_pos[0, 3, 0, 0], body_pos[0, 8, 0, 0] = 0.4, 0.7
+    # without gap debouncing, step 8 is treated as a second onset
+    _, valid_no_debounce = label_next_contacts(contact, body_pos, root_pos, yaw, torch.tensor([14]), 5, 3, FOOTPRINT)
+    assert valid_no_debounce[0, :, 0].tolist() == [True] * 9 + [False] * 5
+    # with min_gap_steps=3, the 2-step gap at 6..7 is bridged so only the true onset at step 3 exists
+    target, valid = label_next_contacts(
+        contact, body_pos, root_pos, yaw, torch.tensor([14]), 5, 3, FOOTPRINT, min_gap_steps=3
+    )
+    assert valid[0, :, 0].tolist() == [True] * 4 + [False] * 10
+    assert torch.allclose(target[0, :4, 0, 0], torch.full((4,), 0.4))
+
+
 def test_target_is_in_the_body_yaw_frame_of_each_step_and_inside_the_footprint():
     flags = [0, 0, 0, 1, 1, 1]
     contact, body_pos, root_pos, yaw = _trajectory(flags, body_x=torch.zeros(6))
@@ -146,7 +162,11 @@ def test_partitioned_samples_carry_their_episode_ids():
     with pytest.raises(ValueError):
         labeler.finish_episodes(torch.tensor([0]), torch.tensor([20]), torch.tensor([0.95]))
     labeler.finish_episodes(
-        torch.tensor([0, 1]), torch.tensor([20, 20]), torch.tensor([0.95, 0.95]), torch.tensor([7, 3]), torch.tensor([1, 0])
+        torch.tensor([0, 1]),
+        torch.tensor([20, 20]),
+        torch.tensor([0.95, 0.95]),
+        torch.tensor([7, 3]),
+        torch.tensor([1, 0]),
     )
     samples = labeler.pop_samples()
     first = samples["planner_obs"][:, 0] < 100.0  # env 0's observations are 0..19, env 1's 100..119

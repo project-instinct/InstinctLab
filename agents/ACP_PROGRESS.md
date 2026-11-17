@@ -197,6 +197,73 @@ p 0.25 per contact) and `acpS1_php_control_seed42` (`Instinct-ACP-Tracker-G1-v0`
 `Instinct-ACP-Planner-V2-G1-v0` (`21d0cdd` + instinct_rl `6d25f66`: items 1-4 above; reward hand-off capped at 0.5)
 from each, 10k iterations.
 
+### Stage-2 V2 evaluation (2026-11-14)
+
+ACP stage-2 V2 checkpoint evaluation (0-10k sweep), booking r1658, 3 runs (`acpS2v2_footDrop_seed42`,
+`acpS2v2_footDrop_seed2`, `acpS2v2_control_seed42`). Success rate (%) at start phase 0.0:
+
+| iteration | footDrop_seed42 planner | footDrop_seed42 reference | footDrop_seed2 planner | footDrop_seed2 reference | control_seed42 planner | control_seed42 reference |
+|---|---|---|---|---|---|---|
+| 0 | 2.0 | 92.3 | 0.0 | 89.3 | 0.0 | 92.9 |
+| 1000 | 1.0 | 95.9 | 5.1 | 89.3 | 1.5 | 95.9 |
+| 2000 | 10.7 | 90.3 | 5.1 | 90.8 | 2.5 | 93.9 |
+| 3000 | 4.6 | 78.1 | 7.6 | 88.8 | 9.2 | 85.2 |
+| 4000 | 12.8 | 80.6 | 5.6 | 70.9 | 8.2 | 81.6 |
+| 5000 | 14.3 | 58.7 | 16.3 | 55.6 | 13.8 | 59.7 |
+| 6000 | 16.3 | 48.5 | 18.4 | 50.5 | 17.3 | 54.6 |
+| 7000 | 18.4 | 46.9 | 18.9 | 59.7 | 20.4 | 57.6 |
+| 8000 | 19.9 | 56.6 | 21.4 | 46.9 | 19.9 | 49.0 |
+| 9000 | 21.4 | 49.5 | 24.0 | 43.9 | 21.9 | 44.4 |
+| 10000 | 22.4 | 48.5 | 16.3 | 41.3 | 17.9 | 41.3 |
+
+Start phase 0.5 planner success at 10k: footDrop_seed42 88.8 %; footDrop_seed2 88.8 %; control_seed42 89.8 %.
+
+### Stage-2 V2 diagnostics (2026-11-15/16, offline scripts on `acpS2v2_footDrop_seed42` checkpoints)
+
+Phase-0 rollouts of the 196 clips, one env per clip, no randomization. "Tracker@N" = the policy of `model_N.pt`;
+planners are V2's (`model_9000`) or retrained offline on labels from Tracker rollouts. The tracker gets a 27-value
+target vector; below, *positions* (where) and *occupancy* (which bodies have a target, i.e. when) are swapped
+separately.
+
+Label bugs in the robot hindsight labels (fixed in the labeler, see below):
+
+- No gap debouncing: PPO action noise (std 0.53) makes the stance foot chatter (force on/off), so every chatter gap
+  became a fake contact onset at the stance foot. On V2 replay samples 73 % of foot steps were valid (32k fake
+  stance labels), left/right knee labels 7:1. With 5-step gap filling and the 3D force norm: feet 0.51 / 0.48,
+  knees 0.046 / 0.047.
+- `max_recorded_steps = 500` cut the 91 clips longer than 500 steps (all low-/high-climb clips) at step ~416.
+
+Swap tests on Tracker@1000 (success from phase 0, overall / high-climb / high-step / low-climb / low-step):
+
+| targets fed to the tracker | overall |
+|---|---|
+| reference (positions and occupancy) | ~95 % |
+| V2 planner positions, reference occupancy | 63.3 % (40 / 95 / 10 / 84) |
+| planner retrained on debounced labels: positions, reference occupancy | 82.1 % (80 / 98 / 68 / 77) |
+| the same planner's own occupancy too | 3-11 % |
+| reference positions, oracle hindsight occupancy (labels of the reference-driven rollout of the same clip) | 65.8 % (55 / 92 / 0 / 93) |
+| oracle hindsight positions and occupancy | 12.8 % |
+
+- Positions are fine after the label fixes; occupancy is what fails.
+- Elbows: the robot never touches the terrain with them (hindsight rate 0.000), the annotation marks them in 3.1-3.5 %
+  of low-climb frames (within 4 cm of the box while the hands support). Oracle occupancy without elbow targets: 0 %
+  on low-climb.
+- The retrained planner matches its labels on the rollout they came from (feet P/R 0.98), but in closed loop on its
+  own occupancy its foot P/R against the reference falls from 0.885 / 0.790 to 0.593 / 0.570. Its input holds 465
+  values of 5-step proprioception (joint pos/vel, last action); once its occupancy changes the tracker's actions,
+  those inputs leave the training distribution.
+- Robot touchdown lags the reference's annotated onset by a few frames, and the reference marks onsets earlier
+  (12 frames on a traced low-step clip).
+
+`_run_diag_v13`: planner from scratch on debounced labels of admitted (successful) rollouts of Tracker@1000/2000
+(394k samples, foot valid 0.51 / 0.48, elbows 0): own occupancy 5.1 % on Tracker@1000/2000; its positions with
+reference occupancy 80.1 / 76.0 %; its foot occupancy with reference occupancy elsewhere 17.9 / 13.8 %.
+
+Labeler changes (this commit): `label_next_contacts(min_gap_steps=...)` fills interior non-contact gaps shorter
+than `HindsightContactLabelerCfg.min_gap_steps` (default 5 steps = 0.1 s, as `annotate_motion_contacts.py`)
+before the segment-length filter; robot contacts use the norm of the terrain contact force (was |F_z|);
+`max_recorded_steps` 500 -> 1000.
+
 ## Infrastructure
 
 - gthintel cluster via cardbot; runs in `humix-docker` containers launched by `~/workspace/isaacSim/il_run.sh`,

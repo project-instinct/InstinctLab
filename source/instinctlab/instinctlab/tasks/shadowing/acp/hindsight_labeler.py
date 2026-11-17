@@ -40,6 +40,7 @@ def label_next_contacts(
     horizon_steps: int,
     min_contact_steps: int,
     footprint: tuple[tuple[float, float], tuple[float, float]],
+    min_gap_steps: int = 0,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Next-contact targets of recorded trajectories.
 
@@ -52,6 +53,7 @@ def label_next_contacts(
         horizon_steps: An onset at most this many steps ahead is a target.
         min_contact_steps: Contact segments shorter than this are removed before the onset search.
         footprint: ``((x_min, x_max), (y_min, y_max))`` of kept targets in the body-yaw frame.
+        min_gap_steps: Interior non-contact gaps shorter than this are filled before segment filtering.
 
     Returns:
         Targets (S, L, B, 3) in each step's body-yaw frame, zero where not valid, and their validity (S, L, B).
@@ -61,10 +63,21 @@ def label_next_contacts(
     steps = torch.arange(num_steps, device=device)
     in_range = steps.unsqueeze(0) < length.unsqueeze(1)  # (S, L)
     flags = (contact & in_range.unsqueeze(-1)).transpose(1, 2).reshape(-1, num_steps)  # (S * B, L)
+    row_offset = torch.arange(flags.shape[0], device=device).unsqueeze(1) * (num_steps + 1)
+    if min_gap_steps > 0:
+        # fill interior non-contact gaps shorter than min_gap_steps before checking segment lengths
+        gap = ~flags
+        gap_previous = torch.cat([torch.zeros_like(gap[:, :1]), gap[:, :-1]], dim=1)
+        gap_id = (torch.cumsum(gap & ~gap_previous, dim=1) + row_offset).flatten()
+        gap_length = torch.zeros(flags.shape[0] * (num_steps + 1), dtype=torch.long, device=device)
+        gap_length.index_add_(0, gap_id, gap.flatten().long())
+        short_gap = gap & (gap_length[gap_id].reshape(gap.shape) < min_gap_steps)
+        seen_contact = torch.cumsum(flags.long(), dim=1) > 0
+        future_contact = torch.flip(torch.cumsum(torch.flip(flags.long(), dims=[1]), dim=1), dims=[1]) > 0
+        flags = flags | (short_gap & seen_contact & future_contact)
     previous = torch.cat([torch.zeros_like(flags[:, :1]), flags[:, :-1]], dim=1)
     # drop short contact segments: number every segment of a row, count its steps, keep the long ones
     segment_id = torch.cumsum(flags & ~previous, dim=1)  # 1-based within the row, valid where flags
-    row_offset = torch.arange(flags.shape[0], device=device).unsqueeze(1) * (num_steps + 1)
     global_id = (segment_id + row_offset).flatten()
     segment_length = torch.zeros(flags.shape[0] * (num_steps + 1), dtype=torch.long, device=device)
     segment_length.index_add_(0, global_id, flags.flatten().long())
@@ -113,7 +126,10 @@ class HindsightContactLabelerCfg:
     reference contact schedule the tracker learned in stage 1."""
 
     force_threshold: float = 1.0
-    """``"robot"`` contacts: a body is in contact when its vertical contact force from the terrain exceeds this (N)."""
+    """``"robot"`` contacts: a body is in contact when its terrain contact force norm exceeds this (N)."""
+
+    min_gap_steps: int = 5
+    """Interior non-contact gaps shorter than this many control steps are filled before segment filtering."""
 
     min_contact_steps: int = 10
     """Contact segments shorter than this many control steps are discarded."""
@@ -124,7 +140,7 @@ class HindsightContactLabelerCfg:
     footprint: tuple[tuple[float, float], tuple[float, float]] = ((-0.8, 0.8), (-0.5, 0.5))
     """Kept targets lie in this ``((x_min, x_max), (y_min, y_max))`` box of the body-yaw frame (the planner scan)."""
 
-    max_recorded_steps: int = 500
+    max_recorded_steps: int = 1000
     """Steps recorded per episode; later steps are not recorded (separate from the episode timeout)."""
 
     num_slots: int = 512
@@ -277,6 +293,7 @@ class HindsightContactLabeler:
             self.horizon_steps,
             self.cfg.min_contact_steps,
             self.cfg.footprint,
+            min_gap_steps=self.cfg.min_gap_steps,
         )
         # an episode longer than its record hides the onsets after the record's end: drop the steps whose
         # horizon (plus the segment-length check) reaches past it

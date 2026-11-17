@@ -54,7 +54,9 @@ class HindsightLabelingEnv(InstinctRlEnv):
             raise ValueError("the hindsight labeler's reference phase needs exactly one motion buffer")
         self._labeler_motion_buffer = next(iter(motion_reference.motion_buffers.values()))
         if cfg.contact_point and (cfg.contact_source != "robot" or not self._labeler_sensor.cfg.track_contact_points):
-            raise ValueError(f"contact_point labels need robot contacts and {cfg.sensor_name!r} tracking contact points")
+            raise ValueError(
+                f"contact_point labels need robot contacts and {cfg.sensor_name!r} tracking contact points"
+            )
         if cfg.partition_samples:
             # partition = reference clip, group = its terrain category (the clip's folder below the dataset group)
             buffer = self._labeler_motion_buffer
@@ -91,10 +93,10 @@ class HindsightLabelingEnv(InstinctRlEnv):
             contact = frame.contact_flag[:, 0].bool()
             body_pos_w = frame.link_pos_w[:, 0, self._labeler_reference_link_ids]
         else:
-            # vertical force from the terrain only: the net force also holds self-contacts (pelvis against thighs)
+            # terrain contact force norm: force_matrix_w is filtered to the terrain collider, excluding self-contacts
             sensor_data = self._labeler_sensor.data
-            force_z = sensor_data.force_matrix_w.torch[:, self._labeler_sensor_body_ids, :, 2].sum(dim=-1)
-            contact = force_z.abs() > cfg.force_threshold
+            force = sensor_data.force_matrix_w.torch[:, self._labeler_sensor_body_ids].sum(dim=-2).norm(dim=-1)
+            contact = force > cfg.force_threshold
             body_pos_w = robot.data.body_link_pos_w.torch[:, self._labeler_robot_body_ids]
             if cfg.contact_point:
                 # the averaged contact point with the terrain (the sensor's only filter); NaN without contact
