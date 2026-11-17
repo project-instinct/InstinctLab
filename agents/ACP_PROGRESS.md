@@ -264,6 +264,22 @@ than `HindsightContactLabelerCfg.min_gap_steps` (default 5 steps = 0.1 s, as `an
 before the segment-length filter; robot contacts use the norm of the terrain contact force (was |F_z|);
 `max_recorded_steps` 500 -> 1000.
 
+`_run_diag_v15` on `Tracker@1000` (196 clips, planner trained on debounced Rollout 0 labels) isolates the remaining
+closed-loop foot-occupancy gap: `pl_pos_ref_occ` 81.6 % (160/196), `ref_pos_pl_feet_occ` 63.3 % (124/196,
+`hc76=95 %`, `lc76=85 %`), `pl_pos_oracle_feet_occ` 32.7 % (64/196), `pl_pos_pl_feet_occ` 19.9 % (39/196). Because
+`ref_t` is zero whenever `ref_on` is False, false-positive `occ` steps (~11-17 %) are harmless with `ref_pos`,
+whereas `pl_pos` injects non-zero target coordinates on those false-positive steps and destabilizes the stage-1
+tracker before stage-2 PPO adaptation.
+
+### Stage-2 V3 runs (launched 2026-11-17 00:07 EST on `gthintel201` GPUs 0-3, `r1730`)
+
+Four 10k-iteration runs from `acpS1_php_footDrop25_{seed42,seed2}/model_16000.pt` with the fixed hindsight labeler:
+
+- GPU 0: `acpS2v3_fixed_seed42` (`Instinct-ACP-Planner-V2-G1-v0`, seed 42; pure ablation of V2 + labeler fixes)
+- GPU 1: `acpS2v3_epGate85_seed42` (`Instinct-ACP-Planner-V3-G1-v0`, seed 42; episode-level `planner_gate` with `eta_max=0.85`)
+- GPU 2: `acpS2v3_epGate85_seed2` (`Instinct-ACP-Planner-V3-G1-v0`, seed 2)
+- GPU 3: `acpS2v3_fixed_seed2` (`Instinct-ACP-Planner-V2-G1-v0`, seed 2)
+
 ## Infrastructure
 
 - gthintel cluster via cardbot; runs in `humix-docker` containers launched by `~/workspace/isaacSim/il_run.sh`,
