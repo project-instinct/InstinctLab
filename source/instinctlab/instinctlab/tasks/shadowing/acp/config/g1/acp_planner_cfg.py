@@ -314,3 +314,13 @@ class G1ACPPlannerV3EnvCfg(G1ACPPlannerV2EnvCfg):
         gate = self.observations.contact_source.planner_gate.params
         gate["per_episode"] = True
         gate["eta_max"] = V3_ETA_OBS_MAX
+
+
+@configclass
+class G1ACPPlannerV3RefLabelsEnvCfg(G1ACPPlannerV2EnvCfg):
+    """V2 with reference-contact labels (including elbow contacts and exact reference timing)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.contact_labeler.contact_source = "reference"
+        self.contact_labeler.contact_point = False

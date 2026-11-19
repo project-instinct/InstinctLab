@@ -81,6 +81,20 @@ register_backend_tasks(
     instinct_rl_cfg_entry_point=f"{agents.__name__}.instinct_rl_ppo_cfg:G1ACPPlannerV2PPORunnerCfg",
 )
 
+for variant, env_cfg_name, runner_cfg_name in (
+    ("V3-Occ5", "G1ACPPlannerV2EnvCfg", "G1ACPPlannerV3Occ5PPORunnerCfg"),
+    ("V3-NoAct", "G1ACPPlannerV2EnvCfg", "G1ACPPlannerV3NoActPPORunnerCfg"),
+    ("V3-NoAct-Occ5", "G1ACPPlannerV2EnvCfg", "G1ACPPlannerV3NoActOcc5PPORunnerCfg"),
+    ("V3-RefLabels", "G1ACPPlannerV3RefLabelsEnvCfg", "G1ACPPlannerV2PPORunnerCfg"),
+):
+    register_backend_tasks(
+        f"Instinct-ACP-Planner-{variant}-G1",
+        env_cfg_entry_point=f"{task_entry}.acp_planner_cfg:{env_cfg_name}",
+        play_env_cfg_entry_point=f"{task_entry}.acp_planner_cfg:G1ACPPlannerEnvCfg_PLAY",
+        entry_point="instinctlab.tasks.shadowing.acp.labeling_env:HindsightLabelingEnv",
+        instinct_rl_cfg_entry_point=f"{agents.__name__}.instinct_rl_ppo_cfg:{runner_cfg_name}",
+    )
+
 register_backend_tasks(
     "Instinct-ACP-Planner-Depth-G1",
     env_cfg_entry_point=f"{task_entry}.acp_planner_cfg:G1ACPPlannerDepthEnvCfg",

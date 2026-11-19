@@ -176,3 +176,37 @@ class G1ACPPlannerV2PPORunnerCfg(G1ACPPlannerPPORunnerCfg):
         from ..acp_tracker_cfg import METADATA_YAML  # the env cfg module, loaded with the task anyway
 
         self.algorithm.planner_replay_num_partitions = _num_motions(METADATA_YAML)
+
+
+@configclass
+class G1ACPPlannerV3Occ5PPORunnerCfg(G1ACPPlannerV2PPORunnerCfg):
+    """V2 planner with 5x occupancy loss weight to balance occupancy BCE (~0.07) against affordance CE (~3.2)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.algorithm.planner_kwargs = {**self.algorithm.planner_kwargs, "occupancy_loss_coef": 5.0}
+
+
+@configclass
+class G1ACPPlannerV3NoActPPORunnerCfg(G1ACPPlannerV2PPORunnerCfg):
+    """V2 planner without ``last_action`` / ``joint_vel`` in context to avoid closed-loop action feedback shift."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.algorithm.planner_kwargs = {
+            **self.algorithm.planner_kwargs,
+            "context_components": ["base_ang_vel", "projected_gravity", "joint_pos", "goal"],
+        }
+
+
+@configclass
+class G1ACPPlannerV3NoActOcc5PPORunnerCfg(G1ACPPlannerV2PPORunnerCfg):
+    """V2 planner combining no ``last_action`` / ``joint_vel`` in context with 5x occupancy loss weight."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.algorithm.planner_kwargs = {
+            **self.algorithm.planner_kwargs,
+            "context_components": ["base_ang_vel", "projected_gravity", "joint_pos", "goal"],
+            "occupancy_loss_coef": 5.0,
+        }
