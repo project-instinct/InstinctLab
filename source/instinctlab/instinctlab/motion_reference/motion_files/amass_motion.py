@@ -179,6 +179,9 @@ class AmassMotion(MotionBuffer):
 
         return return_
 
+    def get_motion_origins(self, env_origins: torch.Tensor, env_ids: Sequence[int] | torch.Tensor) -> torch.Tensor:
+        return self._get_motion_based_origin(env_origins, env_ids)
+
     def reset(self, env_ids: Sequence[int] | torch.Tensor, symmetric_augmentation_mask_buffer: torch.Tensor) -> None:
         self._sample_assigned_env_starting_stub(env_ids)
         # sample symmetric augmentation mask. In AMASS, all motions are able to be augmented.
