@@ -213,3 +213,35 @@ def test_planner_gate_per_episode():
     third = planner_gate(env, 0, 100, eta_max=1.0, per_episode=True)
     assert float(third[0, 0]) == 1.0
     assert torch.equal(third[1:], first[1:])
+
+
+def test_pos_far_from_ref_vel_scale(monkeypatch):
+    import instinctlab.motion_reference.utils as mr_utils
+    from instinctlab.envs.mdp.terminations.motion_reference import pos_far_from_ref
+
+    class _FakeRef:
+        ALL_INDICES = torch.arange(2)
+        aiming_frame_idx = torch.zeros(2, dtype=torch.long)
+
+        class data:
+            # env 0 stationary, env 1 moving at 2.0 m/s
+            base_lin_vel_w = torch.tensor([[[0.0, 0.0, 0.0]], [[2.0, 0.0, 0.0]]])
+
+    class _FakeEnv:
+        scene = {"motion_reference": _FakeRef()}
+
+    monkeypatch.setattr(
+        mr_utils, "get_base_position_distance", lambda *a, **k: torch.tensor([[0.0, 0.0, 0.6], [0.0, 0.0, 0.6]])
+    )
+    monkeypatch.setattr(mr_utils, "matching_reference_timing", lambda env, d, ref, **k: d)
+
+    # Without vel_scale: both envs exceed 0.25 m
+    assert pos_far_from_ref(_FakeEnv(), distance_threshold=0.25, height_only=True, vel_scale=0.0).tolist() == [
+        True,
+        True,
+    ]
+    # With vel_scale=0.5: env 0 threshold stays 0.25 m (True), env 1 relaxes to 0.25 + 0.5*2.0 = 1.25 m (False)
+    assert pos_far_from_ref(_FakeEnv(), distance_threshold=0.25, height_only=True, vel_scale=0.5).tolist() == [
+        True,
+        False,
+    ]

@@ -23,14 +23,16 @@ def pos_far_from_ref(
     check_at_keyframe_threshold: float = 0.01,
     print_reason: bool = False,
     height_only: bool = False,
+    vel_scale: float = 0.0,
 ) -> torch.Tensor:
     """Check if the position is far from the reference position.
 
     Args:
         env: The environment object.
-        distance_threshold: The distance threshold.
-        check_at_keyframe: only check when the time is close to the keyframe.
+        distance_threshold: The base distance threshold.
+        check_at_keyframe_threshold: only check when the time is close to the keyframe.
         height_only: only check the height (z-axis) difference.
+        vel_scale: If positive, relaxes the threshold by ``vel_scale * ||v_ref||`` (m / (m/s) = s).
 
     Returns:
         True if the position is far from the reference position, False otherwise.
@@ -53,7 +55,13 @@ def pos_far_from_ref(
         multiply_by_frame_interval=False,
     )
 
-    return_ = distance > distance_threshold
+    threshold: float | torch.Tensor = distance_threshold
+    if vel_scale > 0.0:
+        motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
+        ref_vel = motion_reference.data.base_lin_vel_w[motion_reference.ALL_INDICES, motion_reference.aiming_frame_idx]
+        threshold = distance_threshold + vel_scale * ref_vel.norm(dim=-1)
+
+    return_ = distance > threshold
     if print_reason and return_.any():
         motion_reference: MotionReferenceManagerBase = env.scene[reference_cfg.name]
         env_ids = torch.where(return_)[0]

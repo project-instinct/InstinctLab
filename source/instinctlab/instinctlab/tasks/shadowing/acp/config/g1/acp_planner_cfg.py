@@ -135,6 +135,8 @@ class G1ACPPlannerEnvCfg(G1ACPTrackerEnvCfg):
         self.observations.planner.joint_vel.params["asset_cfg"] = set_cfg_joint_order(
             SceneEntityCfg("robot"), joint_order
         )
+        # Stage 2 has no reference clock, so relax base_pos_too_far proportionally to reference speed
+        self.terminations.base_pos_too_far.params["vel_scale"] = 0.5
         self.run_name = "g1ACPPlanner"
 
 
