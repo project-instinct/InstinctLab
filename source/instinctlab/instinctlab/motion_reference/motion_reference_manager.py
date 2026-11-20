@@ -114,7 +114,8 @@ class MotionReferenceManager(SensorBase):
                 # symmetric augment init reference state if needed
                 if self._symmetric_augmentation_conditions_met:
                     env_ids_to_augment = env_ids_this_buffer[self._env_symmetric_augmentation_mask[env_ids_this_buffer]]
-                    self._symmetric_augment_reference_data(self._reference_frame, env_ids_to_augment)
+                    origins = buffer.get_motion_origins(self.env_origins, env_ids_to_augment)
+                    self._symmetric_augment_reference_data(self._reference_frame, env_ids_to_augment, origins)
             self._reference_frame_timestamp[outdated_mask] = self._timestamp[outdated_mask]
         return self._reference_frame
 
@@ -397,7 +398,10 @@ class MotionReferenceManager(SensorBase):
                 self._init_reference_state.joint_vel[env_ids_to_augment] = self._symmetric_augment_joint_buffer(
                     self._init_reference_state.joint_vel[env_ids_to_augment],
                 )
-                self._init_reference_state.base_pos_w[env_ids_to_augment, 1] *= -1
+                origins = buffer.get_motion_origins(self.env_origins, env_ids_to_augment)
+                self._init_reference_state.base_pos_w[env_ids_to_augment, 1] = (
+                    2 * origins[:, 1] - self._init_reference_state.base_pos_w[env_ids_to_augment, 1]
+                )
                 self._init_reference_state.base_quat_w[env_ids_to_augment] = self._symmetric_augment_quat_buffer(
                     self._init_reference_state.base_quat_w[env_ids_to_augment],
                 )
@@ -543,7 +547,8 @@ class MotionReferenceManager(SensorBase):
             # symmetric augment init reference state if needed
             if self._symmetric_augmentation_conditions_met:
                 env_ids_to_augment = env_ids_this_buffer[self._env_symmetric_augmentation_mask[env_ids_this_buffer]]
-                self._symmetric_augment_reference_data(self._data, env_ids_to_augment)
+                origins = buffer.get_motion_origins(self.env_origins, env_ids_to_augment)
+                self._symmetric_augment_reference_data(self._data, env_ids_to_augment, origins)
         self._data.time_to_target_frame[env_ids] = time_to_target_frame
 
         # set invalid timestamp data to invalid value.
@@ -872,7 +877,7 @@ class MotionReferenceManager(SensorBase):
     def _symmetric_augment_ang_vel_buffer(self, ang_vel_buf: torch.Tensor):
         """Symmetrically augment the angular velocity buffer, values changed in place.
         Assuming the last dimension is the angular velocity dimension.
-        By mirror w.r.t x-z plane, the y component and z component of angular velocity should be negated.
+        By mirror w.r.t x-z plane, the x component and z component of angular velocity should be negated.
         """
         ang_vel_buf[..., 0] *= -1
         ang_vel_buf[..., 2] *= -1
@@ -897,6 +902,11 @@ class MotionReferenceManager(SensorBase):
         link_quat_buf[..., 3] *= -1
         return link_quat_buf
 
+    def _symmetric_augment_link_ang_vel_buffer(self, link_ang_vel_buf: torch.Tensor):
+        """Swap left/right links and mirror their angular velocities in place."""
+        link_ang_vel_buf[:] = link_ang_vel_buf[..., self.cfg.symmetric_augmentation_link_mapping, :]
+        return self._symmetric_augment_ang_vel_buffer(link_ang_vel_buf)
+
     def _symmetric_augment_quat_buffer(self, quat_buf: torch.Tensor):
         """Symmetrically augment the quaternion buffer w.r.t x-z plane, values changed in place.
         Assuming the last dimension is the quaternion (w, x, y, z) dimension.
@@ -906,7 +916,9 @@ class MotionReferenceManager(SensorBase):
         quat_buf[..., 3] *= -1
         return quat_buf
 
-    def _symmetric_augment_reference_data(self, data_buf: MotionReferenceData, env_ids: torch.Tensor | slice):
+    def _symmetric_augment_reference_data(
+        self, data_buf: MotionReferenceData, env_ids: torch.Tensor | slice, origins: torch.Tensor
+    ):
         """Symmetrically augment all parts of the reference data buffer w.r.t x-z plane, values changed in place."""
         data_buf.joint_pos[env_ids] = self._symmetric_augment_joint_buffer(
             data_buf.joint_pos[env_ids],
@@ -914,7 +926,7 @@ class MotionReferenceManager(SensorBase):
         data_buf.joint_vel[env_ids] = self._symmetric_augment_joint_buffer(
             data_buf.joint_vel[env_ids],
         )
-        data_buf.base_pos_w[env_ids, :, 1] *= -1
+        data_buf.base_pos_w[env_ids, :, 1] = 2 * origins[:, 1, None] - data_buf.base_pos_w[env_ids, :, 1]
         data_buf.base_quat_w[env_ids] = self._symmetric_augment_quat_buffer(
             data_buf.base_quat_w[env_ids],
         )
@@ -922,9 +934,9 @@ class MotionReferenceManager(SensorBase):
         data_buf.base_ang_vel_w[env_ids] = self._symmetric_augment_ang_vel_buffer(
             data_buf.base_ang_vel_w[env_ids],
         )
-        data_buf.link_pos_w[env_ids] = self._symmetric_augment_link_pos_buffer(
-            data_buf.link_pos_w[env_ids],
-        )
+        link_pos_w = self._symmetric_augment_link_pos_buffer(data_buf.link_pos_w[env_ids])
+        link_pos_w[..., 1] += 2 * origins[:, 1, None, None]
+        data_buf.link_pos_w[env_ids] = link_pos_w
         data_buf.link_quat_w[env_ids] = self._symmetric_augment_link_quat_buffer(
             data_buf.link_quat_w[env_ids],
         )
@@ -934,12 +946,16 @@ class MotionReferenceManager(SensorBase):
         data_buf.link_quat_b[env_ids] = self._symmetric_augment_link_quat_buffer(
             data_buf.link_quat_b[env_ids],
         )
-        data_buf.link_lin_vel_b[env_ids, :, 1] *= -1
-        data_buf.link_ang_vel_b[env_ids] = self._symmetric_augment_ang_vel_buffer(
+        data_buf.link_lin_vel_b[env_ids] = self._symmetric_augment_link_pos_buffer(
+            data_buf.link_lin_vel_b[env_ids],
+        )
+        data_buf.link_ang_vel_b[env_ids] = self._symmetric_augment_link_ang_vel_buffer(
             data_buf.link_ang_vel_b[env_ids],
         )
-        data_buf.link_lin_vel_w[env_ids, :, 1] *= -1
-        data_buf.link_ang_vel_w[env_ids] = self._symmetric_augment_ang_vel_buffer(
+        data_buf.link_lin_vel_w[env_ids] = self._symmetric_augment_link_pos_buffer(
+            data_buf.link_lin_vel_w[env_ids],
+        )
+        data_buf.link_ang_vel_w[env_ids] = self._symmetric_augment_link_ang_vel_buffer(
             data_buf.link_ang_vel_w[env_ids],
         )
 

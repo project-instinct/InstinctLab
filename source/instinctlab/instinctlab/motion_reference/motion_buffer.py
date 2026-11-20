@@ -118,6 +118,10 @@ class MotionBuffer:
     Operations for rollouts. (motion update and reset)
     """
 
+    def get_motion_origins(self, env_origins: torch.Tensor, env_ids: Sequence[int] | torch.Tensor) -> torch.Tensor:
+        """Return the world-space origins used to place the selected environments' motions."""
+        return env_origins[env_ids]
+
     def reset(
         self, env_ids: Sequence[int] | torch.Tensor | None, symmetric_augmentation_mask_buffer: torch.Tensor
     ) -> None:
