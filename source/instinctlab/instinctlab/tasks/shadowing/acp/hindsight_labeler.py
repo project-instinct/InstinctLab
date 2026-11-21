@@ -29,6 +29,8 @@ SAMPLE_KEYS = ("planner_obs", "target_pos", "target_valid")
 #: With ``partition_samples`` every sample also carries its replay partition and group (Instinct-RL's
 #: ``PARTITIONED_SAMPLE_KEYS``).
 PARTITION_KEYS = ("partition", "group")
+#: With ``dual_buffer`` (ACP stage 3), every sample also carries ``buffer_id`` (0 = ref, 1 = goal) and ``quality``.
+DUAL_BUFFER_KEYS = ("buffer_id", "quality")
 
 
 def label_next_contacts(
@@ -161,6 +163,10 @@ class HindsightContactLabelerCfg:
     """Experiment: the samples carry ``partition`` and ``group`` ids (the env passes them per episode, e.g. the
     reference clip and its terrain category) for a partitioned, group-balanced planner replay."""
 
+    dual_buffer: bool = False
+    """ACP stage 3: also record per-step positive mechanical work and emit ``buffer_id`` and ``quality`` keys for
+    dual-buffer (reference + goal) replay routing and quality-based eviction."""
+
     contact_point: bool = False
     """Experiment (``"robot"`` contacts): label the terrain contact point the contact sensor reports instead of the body
     origin, so the labels mark the same point as the dataset's contact targets (the annotated terrain point)."""
@@ -188,6 +194,7 @@ class HindsightContactLabeler:
         self.body_pos_w = torch.zeros(num_slots, num_steps, self.num_bodies, 3, device=self.device)
         self.root_pos_w = torch.zeros(num_slots, num_steps, 3, device=self.device)
         self.root_yaw = torch.zeros(num_slots, num_steps, device=self.device)
+        self.work = torch.zeros(num_slots, num_steps, device=self.device) if cfg.dual_buffer else None
         self.slot_length = torch.zeros(num_slots, dtype=torch.long, device=self.device)
         self.slot_env = torch.full((num_slots,), -1, dtype=torch.long, device=self.device)
         self.env_slot = torch.full((num_envs,), -1, dtype=torch.long, device=self.device)
@@ -203,20 +210,40 @@ class HindsightContactLabeler:
             "target_pos": torch.zeros(0, self.num_bodies, 3, device=self.device),
             "target_valid": torch.zeros(0, self.num_bodies, dtype=torch.bool, device=self.device),
         }
-        self.sample_keys = SAMPLE_KEYS + (PARTITION_KEYS if cfg.partition_samples else ())
+        self.sample_keys = (
+            SAMPLE_KEYS
+            + (PARTITION_KEYS if cfg.partition_samples else ())
+            + (DUAL_BUFFER_KEYS if cfg.dual_buffer else ())
+        )
         if cfg.partition_samples:
             self._empty.update({k: torch.zeros(0, dtype=torch.long, device=self.device) for k in PARTITION_KEYS})
+        if cfg.dual_buffer:
+            self._empty["buffer_id"] = torch.zeros(0, dtype=torch.long, device=self.device)
+            self._empty["quality"] = torch.zeros(0, dtype=torch.float, device=self.device)
 
-    def start_episodes(self, env_ids: torch.Tensor, start_phase: torch.Tensor) -> None:
-        """Give a free slot to every env in ``env_ids`` whose new episode starts early enough to be admitted."""
-        eligible = env_ids[start_phase <= self.cfg.start_phase_max]
+    def start_episodes(
+        self,
+        env_ids: torch.Tensor,
+        start_phase: torch.Tensor | None = None,
+        eligible: torch.Tensor | None = None,
+    ) -> None:
+        """Give a free slot to every eligible env in ``env_ids``."""
+        if eligible is None:
+            if start_phase is None:
+                raise ValueError("start_episodes requires either start_phase or eligible")
+            eligible_mask = start_phase <= self.cfg.start_phase_max
+        else:
+            eligible_mask = eligible.bool()
+        eligible_envs = env_ids[eligible_mask]
         free = (self.slot_env < 0).nonzero().squeeze(-1)
-        num = min(len(eligible), len(free))
-        self.stats["unrecorded_episodes"] += len(eligible) - num
-        slots, envs = free[:num], eligible[:num]
+        num = min(len(eligible_envs), len(free))
+        self.stats["unrecorded_episodes"] += len(eligible_envs) - num
+        slots, envs = free[:num], eligible_envs[:num]
         self.slot_env[slots] = envs
         self.env_slot[envs] = slots
         self.slot_length[slots] = 0
+        if self.work is not None and num > 0:
+            self.work[slots] = 0.0
 
     def record(
         self,
@@ -225,6 +252,7 @@ class HindsightContactLabeler:
         body_pos_w: torch.Tensor,
         root_pos_w: torch.Tensor,
         root_yaw: torch.Tensor,
+        positive_work: torch.Tensor | None = None,
     ) -> None:
         """Append the current step of every recorded env (all inputs are per env: (N, ...); ``contact`` (N, B) bool)."""
         slots = ((self.slot_env >= 0) & (self.slot_length < self.cfg.max_recorded_steps)).nonzero().squeeze(-1)
@@ -234,40 +262,66 @@ class HindsightContactLabeler:
         self.body_pos_w[slots, steps] = body_pos_w[envs]
         self.root_pos_w[slots, steps] = root_pos_w[envs]
         self.root_yaw[slots, steps] = root_yaw[envs]
+        if self.work is not None and positive_work is not None:
+            self.work[slots, steps] = positive_work[envs]
         self.slot_length[slots] += 1
 
     def finish_episodes(
         self,
         env_ids: torch.Tensor,
         episode_length: torch.Tensor,
-        end_phase: torch.Tensor,
+        end_phase: torch.Tensor | None = None,
         partition: torch.Tensor | None = None,
         group: torch.Tensor | None = None,
+        admitted: torch.Tensor | None = None,
+        cut_length: torch.Tensor | None = None,
+        quality_denom: torch.Tensor | None = None,
+        buffer_id: torch.Tensor | None = None,
     ) -> None:
-        """Label the admitted episodes of ``env_ids`` (episodes of ``episode_length`` steps that ended at
-        ``end_phase``; with ``partition_samples`` their ``partition`` / ``group`` ids) and free their slots."""
+        """Label the admitted episodes of ``env_ids`` and free their slots."""
         if self.cfg.partition_samples and (partition is None or group is None):
             raise ValueError("partition_samples needs the partition and group of every finished episode")
+        if self.cfg.dual_buffer and buffer_id is None:
+            raise ValueError("dual_buffer needs buffer_id for every finished episode")
         slots = self.env_slot[env_ids]
         recorded = slots >= 0
-        slots, episode_length, end_phase = slots[recorded], episode_length[recorded], end_phase[recorded]
+        slots = slots[recorded]
+        episode_length = episode_length[recorded]
+        if admitted is None:
+            if end_phase is None:
+                raise ValueError("finish_episodes requires either end_phase or admitted")
+            admitted_mask = end_phase[recorded] >= self.cfg.end_phase_min
+        else:
+            admitted_mask = admitted.to(self.device)[recorded].bool()
         ids = None
         if self.cfg.partition_samples:
             ids = torch.stack([partition.to(self.device)[recorded], group.to(self.device)[recorded]], dim=-1).long()
-        admitted = end_phase >= self.cfg.end_phase_min
-        self.stats["admitted_episodes"] += int(admitted.sum())
-        self.stats["rejected_episodes"] += int((~admitted).sum())
-        if bool(admitted.any()):
+        cut_rec = None if cut_length is None else cut_length.to(self.device)[recorded].long()
+        denom_rec = None if quality_denom is None else quality_denom.to(self.device)[recorded].float()
+        buf_rec = None if buffer_id is None else buffer_id.to(self.device)[recorded].long()
+
+        self.stats["admitted_episodes"] += int(admitted_mask.sum())
+        self.stats["rejected_episodes"] += int((~admitted_mask).sum())
+        if bool(admitted_mask.any()):
             self._samples.append(
-                self._label(slots[admitted], episode_length[admitted], ids=None if ids is None else ids[admitted])
+                self._label(
+                    slots[admitted_mask],
+                    episode_length[admitted_mask],
+                    ids=None if ids is None else ids[admitted_mask],
+                    cut_length=None if cut_rec is None else cut_rec[admitted_mask],
+                    quality_denom=None if denom_rec is None else denom_rec[admitted_mask],
+                    buffer_id=None if buf_rec is None else buf_rec[admitted_mask],
+                )
             )
-        if self.cfg.label_unadmitted and bool((~admitted).any()):
-            unadmitted = ~admitted
+        if self.cfg.label_unadmitted and bool((~admitted_mask).any()):
+            unadmitted = ~admitted_mask
             samples = self._label(
                 slots[unadmitted],
                 episode_length[unadmitted],
                 cut_tail=True,
                 ids=None if ids is None else ids[unadmitted],
+                quality_denom=None if denom_rec is None else denom_rec[unadmitted],
+                buffer_id=None if buf_rec is None else buf_rec[unadmitted],
             )
             self.stats["unadmitted_samples"] += samples["planner_obs"].shape[0]
             self._samples.append(samples)
@@ -280,9 +334,11 @@ class HindsightContactLabeler:
         episode_length: torch.Tensor,
         cut_tail: bool = False,
         ids: torch.Tensor | None = None,
+        cut_length: torch.Tensor | None = None,
+        quality_denom: torch.Tensor | None = None,
+        buffer_id: torch.Tensor | None = None,
     ) -> dict[str, torch.Tensor]:
-        """Samples of the recorded ``slots``. ``cut_tail`` drops the tail of every record as for a truncated one;
-        ``ids`` ``(S, 2)``: partition and group of each slot's episode, repeated over its samples."""
+        """Samples of the recorded ``slots``."""
         length = self.slot_length[slots]
         target_pos, target_valid = label_next_contacts(
             self.contact[slots],
@@ -299,7 +355,13 @@ class HindsightContactLabeler:
         # horizon (plus the segment-length check) reaches past it
         truncated = (episode_length > length) | cut_tail
         usable = torch.where(truncated, length - self.horizon_steps - self.cfg.min_contact_steps + 1, length)
-        rows = torch.arange(self.cfg.max_recorded_steps, device=self.device).unsqueeze(0) < usable.unsqueeze(1)
+        if cut_length is not None:
+            has_cut = cut_length >= 0
+            # cut_length is the 0-based step index where d_g < 0.2 m; emit steps [0, cut_length] inclusive
+            usable = torch.where(has_cut, torch.minimum(usable, cut_length + 1), usable)
+        usable = usable.clamp_min(0)
+        steps = torch.arange(self.cfg.max_recorded_steps, device=self.device).unsqueeze(0)
+        rows = steps < usable.unsqueeze(1)
         samples = {
             "planner_obs": self.obs[slots][rows],
             "target_pos": target_pos[rows],
@@ -308,6 +370,14 @@ class HindsightContactLabeler:
         if ids is not None:
             per_step = ids.unsqueeze(1).expand(-1, rows.shape[1], -1)[rows]
             samples["partition"], samples["group"] = per_step[:, 0], per_step[:, 1]
+        if self.cfg.dual_buffer:
+            buf_per_step = buffer_id.unsqueeze(1).expand(-1, rows.shape[1])[rows]
+            samples["buffer_id"] = buf_per_step
+            # D12: quality = -sum_{t < usable} work[t] / max(d_init, 0.5)
+            ep_work = (self.work[slots] * rows.float()).sum(dim=1)
+            denom = torch.ones_like(ep_work) if quality_denom is None else quality_denom.clamp_min(0.5)
+            ep_quality = -ep_work / denom
+            samples["quality"] = ep_quality.unsqueeze(1).expand(-1, rows.shape[1])[rows]
         return samples
 
     def pop_samples(self) -> dict[str, torch.Tensor]:

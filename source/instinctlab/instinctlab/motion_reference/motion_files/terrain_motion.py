@@ -9,6 +9,7 @@ import joblib
 
 from instinctlab.motion_reference import MotionSequence
 from instinctlab.motion_reference.motion_files.amass_motion import AmassMotion
+from instinctlab.terrains.trimesh.mesh_terrains_cfg import MotionMatchedTerrainCfg
 
 if TYPE_CHECKING:
     from isaaclab.scene import InteractiveScene
@@ -71,6 +72,8 @@ class TerrainMotion(AmassMotion):
         for row_idx in range(terrain.terrain_origins.shape[0]):
             for col_idx in range(terrain.terrain_origins.shape[1]):
                 subterrain_cfg = subterrain_specific_cfgs[row_idx * terrain.terrain_origins.shape[1] + col_idx]
+                if not isinstance(subterrain_cfg, MotionMatchedTerrainCfg):
+                    continue
                 difficulty = subterrain_cfg.difficulty
                 terrain_idx = int(
                     min(max(difficulty * len(self.yaml_data["terrains"]), 0), len(self.yaml_data["terrains"]) - 1)

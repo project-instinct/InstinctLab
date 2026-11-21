@@ -25,6 +25,9 @@ class InstinctRlActorCriticCfg:
     activation: str = MISSING
     """The activation function for the actor and critic networks."""
 
+    critic_obs_groups: list[str] | None = None
+    """Optional observation group name per critic when using multiple critics with distinct inputs."""
+
 
 @configclass
 class InstinctRlActorCriticRecurrentCfg(InstinctRlActorCriticCfg):
@@ -218,6 +221,18 @@ class InstinctRlPpoAlgorithmCfg:
     Default: 1e-12 to prevent numerical instability.
     """
 
+    value_mask_group: str | None = None
+    """Optional observation group ``(N, num_rewards)`` indicating which critic/reward column applies to each env."""
+
+    critic_learning_rates: list[float | None] | None = None
+    """Optional per-critic fixed learning rates (``None`` follows the adaptive PPO learning rate)."""
+
+    critic_warmup_iterations: list[int] | None = None
+    """Optional per-critic warmup iterations during which that critic's envs are excluded from the actor surrogate."""
+
+    critic_value_clipping: list[bool] | None = None
+    """Optional per-critic value clipping flags (off during warmup)."""
+
 
 @configclass
 class InstinctRlContactPlannerPpoAlgorithmCfg(InstinctRlPpoAlgorithmCfg):
@@ -237,6 +252,7 @@ class InstinctRlContactPlannerPpoAlgorithmCfg(InstinctRlPpoAlgorithmCfg):
     planner_obs_group: str = "planner"
     planner_target_components: list[str] = ["contact_targets"]
     planner_gate_group: str = "contact_source"
+    planner_critic_targets: list[tuple[str, tuple[str, ...]]] | None = None
     planner_target_noise: float = 0.0
     planner_positions_feedback_key: str = "planned_contacts"
     planner_occupancy_feedback_key: str = "planned_occupancy"
@@ -251,6 +267,7 @@ class InstinctRlContactPlannerPpoAlgorithmCfg(InstinctRlPpoAlgorithmCfg):
     planner_replay_capacity: int = 100_000
     planner_replay_num_partitions: int | None = None
     planner_replay_partition_capacity: int = 2000
+    planner_goal_replay_kwargs: dict | None = None
     planner_replay_device: str | None = None
     planner_replay_checkpoint: str = "latest"
 
@@ -258,6 +275,7 @@ class InstinctRlContactPlannerPpoAlgorithmCfg(InstinctRlPpoAlgorithmCfg):
 @configclass
 class InstinctRlNormalizerCfg:
     class_name: str = "EmpiricalNormalization"
+    until: int | None = None
 
 
 @configclass

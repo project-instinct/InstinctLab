@@ -299,6 +299,20 @@ Final evaluation (`scripts/acp/evaluate.py`, `vel_scale=0.5`, 196 PHP clips) aft
 
 Planner targets now outperform reference targets on the 3 robot-hindsight runs (`79.1-81.1 %` vs `73.5-77.0 %`); ready to move to stage 3 (`ACP_STAGE3_PLAN.md`).
 
+### Stage-3 implementation, zero-shot baseline & 4-GPU `torchrun` launch (2026-11-21)
+
+Implemented Stage-3 goal-reaching RL fine-tuning on `feat/acp-stage3` in both `instinct_rl` (`R1–R6` + `D13` + DDP `context_normalizer.sync_across_processes()` + `map_location`) and `instinctlab` (`L1–L10`, user decisions D1–D15, starting from `acpS2v3_noActOcc5_seed42_vel05/model_10000.pt`). All 47 CPU unit tests pass (`test_contact_planner.py` 25/25, `test_stage3_rl.py` 5/5, `test_hindsight_labeler.py` 12/12, `test_stage3_env.py` 5/5).
+
+Key fixes from GPU smoke testing:
+- `GoalReachingCommand._resample_command` made a no-op so `command_manager.reset` does not overwrite `tile_origin_w`/`goal_pos_w` after `reset_goal_envs`.
+- Switched the 6 procedural columns from dense `Perlin*` heightfields (~40.7M tris, which overflowed PhysX BV4 cooking) to exact trimesh (`MeshPyramidStairs`, `MeshInvertedPyramidStairs`, `MeshBox`, `MeshGap`) + coarse-scale heightfields (`HfSteppingStones` 0.25 m, `HfPyramidSloped` 0.5 m), cutting startup to ~38 s with clean PhysX cooking.
+
+Zero-shot baseline (`scripts/acp/eval_stage3.py`, 256 envs, level 0, `noActOcc5@10k`):
+- Goal envs overall: **36.9 %** (86/233) — `perlin_slope` 100.0 %, `square_gaps` 95.5 %, `pyramid_stairs` 95.2 %, `mesh_boxes` 90.9 %, `pyramid_stairs_inv` 6.1 %, `stepping_stones` 1.0 %.
+- Reference envs (early-stopped at 200 goal episodes): 60.3 % (85/141).
+
+Launched 10,000-iteration 4-GPU `torchrun` Stage-3 run `acpS3_noActOcc5_4gpu_seed42` (2,100 envs/GPU × 4 = 8,400 envs, ~6.95 s/iter) on `gthintel201` (`manip_0:0,1,2,3`, reservation `r1973`, tmux `acp_s3`, guarded by `acp_window_guard.sh 1973`).
+
 ## Infrastructure
 
 - gthintel cluster via cardbot; runs in `humix-docker` containers launched by `~/workspace/isaacSim/il_run.sh`,

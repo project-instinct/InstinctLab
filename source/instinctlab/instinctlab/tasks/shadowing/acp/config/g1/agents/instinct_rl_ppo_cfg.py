@@ -210,3 +210,60 @@ class G1ACPPlannerV3NoActOcc5PPORunnerCfg(G1ACPPlannerV2PPORunnerCfg):
             "context_components": ["base_ang_vel", "projected_gravity", "joint_pos", "goal"],
             "occupancy_loss_coef": 5.0,
         }
+
+
+@configclass
+class FinetunePolicyCfg(PolicyCfg):
+    critic_obs_groups: list[str] = ["critic", "critic_goal"]
+
+
+@configclass
+class FinetuneNormalizersCfg:
+    """D9: policy normalizer frozen by default (``until=0``); set ``until=None`` for ablation."""
+
+    policy: InstinctRlNormalizerCfg = InstinctRlNormalizerCfg(until=0)
+    critic: InstinctRlNormalizerCfg = InstinctRlNormalizerCfg()
+    critic_goal: InstinctRlNormalizerCfg = InstinctRlNormalizerCfg()
+
+
+@configclass
+class FinetuneAlgorithmCfg(V2PlannerAlgorithmCfg):
+    """ACP stage-3 PPO + dual-buffer contact planner settings (D8, D10, D13)."""
+
+    entropy_coef = 0.002
+    desired_kl = 0.01
+    learning_rate = 1e-4
+
+    value_mask_group = "env_type"
+    critic_learning_rates = [None, 1e-3]
+    critic_warmup_iterations = [0, 500]
+    critic_value_clipping = [True, True]
+
+    # Starting from noActOcc5@10k planner architecture & loss
+    planner_kwargs = {
+        "points_xy_component": "terrain_xy",
+        "points_z_component": "terrain_height",
+        "context_components": ["base_ang_vel", "projected_gravity", "joint_pos", "goal"],
+        "num_bodies": 9,
+        "occupancy_loss_coef": 5.0,
+    }
+    # D13: mixin writes fresh p_hat directly into critic_goal's planned_contacts slot
+    planner_critic_targets = [("critic_goal", ("planned_contacts",))]
+    # D8: 10 * K = 60 partitions x 3000 samples with quality eviction
+    planner_goal_replay_kwargs = {
+        "num_partitions": 60,
+        "capacity_per_partition": 3000,
+        "eviction": "quality",
+    }
+
+
+@configclass
+class G1ACPFinetunePPORunnerCfg(G1ACPPlannerV2PPORunnerCfg):
+    """ACP stage-3 runner cfg; transitions from a stage-2 checkpoint via ``add_goal_critic``."""
+
+    policy: FinetunePolicyCfg = FinetunePolicyCfg()
+    algorithm: FinetuneAlgorithmCfg = FinetuneAlgorithmCfg()
+    normalizers: FinetuneNormalizersCfg = FinetuneNormalizersCfg()
+    ckpt_manipulator = "add_goal_critic"
+    max_iterations = 10000
+    experiment_name = "g1_acp_finetune"

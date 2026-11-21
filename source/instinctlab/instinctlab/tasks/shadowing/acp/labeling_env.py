@@ -17,6 +17,7 @@ from isaaclab.envs.common import VecEnvStepReturn
 from instinctlab.envs.manager_based_rl_env import InstinctRlEnv
 
 from .contact_schedule import heading
+from .goal_reaching import is_goal_env
 from .hindsight_labeler import HindsightContactLabeler, HindsightContactLabelerCfg
 
 
@@ -103,28 +104,65 @@ class HindsightLabelingEnv(InstinctRlEnv):
                 point = sensor_data.contact_pos_w.torch[:, self._labeler_sensor_body_ids, 0]
                 use_point = contact & torch.isfinite(point).all(dim=-1)
                 body_pos_w = torch.where(use_point.unsqueeze(-1), point, body_pos_w)
+        positive_work = None
+        if cfg.dual_buffer:
+            positive_work = (
+                (robot.data.applied_torque.torch * robot.data.joint_vel.torch).clamp_min(0.0).sum(dim=-1) * self.step_dt
+            )
         self.contact_labeler.record(
             planner_obs,
             contact,
             body_pos_w,
             robot.data.root_pos_w.torch,
             heading(math_utils.yaw_quat(robot.data.root_quat_w.torch)),
+            positive_work=positive_work,
         )
 
     def _reset_idx(self, env_ids: torch.Tensor | slice):
         ids = torch.arange(self.num_envs, device=self.device)[env_ids]
-        # the finished episodes' data (episode length, motion start time) is intact until the reset below
-        partition = group = None
-        if self.cfg.contact_labeler.partition_samples:
+        # the finished episodes' data (episode length, motion start time, goal progress) is intact until reset below
+        cfg = self.cfg.contact_labeler
+        ref_phase = self.reference_phase(ids)
+        goal_mask = is_goal_env(self)[ids]
+        has_goal = bool(goal_mask.any())
+
+        partition = group = buffer_id = cut_length = quality_denom = None
+        if cfg.partition_samples:
             buffer = self._labeler_motion_buffer
             assigned = buffer.env_ids_to_assigned_ids(ids).to(buffer.buffer_device)
             partition = buffer._assigned_env_motion_selection[assigned].to(self.device).long()
             group = self._labeler_clip_group[partition]
+
+        admitted = ref_phase >= cfg.end_phase_min
+        if cfg.dual_buffer:
+            buffer_id = goal_mask.long()
+            cut_length = torch.full_like(ids, -1, dtype=torch.long)
+            quality_denom = torch.ones(len(ids), device=self.device)
+        if has_goal:
+            goal_cmd = self.command_manager.get_term("goal_reaching")
+            terminated = self.termination_manager.terminated[ids]
+            goal_admitted = goal_cmd.reached[ids] & (~terminated)
+            admitted = torch.where(goal_mask, goal_admitted, admitted)
+            if cfg.partition_samples:
+                partition = torch.where(goal_mask, goal_cmd.replay_partition[ids], partition)
+                group = torch.where(goal_mask, goal_cmd.replay_group[ids], group)
+            if cfg.dual_buffer:
+                cut_length = torch.where(goal_mask, goal_cmd.cut_step[ids], cut_length)
+                quality_denom = torch.where(goal_mask, goal_cmd.initial_dist_xy[ids], quality_denom)
+
         self.contact_labeler.finish_episodes(
-            ids, self.episode_length_buf[ids], self.reference_phase(ids), partition=partition, group=group
+            ids,
+            self.episode_length_buf[ids],
+            admitted=admitted,
+            partition=partition,
+            group=group,
+            cut_length=cut_length,
+            quality_denom=quality_denom,
+            buffer_id=buffer_id,
         )
         return_ = super()._reset_idx(env_ids)
-        self.contact_labeler.start_episodes(ids, self.reference_phase(ids))
+        start_eligible = goal_mask | (self.reference_phase(ids) <= cfg.start_phase_max)
+        self.contact_labeler.start_episodes(ids, eligible=start_eligible)
         return return_
 
     def reset(self, *args, **kwargs):
