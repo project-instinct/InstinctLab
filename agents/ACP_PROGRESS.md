@@ -280,6 +280,25 @@ Four 10k-iteration runs from `acpS1_php_footDrop25_{seed42,seed2}/model_16000.pt
 - GPU 2: `acpS2v3_epGate85_seed2` (`Instinct-ACP-Planner-V3-G1-v0`, seed 2)
 - GPU 3: `acpS2v3_fixed_seed2` (`Instinct-ACP-Planner-V2-G1-v0`, seed 2)
 
+### Stage-2 velocity-dependent termination & final V3 evaluation (2026-11-19/20)
+
+Diagnosis on `@9k` checkpoints showed 100 % of standard-threshold failures (`21.9 %` overall) were `base_pos_too_far`
+(`|z_robot(t) - z_ref(t)| > 0.25 m` at exact timestamp `t`), killing valid timing-shifted climbs that otherwise finish
+within `1.3-1.6 cm` in `z` and `2.5-4.5 cm` in `xy`. Added configurable `vel_scale` to `pos_far_from_ref`
+(`threshold = distance_threshold + vel_scale * ||v_ref||`) and set `vel_scale = 0.5` in `G1ACPPlannerEnvCfg` (`75fd03d`).
+
+Final evaluation (`scripts/acp/evaluate.py`, `vel_scale=0.5`, 196 PHP clips) after resuming training with `vel_scale=0.5`
+(training `dataset_exhausted` rose from `~72 %` to `91.9-93.7 %`):
+
+| Run (`*vel05*`) | Ckpt | Planner phase 0.0 (hc76 / hs / lc76 / ls) | Planner phase 0.5 | Reference phase 0.0 |
+|---|---|---|---|---|
+| `acpS2v3_noAct_seed42_vel05` | `model_9000.pt` | **81.1 %** (85 / 100 / 23 / 100) | 98.0 % | 73.5 % |
+| `acpS2v3_noActOcc5_seed42_vel05` | `model_10000.pt` | **79.6 %** (73 / 100 / 35 / 95) | 100.0 % | 77.0 % |
+| `acpS2v3_fixed_seed42_vel05` | `model_13000.pt` | **79.1 %** (78 / 100 / 20 / 100) | 100.0 % | 74.0 % |
+| `acpS2v3_refLabels_seed42_vel05` | `model_9000.pt` | **74.0 %** (62 / 95 / 17 / 100) | 99.0 % | 81.6 % |
+
+Planner targets now outperform reference targets on the 3 robot-hindsight runs (`79.1-81.1 %` vs `73.5-77.0 %`); ready to move to stage 3 (`ACP_STAGE3_PLAN.md`).
+
 ## Infrastructure
 
 - gthintel cluster via cardbot; runs in `humix-docker` containers launched by `~/workspace/isaacSim/il_run.sh`,
