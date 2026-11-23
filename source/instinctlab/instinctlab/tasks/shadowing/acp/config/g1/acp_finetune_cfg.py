@@ -29,7 +29,7 @@ import instinctlab.envs.mdp as instinct_mdp
 import instinctlab.terrains as terrain_gen
 from instinctlab.assets.unitree_g1 import G1_29DOF_POLICY_JOINT_ORDER_V1
 from instinctlab.managers import MultiRewardCfg
-from instinctlab.tasks.shadowing.acp import contact_schedule, goal_reaching, planner_handoff
+from instinctlab.tasks.shadowing.acp import contact_schedule, goal_reaching, planner_handoff, procedural_terrains
 from instinctlab.tasks.shadowing.supermimic.config.g1.supermimic_rewards_cfg import (
     PAPER_HEIGHT_THRESHOLD,
     PAPER_TILT_THRESHOLD,
@@ -39,75 +39,132 @@ from instinctlab.utils.config import set_cfg_joint_order
 from .acp_planner_cfg import ACPPlannerObservationsCfg, ACPPlannerRewardsCfg, G1ACPPlannerEnvCfg
 from .acp_tracker_cfg import ACPCommandCfg, CONTACT_BODIES
 
-NUM_PROCEDURAL_TYPES = 6
+NUM_PROCEDURAL_TYPES = 10
 NUM_TERRAIN_LEVELS = 10
 FOOT_BODIES = ["left_ankle_roll_link", "right_ankle_roll_link"]
 
 
 def _procedural_sub_terrains() -> dict:
-    """K = 6 lightweight mesh/coarse-hf procedural terrain types bounded by dataset difficulty (D2, D3).
+    """K = 10 directional trimesh procedural terrains covering ACP's Stage-3 groups (L1013-1043).
 
-    Uses exact trimesh generators (stairs, boxes, gaps, random grid) and coarse-scale heightfields
-    (stepping stones, slope) so the combined 202 x 8 scene stays well under 1M triangles for PhysX BV4 cooking.
+    Every tile spawns at ``x_local = -2.2`` m facing ``+x`` and samples ``"target"`` flat patches
+    strictly on the far-side landing platform beyond the obstacle. ``box_ascent``, ``box_descent``,
+    and ``box_up_down`` scale up to **1.0 m** high platforms for arms+legs whole-body climbing.
     """
     prop = 1.0 / (2 + NUM_PROCEDURAL_TYPES)
-    default_target = {
-        "target": FlatPatchSamplingCfg(num_patches=16, patch_radius=[0.10, 0.20], max_height_diff=0.05),
-    }
-    return {
-        "pyramid_stairs": isaac_terrains.MeshPyramidStairsTerrainCfg(
-            proportion=prop,
-            step_height_range=(0.05, 0.25),
-            step_width=0.35,
-            platform_width=2.5,
-            border_width=1.0,
-            flat_patch_sampling=default_target,
-        ),
-        "pyramid_stairs_inv": isaac_terrains.MeshInvertedPyramidStairsTerrainCfg(
-            proportion=prop,
-            step_height_range=(0.05, 0.25),
-            step_width=0.35,
-            platform_width=2.5,
-            border_width=1.0,
-            flat_patch_sampling=default_target,
-        ),
-        "mesh_boxes": isaac_terrains.MeshBoxTerrainCfg(
-            proportion=prop,
-            box_height_range=(0.1, 0.6),
-            platform_width=3.0,
-            double_box=False,
-            flat_patch_sampling=default_target,
-        ),
-        "square_gaps": isaac_terrains.MeshGapTerrainCfg(
-            proportion=prop,
-            gap_width_range=(0.1, 0.6),
-            platform_width=2.5,
-            flat_patch_sampling=default_target,
-        ),
-        "stepping_stones": isaac_terrains.HfSteppingStonesTerrainCfg(
-            proportion=prop,
-            horizontal_scale=0.25,
-            stone_distance_range=(0.25, 0.5),
-            stone_width_range=(0.5, 0.75),
-            stone_height_max=0.05,
-            holes_depth=-0.5,
-            platform_width=2.5,
-            border_width=1.0,
-            flat_patch_sampling={
-                "target": FlatPatchSamplingCfg(num_patches=16, patch_radius=[0.10, 0.15], max_height_diff=0.08),
-            },
-        ),
-        "perlin_slope": isaac_terrains.HfPyramidSlopedTerrainCfg(
-            proportion=prop,
-            horizontal_scale=0.5,
-            slope_range=(0.0, 0.35),
-            platform_width=2.5,
-            border_width=1.0,
-            flat_patch_sampling={
-                "target": FlatPatchSamplingCfg(num_patches=16, patch_radius=[0.10, 0.20], max_height_diff=0.10),
-            },
+    far_landing = {
+        "target": FlatPatchSamplingCfg(
+            num_patches=12,
+            patch_radius=[0.10, 0.20],
+            max_height_diff=0.05,
+            x_range=(1.8, 4.2),
+            y_range=(-1.8, 1.8),
         ),
     }
+    walled_landing = {
+        "target": FlatPatchSamplingCfg(
+            num_patches=12,
+            patch_radius=[0.10, 0.20],
+            max_height_diff=0.05,
+            x_range=(1.8, 4.2),
+            y_range=(-0.6, 0.6),
+        ),
+    }
+    box_landing = {
+        "target": FlatPatchSamplingCfg(
+            num_patches=12,
+            patch_radius=[0.10, 0.20],
+            max_height_diff=0.05,
+            x_range=(0.4, 3.0),
+            y_range=(-1.8, 1.8),
+        ),
+    }
+    sub_terrains = {
+        # Dense foot
+        "stairs_up": procedural_terrains.DirectionalStairsTerrainCfg(
+            proportion=prop,
+            terrain_name="stairs_up",
+            step_height_range=(0.05, 0.25),
+            step_width=0.35,
+            num_steps=7,
+            descending=False,
+            flat_patch_sampling=far_landing,
+        ),
+        "stairs_down": procedural_terrains.DirectionalStairsTerrainCfg(
+            proportion=prop,
+            terrain_name="stairs_down",
+            step_height_range=(0.05, 0.25),
+            step_width=0.35,
+            num_steps=7,
+            descending=True,
+            flat_patch_sampling=far_landing,
+        ),
+        "walled_stairs": procedural_terrains.DirectionalStairsTerrainCfg(
+            proportion=prop,
+            terrain_name="walled_stairs",
+            step_height_range=(0.05, 0.25),
+            step_width=0.35,
+            num_steps=7,
+            descending=False,
+            walled=True,
+            corridor_width=2.0,
+            flat_patch_sampling=walled_landing,
+        ),
+        "slope_rough": procedural_terrains.DirectionalSlopeTerrainCfg(
+            proportion=prop,
+            terrain_name="slope_rough",
+            slope_range=(0.04, 0.35),
+            roughness_range=(0.0, 0.04),
+            flat_patch_sampling=far_landing,
+        ),
+        # Dense whole-body (up to 1.0 m high platforms for arms+legs climbing)
+        "box_ascent": procedural_terrains.HighPlatformTerrainCfg(
+            proportion=prop,
+            terrain_name="box_ascent",
+            height_range=(0.15, 1.00),
+            mode="ascent",
+            flat_patch_sampling=box_landing,
+        ),
+        "box_descent": procedural_terrains.HighPlatformTerrainCfg(
+            proportion=prop,
+            terrain_name="box_descent",
+            height_range=(0.15, 1.00),
+            mode="descent",
+            flat_patch_sampling=box_landing,
+        ),
+        "box_up_down": procedural_terrains.HighPlatformTerrainCfg(
+            proportion=prop,
+            terrain_name="box_up_down",
+            height_range=(0.15, 1.00),
+            mode="up_down",
+            box_length=2.0,
+            flat_patch_sampling=far_landing,
+        ),
+        # Sparse foot (exact trimesh)
+        "gaps": procedural_terrains.DirectionalGapTerrainCfg(
+            proportion=prop,
+            terrain_name="gaps",
+            gap_width_range=(0.15, 0.70),
+            gap_depth=1.0,
+            flat_patch_sampling=box_landing,
+        ),
+        "double_stones": procedural_terrains.DoubleStonesTerrainCfg(
+            proportion=prop,
+            terrain_name="double_stones",
+            stone_gap_range=(0.12, 0.42),
+            stone_size_range=(0.35, 0.55),
+            flat_patch_sampling=far_landing,
+        ),
+        "beam_pallets": procedural_terrains.BeamAndPalletsTerrainCfg(
+            proportion=prop,
+            terrain_name="beam_pallets",
+            beam_width_range=(0.25, 0.60),
+            slat_depth_range=(0.16, 0.30),
+            slat_gap_range=(0.10, 0.28),
+            flat_patch_sampling=far_landing,
+        ),
+    }
+    return sub_terrains
 
 
 @configclass
@@ -371,7 +428,7 @@ class G1ACPFinetuneEnvCfg(G1ACPPlannerEnvCfg):
         generator.num_cols = 2 + NUM_PROCEDURAL_TYPES
         generator.seed = 42
         generator.use_cache = True
-        generator.cache_dir = "/home/leo/.cache/instinctlab/acp_stage3_terrain"
+        generator.cache_dir = "/home/leo/.cache/instinctlab/acp_stage3_terrain_v2"
 
         # G1ACPPlannerEnvCfg.__post_init__ injects vel_scale at top-level of base_pos_too_far.params;
         # our wrapped term already carries vel_scale=0.5 inside func_params.

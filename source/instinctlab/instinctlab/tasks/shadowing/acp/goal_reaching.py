@@ -72,15 +72,20 @@ def for_env_type(
 
 DEFAULT_TERRAIN_MASKS: dict[str, dict[str, float]] = {
     # foot-dominant terrains: masks on; stairs cap v_max at 0.8 m/s
+    "stairs_up": {"T_ori": 1.0, "T_st": 1.0, "T_sl": 1.0, "T_omega": 1.0, "v_max": 0.8},
+    "stairs_down": {"T_ori": 1.0, "T_st": 1.0, "T_sl": 1.0, "T_omega": 1.0, "v_max": 0.8},
+    "walled_stairs": {"T_ori": 1.0, "T_st": 1.0, "T_sl": 1.0, "T_omega": 1.0, "v_max": 0.8},
+    "slope_rough": {"T_ori": 1.0, "T_st": 1.0, "T_sl": 1.0, "T_omega": 1.0, "v_max": 2.0},
+    "gaps": {"T_ori": 1.0, "T_st": 1.0, "T_sl": 1.0, "T_omega": 1.0, "v_max": 2.0},
+    "double_stones": {"T_ori": 1.0, "T_st": 1.0, "T_sl": 1.0, "T_omega": 1.0, "v_max": 2.0},
+    "beam_pallets": {"T_ori": 1.0, "T_st": 1.0, "T_sl": 1.0, "T_omega": 1.0, "v_max": 2.0},
+    # whole-body high-platform climbing terrains (up to 1.0 m): masks off
+    "box_ascent": {"T_ori": 0.0, "T_st": 0.0, "T_sl": 0.0, "T_omega": 0.0, "v_max": 2.0},
+    "box_descent": {"T_ori": 0.0, "T_st": 0.0, "T_sl": 0.0, "T_omega": 0.0, "v_max": 2.0},
+    "box_up_down": {"T_ori": 0.0, "T_st": 0.0, "T_sl": 0.0, "T_omega": 0.0, "v_max": 2.0},
+    # legacy names kept for unit tests
     "pyramid_stairs": {"T_ori": 1.0, "T_st": 1.0, "T_sl": 1.0, "T_omega": 1.0, "v_max": 0.8},
-    "pyramid_stairs_inv": {"T_ori": 1.0, "T_st": 1.0, "T_sl": 1.0, "T_omega": 1.0, "v_max": 0.8},
-    "square_gaps": {"T_ori": 1.0, "T_st": 1.0, "T_sl": 1.0, "T_omega": 1.0, "v_max": 2.0},
-    "stepping_stones": {"T_ori": 1.0, "T_st": 1.0, "T_sl": 1.0, "T_omega": 1.0, "v_max": 2.0},
-    "perlin_rough": {"T_ori": 1.0, "T_st": 1.0, "T_sl": 1.0, "T_omega": 1.0, "v_max": 2.0},
     "perlin_slope": {"T_ori": 1.0, "T_st": 1.0, "T_sl": 1.0, "T_omega": 1.0, "v_max": 2.0},
-    # box/climb terrains: masks off
-    "mesh_boxes": {"T_ori": 0.0, "T_st": 0.0, "T_sl": 0.0, "T_omega": 0.0, "v_max": 2.0},
-    "discrete_boxes": {"T_ori": 0.0, "T_st": 0.0, "T_sl": 0.0, "T_omega": 0.0, "v_max": 2.0},
 }
 
 
@@ -150,10 +155,14 @@ class GoalReachingCommand(CommandTerm):
                 scfg = sub_cfgs[col]
                 if not isinstance(scfg, MotionMatchedTerrainCfg):
                     proc_cols.append(col)
-                    name = getattr(scfg, "sub_terrain_name", None)
-                    if name is None:
+                    name = getattr(scfg, "terrain_name", "") or getattr(scfg, "sub_terrain_name", None)
+                    if not name:
                         # match by type against generator sub_terrains
-                        matched = [k for k, v in self.terrain.cfg.terrain_generator.sub_terrains.items() if type(v) is type(scfg)]
+                        matched = [
+                            k
+                            for k, v in self.terrain.cfg.terrain_generator.sub_terrains.items()
+                            if type(v) is type(scfg)
+                        ]
                         name = matched[0] if matched else f"proc_{len(proc_names)}"
                     proc_names.append(name)
         else:
@@ -339,8 +348,8 @@ class GoalReachingCommandCfg(CommandTermCfg):
     """Default standing base height of the torso-rooted G1 added to the target patch z."""
     goal_radius: float = 0.5
     """ACP's r = 0.5 m for goal-reaching commands."""
-    goal_dist_range: tuple[float, float] = (2.0, 5.0)
-    """Horizontal distance range from spawn to target patch (D4)."""
+    goal_dist_range: tuple[float, float] = (2.0, 6.5)
+    """Horizontal distance range from spawn to far-side target patch (D4)."""
     success_radius: float = 0.5
     z_tolerance: float = 0.1
     cut_radius: float = 0.2
@@ -450,13 +459,16 @@ def goal_out_of_bounds(
     margin: float = 0.25,
     min_z_offset: float = -3.0,
 ) -> torch.Tensor:
-    """Goal-env failure: robot base leaves its assigned tile bounds or falls below tile floor (D6)."""
+    """Goal-env failure: robot base leaves its assigned course corridor or falls below tile floor (D6)."""
     cmd: GoalReachingCommand = env.command_manager.get_term(command_name)
     pos_w = env.scene[asset_cfg.name].data.root_pos_w.torch
-    rel = (pos_w[:, :2] - cmd.tile_origin_w[:, :2]).abs()
+    # Center bounds on midpoint of (spawn, goal) so directional tiles whose origin is offset in -x work cleanly
+    center_xy = 0.5 * (cmd.spawn_pos_w[:, :2] + cmd.goal_pos_w[:, :2])
+    rel = (pos_w[:, :2] - center_xy).abs()
     half_x = 0.5 * cmd.tile_size[0] - margin
     half_y = 0.5 * cmd.tile_size[1] - margin
-    out = (rel[:, 0] > half_x) | (rel[:, 1] > half_y) | (pos_w[:, 2] < cmd.tile_origin_w[:, 2] + min_z_offset)
+    min_floor_z = torch.minimum(cmd.spawn_pos_w[:, 2], cmd.goal_pos_w[:, 2] - cmd.cfg.default_base_height)
+    out = (rel[:, 0] > half_x) | (rel[:, 1] > half_y) | (pos_w[:, 2] < min_floor_z + min_z_offset)
     return out & is_goal_env(env)
 
 

@@ -249,9 +249,9 @@ class FinetuneAlgorithmCfg(V2PlannerAlgorithmCfg):
     }
     # D13: mixin writes fresh p_hat directly into critic_goal's planned_contacts slot
     planner_critic_targets = [("critic_goal", ("planned_contacts",))]
-    # D8: 10 * K = 60 partitions x 3000 samples with quality eviction
+    # D8: 10 * K = 100 partitions x 3000 samples with quality eviction (K = 10 directional terrains)
     planner_goal_replay_kwargs = {
-        "num_partitions": 60,
+        "num_partitions": 100,
         "capacity_per_partition": 3000,
         "eviction": "quality",
     }

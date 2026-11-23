@@ -197,3 +197,22 @@ def test_l7_labeler_dual_buffer_cut_and_quality():
     # Env 1 quality = -(5 steps * 2.0 work) / max(4.0, 0.5) = -2.5
     goal_q = samples["quality"][samples["buffer_id"] == 1]
     torch.testing.assert_close(goal_q, torch.full((5,), -2.5))
+
+
+def test_l2_procedural_terrains_directional_and_1m_high_platform():
+    import trimesh
+    from instinctlab.tasks.shadowing.acp.config.g1.acp_finetune_cfg import _procedural_sub_terrains
+
+    subs = _procedural_sub_terrains()
+    assert len(subs) == 10
+    for name, cfg in subs.items():
+        cfg.size = (14.0, 12.0)
+        assert cfg.terrain_name == name
+        for diff in (0.0, 1.0):
+            meshes, origin = cfg.function(diff, cfg)
+            merged = trimesh.util.concatenate(meshes)
+            assert len(merged.faces) < 500, f"{name} has too many faces: {len(merged.faces)}"
+            assert origin.shape == (3,)
+            assert abs(origin[0] - (7.0 - 2.2)) < 1e-6  # x_local = -2.2 m start platform
+            if name in ("box_ascent", "box_descent", "box_up_down") and diff == 1.0:
+                assert merged.bounds[1, 2] == pytest.approx(1.0, abs=1e-4)
