@@ -37,9 +37,9 @@ from instinctlab.tasks.shadowing.supermimic.config.g1.supermimic_rewards_cfg imp
 from instinctlab.utils.config import set_cfg_joint_order
 
 from .acp_planner_cfg import ACPPlannerObservationsCfg, ACPPlannerRewardsCfg, G1ACPPlannerEnvCfg
-from .acp_tracker_cfg import ACPCommandCfg, CONTACT_BODIES
+from .acp_tracker_cfg import ACPCommandCfg, CONTACT_BODIES, METADATA_YAML, MOTION_FOLDER
 
-NUM_PROCEDURAL_TYPES = 10
+NUM_PROCEDURAL_TYPES = 12
 NUM_TERRAIN_LEVELS = 10
 FOOT_BODIES = ["left_ankle_roll_link", "right_ankle_roll_link"]
 
@@ -79,7 +79,33 @@ def _procedural_sub_terrains() -> dict:
             y_range=(-1.8, 1.8),
         ),
     }
+    dataset_landing = {
+        "target": FlatPatchSamplingCfg(
+            num_patches=12,
+            patch_radius=[0.10, 0.20],
+            max_height_diff=0.05,
+            x_range=(0.5, 4.5),
+            y_range=(-3.5, 3.5),
+        ),
+    }
     sub_terrains = {
+        # Real training-dataset meshes used as pure goal-reaching RL terrains (no reference motion)
+        "dataset_steps": procedural_terrains.DatasetGoalTerrainCfg(
+            proportion=prop,
+            terrain_name="dataset_steps",
+            path=MOTION_FOLDER,
+            metadata_yaml=METADATA_YAML,
+            categories=["php-motions-low-step-v1", "php-motions-high-step-v1"],
+            flat_patch_sampling=dataset_landing,
+        ),
+        "dataset_climbs": procedural_terrains.DatasetGoalTerrainCfg(
+            proportion=prop,
+            terrain_name="dataset_climbs",
+            path=MOTION_FOLDER,
+            metadata_yaml=METADATA_YAML,
+            categories=["php-motions-low-climb-76-v1", "php-motions-high-climb-76-v1"],
+            flat_patch_sampling=dataset_landing,
+        ),
         # Dense foot
         "stairs_up": procedural_terrains.DirectionalStairsTerrainCfg(
             proportion=prop,
@@ -428,7 +454,7 @@ class G1ACPFinetuneEnvCfg(G1ACPPlannerEnvCfg):
         generator.num_cols = 2 + NUM_PROCEDURAL_TYPES
         generator.seed = 42
         generator.use_cache = True
-        generator.cache_dir = "/home/leo/.cache/instinctlab/acp_stage3_terrain_v2"
+        generator.cache_dir = "/home/leo/.cache/instinctlab/acp_stage3_terrain_v3"
 
         # G1ACPPlannerEnvCfg.__post_init__ injects vel_scale at top-level of base_pos_too_far.params;
         # our wrapped term already carries vel_scale=0.5 inside func_params.

@@ -18,12 +18,16 @@ All generators use exact ``trimesh.creation.box`` primitives (~10–80 triangles
 
 from __future__ import annotations
 
+import os
 from dataclasses import MISSING
 import numpy as np
 import trimesh
+import yaml
 
 from isaaclab.terrains import SubTerrainBaseCfg
 from isaaclab.utils.configclass import configclass
+
+from instinctlab.terrains.trimesh.utils import crop_terrain_mesh_aabb
 
 
 def _box(x0: float, x1: float, y0: float, y1: float, z0: float, z1: float) -> trimesh.Trimesh:
@@ -311,3 +315,92 @@ class BeamAndPalletsTerrainCfg(SubTerrainBaseCfg):
     slat_depth_range: tuple[float, float] = (0.16, 0.30)
     slat_gap_range: tuple[float, float] = (0.10, 0.28)
     pit_depth: float = 0.8
+
+
+# -- 11 & 12: Dataset-Mesh Goal-Reaching Terrains (from ACP-TerrainContacts_G1) -----------------
+
+_DATASET_INDEX_CACHE: dict[tuple[str, tuple[str, ...]], list[tuple[str, str]]] = {}
+
+
+def _load_dataset_pairs(
+    path: str, metadata_yaml: str, categories: tuple[str, ...]
+) -> list[tuple[str, str]]:
+    """Return ``[(terrain_abspath, motion_abspath), ...]`` ordered by ``categories`` (easy -> hard)."""
+    key = (os.path.expanduser(metadata_yaml), categories)
+    if key in _DATASET_INDEX_CACHE:
+        return _DATASET_INDEX_CACHE[key]
+    dataset_path = os.path.expanduser(path)
+    with open(os.path.expanduser(metadata_yaml)) as f:
+        data = yaml.safe_load(f)
+    tid_to_tfile = {t["terrain_id"]: t["terrain_file"] for t in data["terrains"]}
+    grouped: dict[str, list[tuple[str, str]]] = {c: [] for c in categories}
+    for m in data["motion_files"]:
+        mfile = m["motion_file"]
+        tfile = tid_to_tfile[m["terrain_id"]]
+        for c in categories:
+            if c in mfile:
+                grouped[c].append((os.path.join(dataset_path, tfile), os.path.join(dataset_path, mfile)))
+                break
+    pairs = [pair for c in categories for pair in grouped[c]]
+    if not pairs:
+        raise ValueError(f"No dataset terrains matched categories {categories} in {metadata_yaml}")
+    _DATASET_INDEX_CACHE[key] = pairs
+    return pairs
+
+
+def dataset_goal_terrain(
+    difficulty: float, cfg: DatasetGoalTerrainCfg
+) -> tuple[list[trimesh.Trimesh], np.ndarray]:
+    """Load a real training-dataset terrain mesh as a goal-reaching RL terrain (no reference motion).
+
+    Subclasses ``SubTerrainBaseCfg`` (NOT ``MotionMatchedTerrainCfg``) so ``TerrainMotion.match_scene``
+    ignores it while ``GoalReachingCommand`` uses it as a procedural goal-reaching column.
+    Spawns the robot at the paired clip's starting xy on the ground; ``FlatPatchSamplingCfg`` places
+    goals on the far side / top of the real dataset obstacle.
+    """
+    pairs = _load_dataset_pairs(cfg.path, cfg.metadata_yaml, tuple(cfg.categories))
+    idx = int(np.clip(difficulty * len(pairs), 0, len(pairs) - 1))
+    terrain_abspath, motion_abspath = pairs[idx]
+
+    terrain_mesh = trimesh.load(terrain_abspath, force="mesh")
+    terrain_mesh = crop_terrain_mesh_aabb(
+        terrain_mesh,
+        x_max=cfg.size[0] / 2,
+        x_min=-cfg.size[0] / 2,
+        y_max=cfg.size[1] / 2,
+        y_min=-cfg.size[1] / 2,
+    )
+    border_verts = terrain_mesh.vertices[
+        np.logical_or(
+            np.abs(terrain_mesh.vertices[:, 0]) > (cfg.size[0] / 2 - 0.05),
+            np.abs(terrain_mesh.vertices[:, 1]) > (cfg.size[1] / 2 - 0.05),
+        )
+    ]
+    border_height = float(np.mean(border_verts[:, 2])) if len(border_verts) > 0 else 0.0
+    if np.isnan(border_height):
+        border_height = 0.0
+
+    move = np.eye(4)
+    move[:2, 3] = np.array(cfg.size) / 2.0
+    move[2, 3] = -border_height
+    terrain_mesh.apply_transform(move)
+
+    # Spawn at the paired clip's ground-level start xy (shifted to tile coords [0, Lx] x [0, Ly])
+    start_xy = np.array([-2.2, 0.0], dtype=np.float64)
+    if os.path.exists(motion_abspath):
+        with np.load(motion_abspath) as npz:
+            if "base_pos_w" in npz and len(npz["base_pos_w"]) > 0:
+                start_xy = np.asarray(npz["base_pos_w"][0, :2], dtype=np.float64)
+    start_xy[0] = np.clip(start_xy[0], -cfg.size[0] / 2 + 1.0, cfg.size[0] / 2 - 1.0)
+    start_xy[1] = np.clip(start_xy[1], -cfg.size[1] / 2 + 1.0, cfg.size[1] / 2 - 1.0)
+    origin = np.array([start_xy[0] + cfg.size[0] / 2.0, start_xy[1] + cfg.size[1] / 2.0, -border_height], dtype=np.float64)
+    return [terrain_mesh], origin
+
+
+@configclass
+class DatasetGoalTerrainCfg(SubTerrainBaseCfg):
+    function = dataset_goal_terrain
+    terrain_name: str = "dataset_climbs"
+    path: str = MISSING
+    metadata_yaml: str = MISSING
+    categories: list[str] = MISSING

@@ -28,14 +28,27 @@ parser.add_argument("--steps_per_terrain", type=int, default=250)
 parser.add_argument(
     "--terrains",
     nargs="+",
-    default=["stairs_up", "stairs_down", "walled_stairs", "box_ascent", "box_descent", "box_up_down", "gaps", "double_stones", "beam_pallets", "slope_rough"],
+    default=[
+        "dataset_steps",
+        "dataset_climbs",
+        "stairs_up",
+        "stairs_down",
+        "walled_stairs",
+        "box_ascent",
+        "box_descent",
+        "box_up_down",
+        "gaps",
+        "double_stones",
+        "beam_pallets",
+        "slope_rough",
+    ],
 )
 parser.add_argument("--out", type=str, required=True)
 args_cli, overrides = cli.parse_cli(parser, require_run_name=False)
 
 
 def main():
-    num_envs = 10
+    num_envs = 12
     env_cfg, agent_cfg = cli.resolve_play_cfg(args_cli.task, overrides)
     cli.update_instinct_rl_cfg(agent_cfg, args_cli)
     env_cfg.scene.num_envs = num_envs

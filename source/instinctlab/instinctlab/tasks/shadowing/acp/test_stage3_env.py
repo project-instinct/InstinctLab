@@ -200,19 +200,24 @@ def test_l7_labeler_dual_buffer_cut_and_quality():
 
 
 def test_l2_procedural_terrains_directional_and_1m_high_platform():
+    import os
     import trimesh
     from instinctlab.tasks.shadowing.acp.config.g1.acp_finetune_cfg import _procedural_sub_terrains
 
     subs = _procedural_sub_terrains()
-    assert len(subs) == 10
+    assert len(subs) == 12
+    assert "dataset_steps" in subs and "dataset_climbs" in subs
     for name, cfg in subs.items():
         cfg.size = (14.0, 12.0)
         assert cfg.terrain_name == name
+        if name.startswith("dataset_") and not os.path.exists(os.path.expanduser(cfg.metadata_yaml)):
+            continue
         for diff in (0.0, 1.0):
             meshes, origin = cfg.function(diff, cfg)
             merged = trimesh.util.concatenate(meshes)
             assert len(merged.faces) < 500, f"{name} has too many faces: {len(merged.faces)}"
             assert origin.shape == (3,)
-            assert abs(origin[0] - (7.0 - 2.2)) < 1e-6  # x_local = -2.2 m start platform
+            if not name.startswith("dataset_"):
+                assert abs(origin[0] - (7.0 - 2.2)) < 1e-6  # x_local = -2.2 m start platform
             if name in ("box_ascent", "box_descent", "box_up_down") and diff == 1.0:
                 assert merged.bounds[1, 2] == pytest.approx(1.0, abs=1e-4)
