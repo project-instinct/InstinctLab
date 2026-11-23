@@ -311,7 +311,33 @@ Zero-shot baseline (`scripts/acp/eval_stage3.py`, 256 envs, level 0, `noActOcc5@
 - Goal envs overall: **36.9 %** (86/233) — `perlin_slope` 100.0 %, `square_gaps` 95.5 %, `pyramid_stairs` 95.2 %, `mesh_boxes` 90.9 %, `pyramid_stairs_inv` 6.1 %, `stepping_stones` 1.0 %.
 - Reference envs (early-stopped at 200 goal episodes): 60.3 % (85/141).
 
-Launched 10,000-iteration 4-GPU `torchrun` Stage-3 run `acpS3_noActOcc5_4gpu_seed42` (2,100 envs/GPU × 4 = 8,400 envs, ~6.95 s/iter) on `gthintel201` (`manip_0:0,1,2,3`, reservation `r1973`, tmux `acp_s3`, guarded by `acp_window_guard.sh 1973`).
+Launched 10,000-iteration 4-GPU `torchrun` Stage-3 run `acpS3_noActOcc5_4gpu_seed42` (2,100 envs/GPU × 4 = 8,400 envs, ~6.4 s/iter) on `gthintel201` (`manip_0:0,1,2,3`, reservation `r1973`, reached iter 6,610 before window guard stopped cleanly; resumed from `model_6000.pt` to 10,000 under `r2053`).
+
+### Stage-3 `model_6000.pt` evaluation (2026-11-22, `eval_stage3.py`, 256 envs, 250 goal eps each)
+
+| Terrain Type | Zero-Shot L0 (`noActOcc5@10k`) | Stage-3 `@6k` L0 | Stage-3 `@6k` L5 | Stage-3 `@6k` Uniform L0–L9 |
+|---|---:|---:|---:|---:|
+| `mesh_boxes` | 90.9 % | **97.7 %** (0.10 m) | **100.0 %** (0.04 m) | **100.0 %** (0.05 m) |
+| `perlin_slope` | 100.0 % | **100.0 %** (0.04 m) | **100.0 %** (0.02 m) | **97.6 %** (0.13 m) |
+| `pyramid_stairs` | 95.2 % | **95.2 %** (0.04 m) | **92.9 %** (0.04 m) | **93.0 %** (0.05 m) |
+| `pyramid_stairs_inv` | 6.1 % | **73.3 %** (0.58 m) | **95.2 %** (0.05 m) | **76.2 %** (0.31 m) |
+| `square_gaps` | 95.5 % | **100.0 %** (0.05 m) | **90.9 %** (0.32 m) | **100.0 %** (0.04 m) |
+| `stepping_stones` | 1.0 % | 5.4 % (2.40 m) | 5.4 % (2.34 m) | **9.3 %** (2.67 m) |
+| **Goal overall** | **36.9 %** | **75.1 %** (205/273) | **77.0 %** (208/270) | **76.6 %** (206/269) |
+| **Reference envs (phase 0.0)** | 60.3 %* | **91.0 %** (284/312) | **91.3 %** (284/311) | **89.8 %** (281/313) |
+
+### Stage-3 `model_10000.pt` evaluation (2026-11-22, `eval_stage3.py`, 256 envs, 250 goal eps each)
+
+| Terrain Type | Stage-3 `@10k` L0 | Stage-3 `@10k` L5 | Stage-3 `@10k` Uniform L0–L9 |
+|---|---:|---:|---:|
+| `mesh_boxes` | **100.0 %** (0.05 m) | **97.7 %** (0.12 m) | **100.0 %** (0.04 m) |
+| `perlin_slope` | **100.0 %** (0.04 m) | **100.0 %** (0.02 m) | **97.6 %** (0.12 m) |
+| `pyramid_stairs` | **92.9 %** (0.05 m) | **90.5 %** (0.04 m) | **95.2 %** (0.05 m) |
+| `pyramid_stairs_inv` | **77.8 %** (0.27 m) | **85.7 %** (0.16 m) | **81.0 %** (0.32 m) |
+| `square_gaps` | **97.7 %** (0.11 m) | **95.5 %** (0.13 m) | **90.9 %** (0.29 m) |
+| `stepping_stones` | 5.5 % (1.97 m) | 5.7 % (2.90 m) | 5.7 % (2.69 m) |
+| **Goal overall** | **75.7 %** (206/272) | **76.4 %** (204/267) | **75.7 %** (202/267) |
+| **Reference envs (phase 0.0)** | **90.5 %** (286/316) | **84.3 %** (274/325) | **85.6 %** (279/326) |
 
 ## Infrastructure
 
