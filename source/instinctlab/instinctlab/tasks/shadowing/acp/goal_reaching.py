@@ -344,8 +344,10 @@ class GoalReachingCommandCfg(CommandTermCfg):
     resampling_time_range: tuple[float, float] = (1e9, 1e9)
     num_levels: int = 10
     max_init_level: int = 0
-    default_base_height: float = 0.78
-    """Default standing base height of the torso-rooted G1 added to the target patch z."""
+    default_base_height: float = 0.84
+    """Default standing torso_link height of the torso-rooted G1 (init_state.pos[2] = 0.82, mocap ~0.84 m)."""
+    spawn_height_clearance: float = 0.04
+    """Extra vertical clearance at reset so feet always spawn cleanly above the terrain surface."""
     goal_radius: float = 0.5
     """ACP's r = 0.5 m for goal-reaching commands."""
     goal_dist_range: tuple[float, float] = (2.0, 6.5)
@@ -429,7 +431,7 @@ def reset_goal_envs(
     root_state = robot.data.default_root_state.torch[goal_ids].clone()
     root_state[:, :3] = cmd.spawn_pos_w[goal_ids]
     dz = pos_z_range[0] + torch.rand(len(goal_ids), device=env.device) * (pos_z_range[1] - pos_z_range[0])
-    root_state[:, 2] += cmd.cfg.default_base_height + dz
+    root_state[:, 2] += cmd.cfg.default_base_height + cmd.cfg.spawn_height_clearance + dz
     yaw = cmd.goal_heading[goal_ids] + (
         yaw_range[0] + torch.rand(len(goal_ids), device=env.device) * (yaw_range[1] - yaw_range[0])
     )
