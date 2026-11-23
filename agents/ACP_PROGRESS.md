@@ -339,6 +339,17 @@ Launched 10,000-iteration 4-GPU `torchrun` Stage-3 run `acpS3_noActOcc5_4gpu_see
 | **Goal overall** | **75.7 %** (206/272) | **76.4 %** (204/267) | **75.7 %** (202/267) |
 | **Reference envs (phase 0.0)** | **90.5 %** (286/316) | **84.3 %** (274/325) | **85.6 %** (279/326) |
 
+### Stage-3 v3: redesigned directional terrains + 1.0 m high platforms + dataset-mesh goal terrains (2026-11-23)
+
+Replaced the initial 6 pyramid/ring Isaac Lab generators with 12 directional trimesh goal-reaching terrains in `procedural_terrains.py` (`c9cf0cb`, `32f3f65`):
+- **Dataset-mesh goal-reaching terrains (no reference motion):** `dataset_steps` (116 PHP step `.stl` meshes) and `dataset_climbs` (80 PHP climb `.stl` meshes), spawning at each clip's ground start xy with far-side target patches.
+- **Dense foot:** `stairs_up`, `stairs_down`, `walled_stairs`, `slope_rough`.
+- **Dense whole-body (up to 1.0 m platforms):** `box_ascent`, `box_descent`, `box_up_down`.
+- **Sparse foot:** `gaps`, `double_stones`, `beam_pallets`.
+- Fixed torso-rooted G1 reset height (`default_base_height=0.84` + `spawn_height_clearance=0.04 m`) so feet spawn cleanly above the terrain surface.
+
+Launched 10,000-iteration 4-GPU `torchrun` run `acpS3v3_noActOcc5_4gpu_seed42` (8,400 envs, 120 goal replay partitions, from `noActOcc5@10k`) on `gthintel201` (`manip_0:4,5,6,7`, reservation `r2219`, 18 h window, tmux `acp_s3v3`, guarded by `acp_window_guard.sh 2219`).
+
 ## Infrastructure
 
 - gthintel cluster via cardbot; runs in `humix-docker` containers launched by `~/workspace/isaacSim/il_run.sh`,
