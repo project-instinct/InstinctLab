@@ -1,12 +1,13 @@
 """Contact schedule of the reference motion for ACP (Attention-based Contact Planning) trackers.
 
-The motion reference carries the schedule (``ContactMotionReferenceData`` filled by ``TerrainContactMotion``). This
+The motion reference carries the schedule (``ContactMotionReferenceData`` filled by ``ContactMotion`` or
+``TerrainContactMotion``). This
 command reads its current frame and provides, per contact body,
 
 - the next contact target: position of the next contact onset at or after the current frame (zero where there is
   none within the motion buffer's onset horizon), in the robot body-yaw frame,
 - whether the reference is in contact now,
-- a goal: the reference base pose a per-episode lookahead ahead (see ``TerrainContactMotionCfg``), as ACP's
+- a goal: the reference base pose a sampled lookahead ahead (see ``ContactMotionCfg``), as ACP's
   bounded horizontal direction plus the relative heading.
 
 Mirrored references are not supported (the manager does not mirror contact fields), so a manager with symmetric
@@ -76,7 +77,8 @@ class ContactScheduleCommand(CommandTerm):
 
     @property
     def target_valid(self) -> torch.Tensor:
-        return self._frame.next_contact_valid[:, 0]
+        """``(N, B)`` whether a next contact onset exists within the motion buffer's onset horizon."""
+        return self._frame.next_contact_onset_time[:, 0] >= 0.0
 
     @property
     def reference_contact(self) -> torch.Tensor:

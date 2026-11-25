@@ -1,6 +1,6 @@
 import numpy as np
 
-from instinctlab.motion_reference.motion_files.terrain_contact_motion import next_onset_index
+from instinctlab.motion_reference.motion_files.contact_motion import next_onset_index
 
 
 def test_next_onset_index():
