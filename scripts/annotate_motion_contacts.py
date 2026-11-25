@@ -45,7 +45,7 @@ DEFAULT_URDF = os.path.join(
     "resources",
     "unitree_g1",
     "urdf",
-    "g1_29dof_torsobase_simplified.urdf",
+    "g1_29dof_torsobase_popsicle.urdf",
 )
 # ACP's 9 contact bodies (ankles, knees, wrists, elbows, pelvis), named as in the simulated asset.
 DEFAULT_CONTACT_BODIES = [

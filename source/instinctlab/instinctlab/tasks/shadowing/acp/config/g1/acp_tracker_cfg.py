@@ -179,6 +179,69 @@ class ACPObservationsCfg:
 
 
 @configclass
+class ACPPaperObservationsCfg:
+    """Variant with the paper's stage-1 critic V_m and masked/rotated target and goal noise."""
+
+    @configclass
+    class PolicyObsCfg(ACPObservationsCfg.PolicyObsCfg):
+        contact_targets = ObsTermCfg(
+            func=mdp.generated_commands,
+            params={"command_name": "contact_schedule"},
+            # invalid targets are zero vectors and stay noise-free
+            noise=UniformNoiseCfg(func=contact_schedule.contact_target_noise, n_min=-0.1, n_max=0.1),
+        )
+        goal = ObsTermCfg(
+            func=contact_schedule.contact_schedule_goal,
+            params={"command_name": "contact_schedule"},
+            # direction and relative heading each rotated by U(-0.2, 0.2) rad (Supp. Table S2)
+            noise=UniformNoiseCfg(func=contact_schedule.goal_noise, n_min=-0.2, n_max=0.2),
+        )
+
+    @configclass
+    class CriticObsCfg(ObsGroupCfg):
+        """The paper's stage-1 critic V_m: current proprioception, the 17 x 11 scan, base linear velocity, and the
+        current reference frame (base velocities, joint positions and velocities, contact-body positions and contact
+        flags)."""
+
+        base_ang_vel = ObsTermCfg(func=mdp.base_ang_vel)
+        projected_gravity = ObsTermCfg(func=mdp.projected_gravity)
+        joint_pos = ObsTermCfg(func=mdp.joint_pos_rel)
+        joint_vel = ObsTermCfg(func=mdp.joint_vel_rel)
+        last_action = ObsTermCfg(func=mdp.last_action)
+        base_lin_vel = ObsTermCfg(func=mdp.base_lin_vel)
+        planner_height_scan = ObsTermCfg(
+            func=contact_schedule.scan_height_rel_base,
+            params={"sensor_cfg": SceneEntityCfg("height_scanner")},
+            clip=(-2.0, 2.0),
+        )
+        reference_base_velocity = ObsTermCfg(
+            func=contact_schedule.reference_base_velocity, params={"command_name": "contact_schedule"}
+        )
+        reference_joint_pos = ObsTermCfg(
+            func=contact_schedule.reference_joint_pos_rel, params={"command_name": "contact_schedule"}
+        )
+        reference_joint_vel = ObsTermCfg(
+            func=contact_schedule.reference_joint_vel, params={"command_name": "contact_schedule"}
+        )
+        reference_contact_pos = ObsTermCfg(
+            func=contact_schedule.reference_contact_body_pos, params={"command_name": "contact_schedule"}
+        )
+        reference_contacts = ObsTermCfg(
+            func=contact_schedule.reference_contacts, params={"command_name": "contact_schedule"}
+        )
+        # Not critic inputs: the perceptive parent's __post_init__ sets their bodies, then ours removes them.
+        link_pos = ObsTermCfg(func=instinct_mdp.link_pos_b, params={"asset_cfg": SceneEntityCfg("robot")})
+        link_rot = ObsTermCfg(func=instinct_mdp.link_tannorm_b, params={"asset_cfg": SceneEntityCfg("robot")})
+
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.concatenate_terms = False
+
+    policy: PolicyObsCfg = PolicyObsCfg()
+    critic: CriticObsCfg = CriticObsCfg()
+
+
+@configclass
 class ACPRewardsCfg:
     # reference tracking (paper Table 3 weights)
     base_position = RewTermCfg(func=instinct_mdp.base_position_imitation_gauss, weight=3.0, params={"std": 0.3})
@@ -223,6 +286,70 @@ class ACPRewardsCfg:
 @configclass
 class ACPRewardGroupsCfg(MultiRewardCfg):
     rewards = ACPRewardsCfg()
+
+
+@configclass
+class ACPPaperRewardsCfg:
+    """Stage-1 rewards of ACP Table 3 (weights and kernel scales); the regularizers act on all 29 joints of our G1."""
+
+    # reference tracking
+    base_pose = RewTermCfg(
+        func=contact_schedule.base_pose_gauss,
+        weight=3.0,
+        params={"command_name": "contact_schedule", "std_pos": 0.5, "std_rot": 1.0, "moving_speed_threshold": 0.1},
+    )
+    base_velocity = RewTermCfg(
+        func=contact_schedule.base_velocity_gauss,
+        weight=1.0,
+        params={"command_name": "contact_schedule", "std_lin": 1.0, "std_ang": 3.0},
+    )
+    joint_position = RewTermCfg(
+        func=instinct_mdp.joint_pos_imitation_gauss, weight=2.5, params={"std": 2.0, "combine_method": "prod"}
+    )
+    joint_velocity = RewTermCfg(
+        func=instinct_mdp.joint_vel_imitation_gauss, weight=0.5, params={"std": 10.0, "combine_method": "prod"}
+    )
+    # reference contacts
+    contact_label = RewTermCfg(
+        func=contact_schedule.contact_label_paper,
+        weight=5.0,
+        params={
+            "command_name": "contact_schedule",
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=CONTACT_BODIES, preserve_order=True),
+            "threshold": 1.0,
+        },
+    )
+    contact_pos_base = RewTermCfg(
+        func=contact_schedule.contact_link_pos_gauss_paper,
+        weight=2.0,
+        params={"command_name": "contact_schedule", "std": 1.0, "in_yaw_frame": True},
+    )
+    contact_pos_global = RewTermCfg(
+        func=contact_schedule.contact_link_pos_gauss_paper,
+        weight=1.0,
+        params={"command_name": "contact_schedule", "std": 1.0, "moving_speed_threshold": 0.1},
+    )
+    # regularization
+    action_rate_l2 = RewTermCfg(func=mdp.action_rate_l2, weight=-0.1)
+    action_acc_l2 = RewTermCfg(func=instinct_mdp.action_acc_l2, weight=-0.05)
+    joint_torques_l2 = RewTermCfg(func=mdp.joint_torques_l2, weight=-1e-5)
+    applied_torque_limits = RewTermCfg(func=mdp.applied_torque_limits, weight=-1e-3)
+    joint_pos_limits = RewTermCfg(func=mdp.joint_pos_limits, weight=-10.0)
+    joint_vel_limits = RewTermCfg(func=mdp.joint_vel_limits, weight=-1.0, params={"soft_ratio": 0.9})
+    # style
+    contact_acc = RewTermCfg(
+        func=instinct_mdp.body_lin_acc_norm_sum,
+        weight=-0.01,
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=CONTACT_BODIES, preserve_order=True),
+            "max_value": 1.0e4,
+        },
+    )
+
+
+@configclass
+class ACPPaperRewardGroupsCfg(MultiRewardCfg):
+    rewards = ACPPaperRewardsCfg()
 
 
 def _num_terrains(metadata_yaml: str) -> int:
@@ -290,6 +417,43 @@ class G1ACPTrackerEnvCfg(G1PerceptiveShadowingEnvCfg):
 
 
 @configclass
+class G1ACPTrackerPaperEnvCfg(G1ACPTrackerEnvCfg):
+    """Experiment variant: paper V_m critic, masked/rotated noise, and Table 3 rewards."""
+
+    observations: ACPPaperObservationsCfg = ACPPaperObservationsCfg()
+    rewards: ACPPaperRewardGroupsCfg = ACPPaperRewardGroupsCfg()
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.observations.critic.link_pos = None
+        self.observations.critic.link_rot = None
+
+
+@configclass
+class G1ACPTrackerBeyondSamplingEnvCfg(G1ACPTrackerEnvCfg):
+    """Experiment variant: BeyondMimic's adaptive start sampling over 1 s motion bins (the perceptive shadowing
+    task's) instead of CSI."""
+
+    curriculum: perceptive_cfg.CurriculumCfg = perceptive_cfg.CurriculumCfg()
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.bin_fail_counter_smoothing = perceptive_cfg.EventsCfg().bin_fail_counter_smoothing
+        motion = self.scene.motion_reference.motion_buffers["TerrainMotion"]
+        motion.motion_bin_length_s = 1.0
+        motion.env_starting_stub_sampling_strategy = "concat_motion_bins"
+
+
+@configclass
+class G1ACPTrackerPaperActionScaleEnvCfg(G1ACPTrackerEnvCfg):
+    """Experiment variant: the paper's uniform action scale 0.25 instead of BeyondMimic's per-joint scale."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.actions.joint_pos.scale = 0.25
+
+
+@configclass
 class G1ACPTrackerEnvCfg_PLAY(G1ACPTrackerEnvCfg):
     def __post_init__(self):
         super().__post_init__()
@@ -318,3 +482,10 @@ class G1ACPTrackerFootDropoutEnvCfg(G1ACPTrackerEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.commands.contact_schedule.target_dropout = FOOT_TARGET_DROPOUT
+
+
+@configclass
+class G1ACPTrackerPaperActionScaleEnvCfg_PLAY(G1ACPTrackerEnvCfg_PLAY):
+    def __post_init__(self):
+        super().__post_init__()
+        self.actions.joint_pos.scale = 0.25

@@ -1,12 +1,13 @@
 """Contact schedule of the reference motion for ACP (Attention-based Contact Planning) trackers.
 
-The motion reference carries the schedule (``ContactMotionReferenceData`` filled by ``TerrainContactMotion``). This
+The motion reference carries the schedule (``ContactMotionReferenceData`` filled by ``ContactMotion`` or
+``TerrainContactMotion``). This
 command reads its current frame and provides, per contact body,
 
 - the next contact target: position of the next contact onset at or after the current frame (zero where there is
   none within the motion buffer's onset horizon), in the robot body-yaw frame,
 - whether the reference is in contact now,
-- a goal: the reference base pose a per-episode lookahead ahead (see ``TerrainContactMotionCfg``), as ACP's
+- a goal: the reference base pose a sampled lookahead ahead (see ``ContactMotionCfg``), as ACP's
   bounded horizontal direction plus the relative heading.
 
 Mirrored references are not supported (the manager does not mirror contact fields), so a manager with symmetric
@@ -20,9 +21,13 @@ from collections.abc import Sequence
 from dataclasses import MISSING
 from typing import TYPE_CHECKING
 
+import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
 from isaaclab.managers import CommandTerm, CommandTermCfg, SceneEntityCfg
+from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
+from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.configclass import configclass
+from isaaclab.utils.noise import UniformNoiseCfg
 
 if TYPE_CHECKING:
     from isaaclab.assets import Articulation
@@ -77,7 +82,8 @@ class ContactScheduleCommand(CommandTerm):
 
     @property
     def target_valid(self) -> torch.Tensor:
-        return self._frame.next_contact_valid[:, 0]
+        """``(N, B)`` whether a next contact onset exists within the motion buffer's onset horizon."""
+        return self._frame.next_contact_onset_time[:, 0] >= 0.0
 
     @property
     def reference_contact(self) -> torch.Tensor:
@@ -130,6 +136,67 @@ class ContactScheduleCommand(CommandTerm):
             keep[:, ids] &= ~self._dropped
         self._target_b[:] = (target_b * keep.unsqueeze(-1)).reshape(self.num_envs, -1)
 
+    def _set_debug_vis_impl(self, debug_vis: bool):
+        if debug_vis:
+            if not hasattr(self, "_markers"):
+                self._markers = VisualizationMarkers(self.cfg.visualizer_cfg)
+            self._markers.set_visibility(True)
+        elif hasattr(self, "_markers"):
+            self._markers.set_visibility(False)
+
+    def _debug_vis_callback(self, event):
+        """Markers: an arrow from each robot contact body to its next contact target, the reference's contacting bodies
+        (on the reference robot, shifted by the manager's ``visualizing_robot_offset``) and, with
+        ``contact_sensor_name``, where the robot's contact bodies touch the terrain (the sensor's contact points, so it
+        must track contact points with the terrain as filter).
+
+        The arrows decode the targets from the computed observation term ``debug_vis_observation`` (group, term), i.e.
+        what the policy observes after noise, back to the world frame with the robot's root position and yaw."""
+        if not self.robot.is_initialized or not self._env.obs_buf:
+            return
+        group, term = self.cfg.debug_vis_observation
+        num_bodies = len(self.body_names)
+        target_b = self._env.obs_buf[group][term].reshape(self.num_envs, num_bodies, 3)
+        yaw_quat = math_utils.yaw_quat(self.robot.data.root_quat_w.torch).unsqueeze(1).expand(-1, num_bodies, -1)
+        target_w = self.robot.data.root_pos_w.torch.unsqueeze(1) + math_utils.quat_apply(yaw_quat, target_b)
+        link_pos = self.robot.data.body_pos_w.torch[:, self.robot_body_ids][self.target_valid]
+        arrow = target_w[self.target_valid] - link_pos
+        length = arrow.norm(dim=-1)
+        pitch = -torch.atan2(arrow[:, 2], arrow[:, :2].norm(dim=-1))
+        arrow_quat = math_utils.quat_from_euler_xyz(
+            torch.zeros_like(pitch), pitch, torch.atan2(arrow[:, 1], arrow[:, 0])
+        )
+        # arrow_x.usd spans x in [-0.25, 0.75] at unit scale: shift so the tail sits on the link and the tip on the target
+        arrow_pos = link_pos + 0.25 * arrow
+
+        offset = torch.as_tensor(self.motion_reference.cfg.visualizing_robot_offset, device=self.device)
+        reference_pos = self._frame.link_pos_w[:, 0, self.reference_link_ids] + offset
+        groups = [arrow_pos, reference_pos[self.reference_contact]]
+        if self.cfg.contact_sensor_name is not None:
+            sensor: ContactSensor = self._env.scene.sensors[self.cfg.contact_sensor_name]
+            if sensor.data.contact_pos_w is None:
+                raise ValueError(
+                    f"sensor {self.cfg.contact_sensor_name!r} must track contact points for the debug view"
+                )
+            body_ids, _ = sensor.find_bodies(self.body_names, preserve_order=True)
+            points = sensor.data.contact_pos_w.torch[:, body_ids].reshape(-1, 3)  # NaN where no contact
+            groups.append(points[torch.isfinite(points).all(dim=-1)])
+        translations = torch.cat(groups)
+        if translations.shape[0] == 0:
+            return
+        indices = torch.cat([torch.full((len(g),), i, device=self.device) for i, g in enumerate(groups)])
+        orientations = torch.zeros(len(translations), 4, device=self.device)
+        orientations[:, 0] = 1.0
+        orientations[: len(arrow_quat)] = arrow_quat
+        scales = torch.ones(len(translations), 3, device=self.device)
+        scales[: len(length)] = torch.stack(
+            [length, torch.full_like(length, self.cfg.arrow_width), torch.full_like(length, self.cfg.arrow_width)],
+            dim=-1,
+        )
+        self._markers.visualize(
+            translations=translations, orientations=orientations, scales=scales, marker_indices=indices
+        )
+
 
 @configclass
 class ContactScheduleCommandCfg(CommandTermCfg):
@@ -149,6 +216,29 @@ class ContactScheduleCommandCfg(CommandTermCfg):
     planner misses. 0 disables it."""
     dropout_body_names: list[str] = ["left_ankle_roll_link", "right_ankle_roll_link"]
     dropout_redraw_m: float = 0.01
+    contact_sensor_name: str | None = None
+    """ Debug view only: also mark the contact points of the robot's contact bodies reported by this sensor. """
+    debug_vis_observation: tuple[str, str] = ("policy", "contact_targets")
+    """ Debug view only: observation (group, term) holding this command's targets, drawn as arrows. """
+    arrow_width: float = 0.05
+    """ Debug view only: target arrow width, in m. """
+    visualizer_cfg: VisualizationMarkersCfg = VisualizationMarkersCfg(
+        prim_path="/Visuals/Command/contact_schedule",
+        markers={
+            "next_contact_target": sim_utils.UsdFileCfg(
+                usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/UIElements/arrow_x.usd",
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.9, 0.1)),
+            ),
+            "reference_contact": sim_utils.SphereCfg(
+                radius=0.06, visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.9, 0.1, 0.1))
+            ),
+            "robot_contact": sim_utils.SphereCfg(
+                radius=0.06, visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.3, 0.9))
+            ),
+        },
+    )
+    """ Green: arrows from the robot's contact bodies to their next contact targets; red: reference bodies in contact (on the reference robot); blue: the robot's actual
+    contact points with the terrain. """
 
 
 def redraw_dropout(
@@ -166,6 +256,25 @@ Observations.
 """
 
 
+def contact_target_noise(data: torch.Tensor, cfg: UniformNoiseCfg) -> torch.Tensor:
+    """Uniform noise on the valid ``(x, y, z)`` targets of a ``(N, B * 3)`` contact-target observation only: invalid
+    targets are zero vectors (ACP) and stay zero. Use as ``UniformNoiseCfg(func=contact_target_noise, ...)``."""
+    targets = data.reshape(data.shape[0], -1, 3)
+    valid = (targets != 0.0).any(dim=-1, keepdim=True)
+    noise = torch.rand_like(targets) * (cfg.n_max - cfg.n_min) + cfg.n_min
+    return (targets + noise * valid).reshape(data.shape)
+
+
+def goal_noise(data: torch.Tensor, cfg: UniformNoiseCfg) -> torch.Tensor:
+    """ACP goal noise on a ``(N, 3)`` goal observation: the direction ``(x, y)`` is rotated and the relative heading
+    shifted, each by an independent uniform angle in ``[n_min, n_max]`` rad. Use as
+    ``UniformNoiseCfg(func=goal_noise, ...)``."""
+    angles = torch.rand_like(data[:, 1:]) * (cfg.n_max - cfg.n_min) + cfg.n_min  # (N, 2): direction, heading
+    cos, sin = torch.cos(angles[:, 0]), torch.sin(angles[:, 0])
+    x, y = data[:, 0], data[:, 1]
+    return torch.stack([cos * x - sin * y, sin * x + cos * y, data[:, 2] + angles[:, 1]], dim=-1)
+
+
 def contact_schedule_goal(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:
     """``(N, 3)`` goal direction and relative heading of :class:`ContactScheduleCommand`."""
     return env.command_manager.get_term(command_name).goal_b
@@ -174,6 +283,36 @@ def contact_schedule_goal(env: ManagerBasedRLEnv, command_name: str) -> torch.Te
 def reference_contacts(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:
     """``(N, B)`` 1.0 where the reference body is in contact now."""
     return env.command_manager.get_term(command_name).reference_contact.float()
+
+
+def reference_base_velocity(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:
+    """``(N, 6)`` reference base linear and angular velocity of the current frame, in the robot base frame."""
+    term: ContactScheduleCommand = env.command_manager.get_term(command_name)
+    reference = term.motion_reference.reference_frame
+    root_quat = term.robot.data.root_quat_w.torch
+    lin_vel = math_utils.quat_apply_inverse(root_quat, reference.base_lin_vel_w[:, 0])
+    ang_vel = math_utils.quat_apply_inverse(root_quat, reference.base_ang_vel_w[:, 0])
+    return torch.cat([lin_vel, ang_vel], dim=-1)
+
+
+def reference_joint_pos_rel(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:
+    """``(N, J)`` reference joint positions of the current frame relative to the robot's defaults (simulation order)."""
+    term: ContactScheduleCommand = env.command_manager.get_term(command_name)
+    return term.motion_reference.reference_frame.joint_pos[:, 0] - term.robot.data.default_joint_pos.torch
+
+
+def reference_joint_vel(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:
+    """``(N, J)`` reference joint velocities of the current frame (simulation order)."""
+    term: ContactScheduleCommand = env.command_manager.get_term(command_name)
+    return term.motion_reference.reference_frame.joint_vel[:, 0]
+
+
+def reference_contact_body_pos(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:
+    """``(N, B * 3)`` reference contact-body origins of the current frame, in the robot body-yaw frame."""
+    term: ContactScheduleCommand = env.command_manager.get_term(command_name)
+    reference_pos = term.motion_reference.reference_frame.link_pos_w[:, 0, term.reference_link_ids]
+    robot = term.robot
+    return _in_yaw_frame(reference_pos, robot.data.root_pos_w.torch, robot.data.root_quat_w.torch).flatten(1)
 
 
 def scan_height_rel_base(
@@ -190,8 +329,46 @@ def scan_height_rel_base(
 
 
 """
-Rewards.
+Rewards (ACP Table 3).
 """
+
+
+def _moving(reference: ContactMotionReferenceData, speed_threshold: float) -> torch.Tensor:
+    """``(N,)`` chi_mov: 1.0 where the reference base speed exceeds ``speed_threshold``."""
+    return (reference.base_lin_vel_w[:, 0].norm(dim=-1) > speed_threshold).float()
+
+
+def _in_yaw_frame(points_w: torch.Tensor, base_pos_w: torch.Tensor, base_quat_w: torch.Tensor) -> torch.Tensor:
+    """``(N, B, 3)`` world points in the body-yaw frame of the base pose ``(N, 3)``, ``(N, 4)``."""
+    yaw_quat = math_utils.yaw_quat(base_quat_w).unsqueeze(1).expand(-1, points_w.shape[1], -1)
+    return math_utils.quat_apply_inverse(yaw_quat, points_w - base_pos_w.unsqueeze(1))
+
+
+def base_pose_gauss(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    std_pos: float = 0.5,
+    std_rot: float = 1.0,
+    moving_speed_threshold: float = 0.1,
+) -> torch.Tensor:
+    """track_base_pos: ``exp(-chi_mov |r - r*|^2 / std_pos^2 - theta^2 / std_rot^2)``, world frame."""
+    term: ContactScheduleCommand = env.command_manager.get_term(command_name)
+    reference = term.motion_reference.reference_frame
+    pos_error = torch.sum(torch.square(term.robot.data.root_pos_w.torch - reference.base_pos_w[:, 0]), dim=-1)
+    rot_error = math_utils.quat_error_magnitude(term.robot.data.root_quat_w.torch, reference.base_quat_w[:, 0])
+    moving = _moving(reference, moving_speed_threshold)
+    return torch.exp(-moving * pos_error / std_pos**2 - torch.square(rot_error) / std_rot**2)
+
+
+def base_velocity_gauss(
+    env: ManagerBasedRLEnv, command_name: str, std_lin: float = 1.0, std_ang: float = 3.0
+) -> torch.Tensor:
+    """track_base_vel: ``exp(-|v - v*|^2 / std_lin^2 - |w - w*|^2 / std_ang^2)``, world frame."""
+    term: ContactScheduleCommand = env.command_manager.get_term(command_name)
+    reference = term.motion_reference.reference_frame
+    lin_error = torch.sum(torch.square(term.robot.data.root_lin_vel_w.torch - reference.base_lin_vel_w[:, 0]), dim=-1)
+    ang_error = torch.sum(torch.square(term.robot.data.root_ang_vel_w.torch - reference.base_ang_vel_w[:, 0]), dim=-1)
+    return torch.exp(-lin_error / std_lin**2 - ang_error / std_ang**2)
 
 
 def contact_label(
@@ -232,3 +409,47 @@ def contact_link_pos_gauss(
     mask = term.reference_contact.float()
     reward = torch.exp(-error / (std * std)) * mask
     return reward.sum(dim=-1) / mask.sum(dim=-1).clamp_min(1.0)
+
+
+def contact_label_paper(
+    env: ManagerBasedRLEnv, command_name: str, sensor_cfg: SceneEntityCfg, threshold: float = 1.0
+) -> torch.Tensor:
+    """track_contact_label (ACP Table 3): ``mean_b c_meas_b (2 c_ref_b - 1)``, with ``c_meas`` a vertical contact
+    force magnitude above ``threshold`` N within the sensor history: +1 per body touching where the reference does, -1
+    per body touching where it does not, 0 for bodies not touching.
+
+    ``sensor_cfg.body_names`` must list the same bodies, in the same order, as the command.
+    """
+    term: ContactScheduleCommand = env.command_manager.get_term(command_name)
+    sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    force_z = sensor.data.net_forces_w_history.torch[:, :, sensor_cfg.body_ids, 2]
+    measured = (force_z.abs().max(dim=1)[0] > threshold).float()
+    return (measured * (2.0 * term.reference_contact.float() - 1.0)).mean(dim=-1)
+
+
+def contact_link_pos_gauss_paper(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    std: float = 1.0,
+    in_yaw_frame: bool = False,
+    moving_speed_threshold: float | None = None,
+) -> torch.Tensor:
+    """track_contact_pos_base / _global (ACP Table 3): ``exp(-chi sum_b |p_b - p*_b|^2 / std^2)`` over all contact
+    bodies.
+
+    Positions are body origins, in the world frame or, with ``in_yaw_frame``, in the body-yaw frame of each base (the
+    robot's for the robot, the reference's for the reference). ``chi`` is chi_mov with ``moving_speed_threshold``,
+    else 1.
+    """
+    term: ContactScheduleCommand = env.command_manager.get_term(command_name)
+    robot = term.robot
+    reference = term.motion_reference.reference_frame
+    body_pos = robot.data.body_link_pos_w.torch[:, term.robot_body_ids]
+    reference_pos = reference.link_pos_w[:, 0, term.reference_link_ids]
+    if in_yaw_frame:
+        body_pos = _in_yaw_frame(body_pos, robot.data.root_pos_w.torch, robot.data.root_quat_w.torch)
+        reference_pos = _in_yaw_frame(reference_pos, reference.base_pos_w[:, 0], reference.base_quat_w[:, 0])
+    error = torch.sum(torch.square(body_pos - reference_pos), dim=(-1, -2))
+    if moving_speed_threshold is not None:
+        error = _moving(reference, moving_speed_threshold) * error
+    return torch.exp(-error / (std * std))

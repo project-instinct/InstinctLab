@@ -1,4 +1,5 @@
 from .module_cfg import (
+    InstinctRlAME2ImageEncoderCfg,
     InstinctRlConv2dHeadCfg,
     InstinctRlMlpCfg,
     InstinctRlParallelBlockCfg,

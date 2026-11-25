@@ -12,7 +12,7 @@ import instinctlab.utils.torch as torch_utils
 
 from .motion_reference_data import MotionReferenceData, MotionSequence
 
-CONTACT_FIELDS_WITH_FRAME_DIM = ("contact_flag", "next_contact_pos_w", "next_contact_valid")
+CONTACT_FIELDS_WITH_FRAME_DIM = ("contact_flag", "contact_pos_w", "next_contact_onset_time", "next_contact_pos_w")
 
 
 @dataclass
@@ -25,12 +25,15 @@ class ContactMotionSequence(MotionSequence):
     contact_flag: torch.Tensor = None  # type: ignore
     """ Whether each contact body is in contact. Shape: [N, num_frames, num_contact_bodies], bool. """
 
-    next_contact_pos_w: torch.Tensor = None  # type: ignore
-    """ Position of each body's next contact onset at or after the frame. Shape: [N, num_frames, num_contact_bodies, 3].
-    """
+    contact_pos_w: torch.Tensor = None  # type: ignore
+    """ Contact position of each body, 0 where it is not in contact. Shape: [N, num_frames, num_contact_bodies, 3]. """
 
-    next_contact_valid: torch.Tensor = None  # type: ignore
-    """ Whether that onset exists within the onset horizon. Shape: [N, num_frames, num_contact_bodies], bool. """
+    next_contact_onset_time: torch.Tensor = None  # type: ignore
+    """ Seconds until each body's next contact onset at or after the frame (0 if the onset is this frame), -1 if there
+    is none within the onset horizon. Shape: [N, num_frames, num_contact_bodies]. """
+
+    next_contact_pos_w: torch.Tensor = None  # type: ignore
+    """ Position of that onset, 0 where there is none. Shape: [N, num_frames, num_contact_bodies, 3]. """
 
     attrs_with_frame_dim: tuple = MotionSequence.attrs_with_frame_dim + CONTACT_FIELDS_WITH_FRAME_DIM
 
@@ -52,8 +55,9 @@ class ContactMotionSequence(MotionSequence):
         return_ = ContactMotionSequence(
             **{f.name: getattr(base, f.name) for f in fields(MotionSequence) if f.name != "attrs_with_frame_dim"},
             contact_flag=concat((num_contact_bodies,), torch.bool),  # type: ignore
+            contact_pos_w=concat((num_contact_bodies, 3)),  # type: ignore
+            next_contact_onset_time=concat((num_contact_bodies,)),  # type: ignore
             next_contact_pos_w=concat((num_contact_bodies, 3)),  # type: ignore
-            next_contact_valid=concat((num_contact_bodies,), torch.bool),  # type: ignore
         )
         return return_
 
@@ -61,17 +65,15 @@ class ContactMotionSequence(MotionSequence):
 @dataclass
 class ContactMotionReferenceData(MotionReferenceData):
     """Motion reference data with the contact schedule of ``contact_body_names`` (fields of
-    :class:`ContactMotionSequence`) and a goal. The inherited ``reset`` clears them: flags False, positions 0,
-    quaternions identity.
-    """
+    :class:`ContactMotionSequence`) and a goal."""
 
     contact_flag: torch.Tensor = None  # type: ignore
+    contact_pos_w: torch.Tensor = None  # type: ignore
+    next_contact_onset_time: torch.Tensor = None  # type: ignore
     next_contact_pos_w: torch.Tensor = None  # type: ignore
-    next_contact_valid: torch.Tensor = None  # type: ignore
 
     goal_pos_w: torch.Tensor = None  # type: ignore
-    """ Reference base position a per-episode lookahead after the frame, clamped to the clip end. [N, num_frames, 3].
-    """
+    """ Reference base position a lookahead after the frame, clamped to the clip end. [N, num_frames, 3]. """
 
     goal_quat_w: torch.Tensor = None  # type: ignore
     """ Reference base orientation at the same time, (x, y, z, w). Shape: [N, num_frames, 4]. """
@@ -95,11 +97,18 @@ class ContactMotionReferenceData(MotionReferenceData):
         return_ = ContactMotionReferenceData(
             **{f.name: getattr(base, f.name) for f in fields(MotionReferenceData)},
             contact_flag=ProxyArray(wp.zeros((num_envs, num_frames, num_bodies), dtype=wp.bool, device=device)),
+            contact_pos_w=ProxyArray(wp.zeros((num_envs, num_frames, num_bodies, 3), device=device)),
+            next_contact_onset_time=ProxyArray(wp.zeros((num_envs, num_frames, num_bodies), device=device)),
             next_contact_pos_w=ProxyArray(wp.zeros((num_envs, num_frames, num_bodies, 3), device=device)),
-            next_contact_valid=ProxyArray(wp.zeros((num_envs, num_frames, num_bodies), dtype=wp.bool, device=device)),
             goal_pos_w=ProxyArray(wp.zeros((num_envs, num_frames, 3), device=device)),
             goal_quat_w=ProxyArray(wp.zeros((num_envs, num_frames, 4), device=device)),
             contact_body_names=list(contact_body_names),
         )
         return_.goal_quat_w[:, :, 3] = 1.0
+        return_.next_contact_onset_time[:, :, :] = -1.0
         return return_
+
+    def reset(self, env_ids: torch.Tensor | slice) -> None:
+        """Base reset (flags False, positions 0, quaternions identity), and no next contact onset (time -1)."""
+        super().reset(env_ids)
+        self.next_contact_onset_time[env_ids] = -1.0
