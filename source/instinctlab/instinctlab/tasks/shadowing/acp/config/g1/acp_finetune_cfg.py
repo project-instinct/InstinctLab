@@ -275,7 +275,7 @@ class ACPFinetuneGoalRewardsCfg:
     move2goal = RewTermCfg(
         func=goal_reaching.move2goal,
         weight=40.0,
-        params={"command_name": "goal_reaching", "use_terrain_masks": False},
+        params={"command_name": "goal_reaching", "v_max": 1.0, "use_terrain_masks": False},
     )
     standatgoal = RewTermCfg(
         func=goal_reaching.standatgoal,
